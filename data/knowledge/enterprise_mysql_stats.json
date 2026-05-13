@@ -1,0 +1,11 @@
+{
+  "source": "mysql://localhost:3306/tdcomp",
+  "companies": 30,
+  "bank_accounts": 20,
+  "key_people": 96,
+  "directors_supervisors": 23,
+  "certificates": 37,
+  "seals": 37,
+  "output_jsonl": "d:\\project\\ai\\demo\\data\\knowledge\\enterprise_mysql_clean.jsonl",
+  "output_text": "d:\\project\\ai\\demo\\data\\knowledge\\enterprise_mysql_compiled.txt"
+}

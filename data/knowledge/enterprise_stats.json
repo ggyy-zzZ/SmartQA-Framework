@@ -1,0 +1,12 @@
+{
+  "input_file": "src\\main\\resources\\enterprise.txt",
+  "total_records": 403,
+  "clean_records": 330,
+  "rejected_records": 73,
+  "reject_reasons": {
+    "invalid_status_empty": 63,
+    "test_name": 6,
+    "garbled_question_marks": 2,
+    "invalid_status_0": 2
+  }
+}

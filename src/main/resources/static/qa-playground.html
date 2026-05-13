@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小帮手</title>
+    <style>
+        :root {
+            --bg: #070a14;
+            --card: #0f172a;
+            --card-2: #111b35;
+            --primary: #00e5ff;
+            --primary-2: #7c3aed;
+            --primary-soft: rgba(0, 229, 255, 0.16);
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --line: rgba(148, 163, 184, 0.24);
+            --glow: 0 0 18px rgba(0, 229, 255, 0.25);
+        }
+        body {
+            margin: 0;
+            background:
+                radial-gradient(circle at 15% 20%, rgba(124, 58, 237, 0.28), transparent 40%),
+                radial-gradient(circle at 80% 0%, rgba(0, 229, 255, 0.2), transparent 38%),
+                linear-gradient(180deg, #06080f 0%, var(--bg) 100%);
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            color: var(--text);
+        }
+        .wrap {
+            max-width: 980px;
+            margin: 28px auto;
+            padding: 0 16px;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 14px;
+            box-shadow: 0 10px 28px rgba(2, 6, 23, 0.6), inset 0 0 0 1px rgba(56, 189, 248, 0.08);
+            padding: 18px;
+            margin-bottom: 14px;
+            border: 1px solid rgba(56, 189, 248, 0.16);
+            backdrop-filter: blur(2px);
+        }
+        h1 {
+            margin: 0 0 10px;
+            font-size: 26px;
+            color: #c4f8ff;
+            text-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+        }
+        .subtitle {
+            margin: 0 0 14px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+        textarea {
+            width: 100%;
+            min-height: 96px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 229, 255, 0.22);
+            padding: 12px;
+            box-sizing: border-box;
+            font-size: 14px;
+            resize: vertical;
+            background: #091125;
+            color: #dbeafe;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: rgba(0, 229, 255, 0.55);
+            box-shadow: var(--glow);
+        }
+        textarea::placeholder {
+            color: #7f93b6;
+        }
+        .toolbar {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .learn-panel {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.66);
+            border: 1px dashed rgba(56, 189, 248, 0.35);
+        }
+        .learn-title {
+            font-size: 13px;
+            color: #a5f3fc;
+            margin-bottom: 8px;
+        }
+        .learn-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        input[type="file"] {
+            color: #cbd5e1;
+            font-size: 13px;
+        }
+        .learn-status {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .learn-status.ok {
+            color: #34d399;
+        }
+        .learn-status.error {
+            color: #fda4af;
+        }
+        .toolbar label {
+            color: #a5b4fc;
+            font-size: 13px;
+        }
+        select {
+            border-radius: 8px;
+            border: 1px solid rgba(0, 229, 255, 0.28);
+            background: #0b1228;
+            color: #cbd5e1;
+            padding: 6px 8px;
+            font-size: 13px;
+        }
+        button {
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-2) 100%);
+            color: #fff;
+            padding: 10px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 0 14px rgba(124, 58, 237, 0.42);
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 18px rgba(0, 229, 255, 0.48);
+        }
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .status {
+            font-size: 13px;
+            color: var(--muted);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: #64748b;
+        }
+        .dot.live { background: #00ffa3; box-shadow: 0 0 0 6px rgba(0,255,163,0.16); }
+        .section-title {
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #b7f6ff;
+            letter-spacing: 0.4px;
+        }
+        .thinking-list {
+            min-height: 90px;
+            background: var(--card-2);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 10px;
+        }
+        .thinking-item {
+            font-size: 13px;
+            color: #cbd5e1;
+            padding: 4px 0;
+        }
+        .answer-box {
+            min-height: 120px;
+            line-height: 1.75;
+            font-size: 15px;
+            color: #e2e8f0;
+        }
+        .answer-box h1, .answer-box h2, .answer-box h3 {
+            margin: 10px 0 8px;
+        }
+        .answer-box p { margin: 8px 0; }
+        .answer-box ul, .answer-box ol { margin: 8px 0 8px 20px; }
+        .meta-pills {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .pill {
+            font-size: 12px;
+            border-radius: 999px;
+            padding: 4px 10px;
+            background: var(--primary-soft);
+            color: #a5f3fc;
+            border: 1px solid rgba(34, 211, 238, 0.28);
+        }
+        details summary {
+            cursor: pointer;
+            color: #93c5fd;
+            font-size: 13px;
+        }
+        pre {
+            margin: 8px 0 0;
+            border-radius: 10px;
+            background: #050b1b;
+            color: #cbd5e1;
+            padding: 10px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 12px;
+            border: 1px solid rgba(56, 189, 248, 0.18);
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="card">
+        <h1>小帮手</h1>
+        <textarea id="question" placeholder="请输入你的问题，例如：李晓峰是哪些公司的法人？"></textarea>
+        <div class="toolbar">
+            <label>知识范围：
+                <select id="scopeMode">
+                    <option value="enterprise" selected>企业知识库</option>
+                    <option value="personal">个人知识库</option>
+                </select>
+            </label>
+            <label><input id="streamMode" type="checkbox" checked> 长连接流式输出</label>
+            <button id="askBtn">发送问题</button>
+            <span id="status" class="status"><span id="statusDot" class="dot"></span><span id="statusText">就绪</span></span>
+        </div>
+        <div class="learn-panel">
+            <div class="learn-title">主动学习（上传 .md 文档）</div>
+            <div class="learn-toolbar">
+                <input id="learnFile" type="file" accept=".md,text/markdown">
+                <button id="learnBtn" type="button">上传并学习</button>
+                <span id="learnStatus" class="learn-status">未上传</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="section-title">思考过程</div>
+        <div id="thinking" class="thinking-list"></div>
+    </div>
+
+    <div class="card">
+        <div class="section-title">回答内容</div>
+        <div id="answer" class="answer-box"></div>
+    </div>
+
+    <div class="card">
+        <div class="section-title">摘要信息</div>
+        <div id="meta" class="meta-pills"></div>
+        <details style="margin-top: 10px;">
+            <summary>调试数据（可选）</summary>
+            <pre id="rawJson"></pre>
+        </details>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    const questionEl = document.getElementById("question");
+    const scopeModeEl = document.getElementById("scopeMode");
+    const streamModeEl = document.getElementById("streamMode");
+    const askBtnEl = document.getElementById("askBtn");
+    const learnBtnEl = document.getElementById("learnBtn");
+    const learnFileEl = document.getElementById("learnFile");
+    const learnStatusEl = document.getElementById("learnStatus");
+    const statusTextEl = document.getElementById("statusText");
+    const statusDotEl = document.getElementById("statusDot");
+    const metaEl = document.getElementById("meta");
+    const thinkingEl = document.getElementById("thinking");
+    const answerEl = document.getElementById("answer");
+    const rawJsonEl = document.getElementById("rawJson");
+
+    function setStatus(text, live) {
+        statusTextEl.textContent = text;
+        statusDotEl.className = live ? "dot live" : "dot";
+    }
+
+    function escapeHtml(text) {
+        return (text || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function renderMeta(meta) {
+        const intentMap = {
+            graph: "图谱检索",
+            vector: "语义检索",
+            document: "文档检索",
+            mysql: "数据库检索",
+            sql: "结构化查询",
+            hybrid: "混合检索",
+            unknown: "待补充信息"
+        };
+        const items = [
+            "范围：" + (meta.scope === "personal" ? "个人知识库" : "企业知识库"),
+            "意图：" + (intentMap[meta.intent] || "未识别"),
+            "可回答：" + (meta.canAnswer ? "是" : "否"),
+            "置信度：" + (meta.confidence == null ? "-" : Number(meta.confidence).toFixed(2)),
+            "会话ID：" + (meta.turnId || "-")
+        ];
+        metaEl.innerHTML = items.map(x => `<span class="pill">${escapeHtml(x)}</span>`).join("");
+    }
+
+    function renderThinking(items) {
+        if (!items.length) {
+            thinkingEl.innerHTML = `<div class="thinking-item">等待请求...</div>`;
+            return;
+        }
+        thinkingEl.innerHTML = items.map(item => {
+            const msg = escapeHtml(item.message || "");
+            return `<div class="thinking-item">• ${msg}</div>`;
+        }).join("");
+    }
+
+    function renderAnswer(text) {
+        const content = text || "";
+        if (window.marked && typeof window.marked.parse === "function") {
+            answerEl.innerHTML = window.marked.parse(content, {gfm: true, breaks: true});
+        } else {
+            answerEl.textContent = content;
+        }
+    }
+
+    async function askNormal(question, scope) {
+        const resp = await fetch("/qa/ask", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({question, scope})
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        renderMeta(data);
+        renderAnswer(data.answer || "");
+        rawJsonEl.textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function learnByUpload(file, scope) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("trigger", "manual_upload_ui");
+        formData.append("scope", scope);
+        const resp = await fetch("/qa/learn/upload", {
+            method: "POST",
+            body: formData
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return await resp.json();
+    }
+
+    function setLearnStatus(text, state) {
+        learnStatusEl.textContent = text;
+        learnStatusEl.className = "learn-status" + (state ? " " + state : "");
+    }
+
+    function askStream(question, scope) {
+        const result = {answer: "", thinking: []};
+        return new Promise((resolve, reject) => {
+            const url = "/qa/ask/stream?question=" + encodeURIComponent(question)
+                + "&scope=" + encodeURIComponent(scope)
+                + "&t=" + Date.now();
+            const es = new EventSource(url);
+
+            es.addEventListener("thinking", (event) => {
+                const payload = JSON.parse(event.data);
+                result.thinking.push(payload);
+                renderThinking(result.thinking);
+                setStatus("思考中...", true);
+                rawJsonEl.textContent = JSON.stringify(result, null, 2);
+            });
+
+            es.addEventListener("meta", (event) => {
+                const payload = JSON.parse(event.data);
+                Object.assign(result, payload);
+                renderMeta(payload);
+                rawJsonEl.textContent = JSON.stringify(result, null, 2);
+            });
+
+            es.addEventListener("delta", (event) => {
+                result.answer += event.data || "";
+                renderAnswer(result.answer);
+                setStatus("回答生成中...", true);
+                rawJsonEl.textContent = JSON.stringify(result, null, 2);
+            });
+
+            es.addEventListener("final", (event) => {
+                const payload = JSON.parse(event.data);
+                Object.assign(result, payload);
+                renderMeta(payload);
+                renderAnswer(payload.answer || result.answer || "");
+                rawJsonEl.textContent = JSON.stringify(result, null, 2);
+            });
+
+            es.addEventListener("done", () => {
+                es.close();
+                resolve();
+            });
+
+            es.addEventListener("qa_error", (event) => {
+                es.close();
+                try {
+                    const payload = JSON.parse(event.data || "{}");
+                    reject(new Error(payload.message || "stream error"));
+                    return;
+                } catch (ignore) {
+                    reject(new Error("流式连接异常"));
+                    return;
+                }
+            });
+
+            es.addEventListener("error", (event) => {
+                es.close();
+                reject(new Error("流式连接中断"));
+            });
+        });
+    }
+
+    askBtnEl.addEventListener("click", async () => {
+        const question = questionEl.value.trim();
+        const scope = scopeModeEl.value || "enterprise";
+        if (!question) {
+            alert("请先输入问题");
+            return;
+        }
+
+        askBtnEl.disabled = true;
+        answerEl.innerHTML = "";
+        thinkingEl.innerHTML = "";
+        metaEl.innerHTML = "";
+        rawJsonEl.textContent = "";
+        setStatus("连接中...", true);
+
+        try {
+            if (streamModeEl.checked) {
+                await askStream(question, scope);
+            } else {
+                await askNormal(question, scope);
+            }
+            setStatus("完成", false);
+        } catch (e) {
+            setStatus("失败：" + e.message, false);
+        } finally {
+            askBtnEl.disabled = false;
+        }
+    });
+
+    learnBtnEl.addEventListener("click", async () => {
+        const file = learnFileEl.files && learnFileEl.files[0];
+        const scope = scopeModeEl.value || "enterprise";
+        if (!file) {
+            alert("请先选择一个 .md 文件");
+            return;
+        }
+        if (!/\.md$/i.test(file.name)) {
+            alert("仅支持上传 .md 文件");
+            return;
+        }
+
+        learnBtnEl.disabled = true;
+        setLearnStatus("上传中...", "");
+        setStatus("学习中...", true);
+        rawJsonEl.textContent = "";
+        thinkingEl.innerHTML = "";
+        metaEl.innerHTML = "";
+        answerEl.innerHTML = "";
+
+        try {
+            const data = await learnByUpload(file, scope);
+            const ok = !!data.canAnswer;
+            setLearnStatus(ok ? "学习成功" : "学习失败", ok ? "ok" : "error");
+            setStatus(ok ? "学习完成" : "学习失败", false);
+
+            renderMeta(data);
+            renderThinking([
+                {message: "已上传文件：" + file.name},
+                {message: ok ? "知识已写入多模态存储（MySQL / 向量库 / 图谱）" : "知识写入未完全成功，请查看调试数据"}
+            ]);
+            renderAnswer(data.answer || "");
+            rawJsonEl.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+            setLearnStatus("上传失败：" + e.message, "error");
+            setStatus("学习失败", false);
+            renderThinking([{message: "上传异常，请检查后端服务和网络连接。"}]);
+        } finally {
+            learnBtnEl.disabled = false;
+        }
+    });
+
+    renderThinking([]);
+</script>
+</body>
+</html>

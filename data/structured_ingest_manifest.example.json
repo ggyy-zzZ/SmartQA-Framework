@@ -1,0 +1,4 @@
+{
+  "jobName": "example_nightly_gate",
+  "tables": ["company", "employee"]
+}
