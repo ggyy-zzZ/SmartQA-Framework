@@ -64,20 +64,47 @@ public class ActiveLearningService {
     }
 
     public LearningResult learn(String rawContent, String sourceType, String sourceName, String triggerType, String scope) {
+        return learnWithSinkPolicy(rawContent, sourceType, sourceName, triggerType, scope, LearningSinkPolicy.allEnabled());
+    }
+
+    /**
+     * 与 {@link #learn(String, String, String, String, String)} 相同，但可按沉淀方案关闭部分写入通路。
+     */
+    public LearningResult learnWithSinkPolicy(
+            String rawContent,
+            String sourceType,
+            String sourceName,
+            String triggerType,
+            String scope,
+            LearningSinkPolicy policy
+    ) {
         String content = normalizeContent(rawContent);
         if (content.isBlank()) {
             return LearningResult.failed("学习内容为空，请提供可学习的文本。");
         }
+        if (!policy.anySinkEnabled()) {
+            return LearningResult.failed("沉淀方案未启用任何写入通路（MySQL / Qdrant / Neo4j 均为关闭）。");
+        }
         String knowledgeId = UUID.randomUUID().toString();
-        String title = extractTitle(content, sourceName);
-        List<String> keywords = extractKeywords(content, 12);
+        String sourceNameSafe = sourceName == null ? "" : sourceName;
+        String title = extractTitle(content, sourceNameSafe);
+        List<String> keywords = extractKeywords(content, policy.keywordLimit());
         String normalizedScope = normalizeScope(scope);
 
-        SinkStatus mysql = persistToMysql(knowledgeId, title, content, sourceType, sourceName, triggerType, normalizedScope);
-        SinkStatus vector = persistToQdrant(knowledgeId, title, content, sourceType, sourceName, normalizedScope);
-        SinkStatus graph = persistToGraph(knowledgeId, title, content, sourceType, sourceName, keywords, normalizedScope);
-        boolean success = mysql.ok() || vector.ok() || graph.ok();
-        return new LearningResult(success, knowledgeId, title, mysql, vector, graph, success ? "" : "三路持久化都失败");
+        SinkStatus mysql = policy.mysql()
+                ? persistToMysql(knowledgeId, title, content, sourceType, sourceNameSafe, triggerType, normalizedScope)
+                : SinkStatus.skip("mysql");
+        SinkStatus vector = policy.qdrant()
+                ? persistToQdrant(knowledgeId, title, content, sourceType, sourceNameSafe, normalizedScope)
+                : SinkStatus.skip("vector");
+        SinkStatus graph = policy.neo4j()
+                ? persistToGraph(knowledgeId, title, content, sourceType, sourceNameSafe, keywords, normalizedScope)
+                : SinkStatus.skip("graph");
+        boolean success = (policy.mysql() && mysql.ok())
+                || (policy.qdrant() && vector.ok())
+                || (policy.neo4j() && graph.ok());
+        String message = success ? "" : "所有已启用的写入通路均未成功";
+        return new LearningResult(success, knowledgeId, title, mysql, vector, graph, message);
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, int topK) {
@@ -737,6 +764,11 @@ public class ActiveLearningService {
 
         public static SinkStatus fail(String sink, String detail) {
             return new SinkStatus(sink, false, detail == null ? "" : detail);
+        }
+
+        /** 沉淀方案关闭该写入路，不计入成功条件。 */
+        public static SinkStatus skip(String sink) {
+            return new SinkStatus(sink, false, "skipped_by_plan");
         }
     }
 

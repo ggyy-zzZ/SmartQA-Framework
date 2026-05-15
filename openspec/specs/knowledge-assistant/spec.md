@@ -71,6 +71,14 @@
 - **THEN** 当请求体 `persist=true` 时，系统 SHALL 将上述 Markdown 作为文本知识调用 `ActiveLearningService` 写入主动学习通道；`persist=false` 时 SHALL 仅返回目录不持久化；详细设计见 `openspec/design/mysql-schema-active-learning-pipeline.md`
 - **THEN** 当请求体 `assess=true` 时，系统 SHALL 调用已配置的大模型 API 生成沉淀评估，并体现在 `combinedMarkdown` 与 `modelAssessment` 等响应字段中；模型失败时 SHALL 降级为仅目录写入（若同时 `persist=true`）
 
+#### Scenario: 结构化沉淀方案 JSON 与按路写入
+
+- **WHEN** 客户端调用 `POST /qa/mysql/sedimentation/pipeline`，`source` 为 `configured`（仅 `qa.assistant.mysql-*`）或 `dynamic`（与 `/qa/mysql/connect` 同形的 host/port/database/username/password）  
+- **THEN** 系统 SHALL 只读导出 schema 目录（与 `schema-catalog` 同源规则：排除 `qa_` 系统表、受导出表数与字符上限约束）  
+- **THEN** 系统 SHALL 调用大模型生成**单一 JSON 对象**，字段含 `feasible`、`feasibilityRationale`、`confidence`、`planSummaryMarkdown`、`sinks`（mysql/qdrant/neo4j 的 `enabled` 与 `rationale`，neo4j 含 `keywordLimit`）、`ingest`（`bodyStrategy`、`titleHint`）；解析失败时 SHALL 返回 `ok: false` 与可读 `message`  
+- **THEN** 当 `feasible=false` 或三路 `enabled` 均为 false 时，系统 SHALL **不**调用主动学习持久化  
+- **THEN** 当 `persist=true` 且方案可行且至少一路 `enabled=true` 时，系统 SHALL 按 `ingest.bodyStrategy` 选择正文：`model_digest` 为二次模型生成 Markdown，`catalog_as_is` 为原始目录（可截断）；再调用 `ActiveLearningService` 按方案**选择性启用** MySQL / Qdrant / Neo4j 写入（物理形态仍为应用内置白名单：表 `qa_active_knowledge`、既有 Qdrant collection、既有 LearnedKnowledge 子图），详细设计见 `openspec/design/schema-sedimentation-plan-pipeline.md`
+
 ---
 
 ### Requirement: Neo4j 与 `assistant` 对齐的图谱资产

@@ -80,6 +80,7 @@
 | `ActiveLearningService` | 持久化三通路。 |
 | `StructuredTableRowAuditService` | 对**已有表**做行数审计；与「元数据文档学习」互补，不替代。 |
 | Skill `mysql-schema-knowledge-assessment` | **任意 JDBC**（会话内）+ 人工/Agent 驱动的大模型评估流程；与本 API 的「仅配置库」策略分离。 |
+| `POST /qa/mysql/sedimentation/pipeline` | 结构化 JSON 沉淀方案 + 按路写入；见 `openspec/design/schema-sedimentation-plan-pipeline.md`。 |
 
 ---
 
@@ -96,4 +97,4 @@
 ## 6. 变更记录
 
 - 2026-05-12：初版（Phase 1：导出 + 可选 `learn`）落地；设计文档与实现对齐。
-- 2026-05-12：Phase 2：`assess` + `MiniMaxClient.completeChat` + `combinedMarkdown` 与 `learn` 串联；配置 `max-schema-assessment-catalog-chars` / `max-schema-assessment-response-chars`。
+- 2026-05-13：补充 `POST /qa/mysql/sedimentation/pipeline` 与 `schema-sedimentation-plan-pipeline.md` 交叉引用。

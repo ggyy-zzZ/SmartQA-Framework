@@ -259,6 +259,37 @@
                 <pre id="mysqlConfigDisplay" style="font-size: 12px; color: #94a3b8;">加载中...</pre>
             </details>
         </div>
+        <div class="learn-panel" style="margin-top: 14px;">
+            <div class="learn-title">动态 MySQL 连接（输入数据库地址直接拉取 Schema）</div>
+            <div class="db-connect-form" style="margin-top: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 80px 1fr; gap: 8px; margin-bottom: 8px;">
+                    <input id="dbHost" type="text" placeholder="主机地址，如 localhost" value="localhost" style="border-radius: 8px; border: 1px solid rgba(0, 229, 255, 0.22); padding: 6px 8px; background: #091125; color: #dbeafe; font-size: 13px;">
+                    <input id="dbPort" type="number" placeholder="端口" value="3306" style="border-radius: 8px; border: 1px solid rgba(0, 229, 255, 0.22); padding: 6px 8px; background: #091125; color: #dbeafe; font-size: 13px; width: 80px;">
+                    <input id="dbName" type="text" placeholder="数据库名" style="border-radius: 8px; border: 1px solid rgba(0, 229, 255, 0.22); padding: 6px 8px; background: #091125; color: #dbeafe; font-size: 13px;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                    <input id="dbUser" type="text" placeholder="用户名" value="root" style="border-radius: 8px; border: 1px solid rgba(0, 229, 255, 0.22); padding: 6px 8px; background: #091125; color: #dbeafe; font-size: 13px;">
+                    <input id="dbPass" type="password" placeholder="密码（可选）" style="border-radius: 8px; border: 1px solid rgba(0, 229, 255, 0.22); padding: 6px 8px; background: #091125; color: #dbeafe; font-size: 13px;">
+                </div>
+            </div>
+            <div class="learn-toolbar">
+                <button id="dbConnectBtn" type="button">连接并导出 Schema</button>
+                <label style="margin-left: 8px;">
+                    <input id="dbAssess" type="checkbox" checked> LLM 评估
+                </label>
+                <label style="margin-left: 8px;">
+                    <input id="dbPersist" type="checkbox" checked> 写入知识库
+                </label>
+                <span id="dbStatus" class="learn-status">就绪</span>
+            </div>
+            <div class="learn-toolbar" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(56, 189, 248, 0.25);">
+                <button id="sedimentationPipelineBtn" type="button">结构化沉淀方案并导入</button>
+                <label style="margin-left: 8px;">
+                    <input id="sedimentationPersist" type="checkbox"> 确认写入（会调大模型生成 JSON 方案，可能二次 digest，再写入三库）
+                </label>
+                <span style="font-size: 12px; color: #94a3b8; margin-left: 8px;">复用上方主机/库名/账号；未勾选时仅返回方案不写入</span>
+            </div>
+        </div>
     </div>
 
     <div class="card">
@@ -586,6 +617,181 @@
         } finally {
             schemaCatalogBtnEl.disabled = false;
         }
+    });
+
+    const dbConnectBtnEl = document.getElementById("dbConnectBtn");
+    const dbHostEl = document.getElementById("dbHost");
+    const dbPortEl = document.getElementById("dbPort");
+    const dbNameEl = document.getElementById("dbName");
+    const dbUserEl = document.getElementById("dbUser");
+    const dbPassEl = document.getElementById("dbPass");
+    const dbAssessEl = document.getElementById("dbAssess");
+    const dbPersistEl = document.getElementById("dbPersist");
+    const dbStatusEl = document.getElementById("dbStatus");
+
+    async function connectAndExportSchema(host, port, database, username, password, assess, persist, scope) {
+        const resp = await fetch("/qa/mysql/connect", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({host, port, database, username, password, assess, persist, scope})
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return await resp.json();
+    }
+
+    dbConnectBtnEl.addEventListener("click", async () => {
+        const host = (dbHostEl.value || "").trim();
+        const port = parseInt(String(dbPortEl.value || "3306"), 10) || 3306;
+        const database = (dbNameEl.value || "").trim();
+        const username = (dbUserEl.value || "").trim();
+        const password = dbPassEl.value || "";
+        const assess = dbAssessEl.checked;
+        const persist = dbPersistEl.checked;
+        const scope = scopeModeEl.value || "enterprise";
+
+        if (!host || !database || !username) {
+            alert("请填写主机、数据库名、用户名");
+            return;
+        }
+
+        dbConnectBtnEl.disabled = true;
+        dbStatusEl.textContent = "连接中...";
+        dbStatusEl.className = "learn-status";
+        setStatus("动态连接导出...", true);
+        answerEl.innerHTML = "";
+        thinkingEl.innerHTML = "";
+        metaEl.innerHTML = "";
+
+        try {
+            const data = await connectAndExportSchema(host, port, database, username, password, assess, persist, scope);
+            if (data.ok) {
+                dbStatusEl.textContent = "完成";
+                dbStatusEl.className = "learn-status ok";
+                setStatus("完成", false);
+                renderThinking([
+                    {message: "已连接 " + host + ":" + port + " / 库 " + database},
+                    {message: "表数量：" + (data.tableCount || 0)},
+                    {message: "LLM 评估：" + (assess ? (data.assessmentFailed ? "失败(已降级)" : "已执行") : "跳过")},
+                    {message: "写入知识库：" + (persist ? (data.persist ? "已请求" : "未写入") : "跳过")}
+                ]);
+                let md = "## Schema 导出\n\n" + (data.markdown || "");
+                if (data.modelAssessment && !data.assessmentFailed) {
+                    md += "\n\n## LLM 评估\n\n" + data.modelAssessment;
+                }
+                renderAnswer(md);
+                if (data.knowledgeId) {
+                    renderMeta({
+                        scope: scope,
+                        intent: "learning",
+                        canAnswer: !!data.canAnswer,
+                        confidence: data.confidence,
+                        turnId: data.turnId || "-"
+                    });
+                }
+                rawJsonEl.textContent = JSON.stringify(data, null, 2);
+            } else {
+                dbStatusEl.textContent = "失败：" + (data.message || "");
+                dbStatusEl.className = "learn-status error";
+                setStatus("失败", false);
+                renderThinking([{message: "连接或导出失败：" + (data.message || "未知错误")}]);
+                rawJsonEl.textContent = JSON.stringify(data, null, 2);
+            }
+        } catch (e) {
+            dbStatusEl.textContent = "异常：" + e.message;
+            dbStatusEl.className = "learn-status error";
+            setStatus("失败", false);
+            renderThinking([{message: "请求异常：" + e.message}]);
+        } finally {
+            dbConnectBtnEl.disabled = false;
+        }
+    });
+
+    /** 结构化沉淀方案：JSON 方案 + 可选 digest + 按路写入（见 /qa/mysql/sedimentation/pipeline） */
+    async function runSedimentationPipeline(host, port, database, username, password, persist, scope) {
+        const resp = await fetch("/qa/mysql/sedimentation/pipeline", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                source: "dynamic",
+                host,
+                port,
+                database,
+                username,
+                password,
+                persist,
+                scope
+            })
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return await resp.json();
+    }
+
+    const sedimentationBtnEl = document.getElementById("sedimentationPipelineBtn");
+
+    sedimentationBtnEl.addEventListener("click", async () => {
+            const host = (dbHostEl.value || "").trim();
+            const port = parseInt(String(dbPortEl.value || "3306"), 10) || 3306;
+            const database = (dbNameEl.value || "").trim();
+            const username = (dbUserEl.value || "").trim();
+            const password = dbPassEl.value || "";
+            const persist = document.getElementById("sedimentationPersist").checked;
+            const scope = scopeModeEl.value || "enterprise";
+
+            if (!host || !database || !username) {
+                alert("请填写主机、数据库名、用户名（与上一块动态连接相同）");
+                return;
+            }
+
+            sedimentationBtnEl.disabled = true;
+            dbStatusEl.textContent = "沉淀方案运行中...";
+            dbStatusEl.className = "learn-status";
+            setStatus("沉淀方案...", true);
+            answerEl.innerHTML = "";
+            thinkingEl.innerHTML = "";
+            metaEl.innerHTML = "";
+
+            try {
+                const data = await runSedimentationPipeline(host, port, database, username, password, persist, scope);
+                if (data.ok) {
+                    dbStatusEl.textContent = persist ? "已执行写入" : "仅生成方案";
+                    dbStatusEl.className = "learn-status ok";
+                    setStatus("完成", false);
+                    const lines = [
+                        {message: "库 " + database + " feasible=" + data.feasible},
+                        {message: "digest 应用：" + (data.digestApplied ? "是" : "否")},
+                        {message: "persist：" + (persist ? "是" : "否")}
+                    ];
+                    renderThinking(lines);
+                    let md = "## 沉淀方案摘要\n\n" + (data.planSummaryMarkdown || "(无)");
+                    if (data.ingestPreview) {
+                        md += "\n\n## 正文预览（截断）\n\n" + data.ingestPreview;
+                    }
+                    renderAnswer(md);
+                    if (data.knowledgeId) {
+                        renderMeta({
+                            scope: scope,
+                            intent: "learning",
+                            canAnswer: !!data.canAnswer,
+                            confidence: data.confidence,
+                            turnId: data.turnId || "-"
+                        });
+                    }
+                    rawJsonEl.textContent = JSON.stringify(data, null, 2);
+                } else {
+                    dbStatusEl.textContent = "失败：" + (data.message || "");
+                    dbStatusEl.className = "learn-status error";
+                    setStatus("失败", false);
+                    renderThinking([{message: data.message || "pipeline 失败"}]);
+                    rawJsonEl.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (e) {
+                dbStatusEl.textContent = "异常：" + e.message;
+                dbStatusEl.className = "learn-status error";
+                setStatus("失败", false);
+                renderThinking([{message: e.message}]);
+            } finally {
+                sedimentationBtnEl.disabled = false;
+            }
     });
 
     loadMysqlConfig();

@@ -11,6 +11,7 @@
 | [`backlog.md`](./backlog.md) | **后续任务排队**（P0/P1/P2 与技术债）；大项实施时拆到 `changes/<id>/` |
 | [`changes/<change-id>/`](./changes/) | 单次变更的 proposal / tasks，归档后能力描述合并回 `spec.md` |
 | [`design/structured-ingest-gate.md`](./design/structured-ingest-gate.md) | 结构化入库门禁、清单 JSON、定时任务与「不写业务表 DML」边界 |
+| [`design/schema-sedimentation-plan-pipeline.md`](./design/schema-sedimentation-plan-pipeline.md) | 元数据目录 → 结构化沉淀方案 JSON → 可选 digest → 按路写入三库（`POST /qa/mysql/sedimentation/pipeline`） |
 
 - **不与**某一固定商业产品（例如历史上对接过的「同道查」类系统）在提示词或产品话术上强绑定；业务 schema 名（如 `tdcomp`）仅作为**可配置的部署参数**，不得写进面向用户的系统提示或假设用户意图的硬编码文案中。
 
@@ -34,11 +35,11 @@
 | `config` | `QaAssistantProperties` |
 | `intent` | `IntentRouterService`、`CompanyClarificationAdvisor` |
 | `retrieval` | `GraphContextService`、`VectorContextService`、`MysqlContextService`、`SqlQueryService`、`DocumentContextService`、`QaRetrievalOrchestrator`、`QaRetrievalPipeline`（按意图多路检索与合并） |
-| `learning` | `ActiveLearningService`、`ChatLearningCommandParser`、`LearningResponseBuilder`；**`StructuredTableRowAuditService`**（`POST /qa/structured/row-audit`）；**`StructuredCsvIngestService`**（`POST /qa/structured/csv-ingest`）；**`StructuredIngestJobService`**、**`StructuredIngestScheduler`**（可选 Cron；`POST /qa/structured/ingest-gate`、`/structured/job/run`；见 `openspec/design/structured-ingest-gate.md`）；**`MysqlSchemaCatalogService`**、**`MysqlSchemaCatalogAssessmentService`**（`POST /qa/mysql/schema-catalog`，可选 `assess` + `persist`；见 `openspec/design/mysql-schema-active-learning-pipeline.md`） |
+| `learning` | `ActiveLearningService`、`ChatLearningCommandParser`、`LearningResponseBuilder`；**`StructuredTableRowAuditService`**（`POST /qa/structured/row-audit`）；**`StructuredCsvIngestService`**（`POST /qa/structured/csv-ingest`）；**`StructuredIngestJobService`**、**`StructuredIngestScheduler`**（可选 Cron；`POST /qa/structured/ingest-gate`、`/structured/job/run`；见 `openspec/design/structured-ingest-gate.md`）；**`MysqlSchemaCatalogService`**、**`MysqlSchemaCatalogAssessmentService`**（`POST /qa/mysql/schema-catalog`，可选 `assess` + `persist`；见 `openspec/design/mysql-schema-active-learning-pipeline.md`）；**`SchemaSedimentationPlanService`**（`POST /qa/mysql/sedimentation/pipeline`；见 `openspec/design/schema-sedimentation-plan-pipeline.md`） |
 | `answer` | `MiniMaxClient`、`QaAnswerFallbackService` |
 | `orchestration` | `QaAskOrchestrator`（同步问答、SSE 流式、学习意图分支与检索-生成-落库闭环）、`QaSseStreamSupport`（SSE 事件封装） |
 | `response` | `QaConversationService`、`QaLogService` |
-| `web` | `QaController`（HTTP、DTO；含 `/structured/*`、`/mysql/schema-catalog`、`/sedimentation/pending`、`/feedback` 等） |
+| `web` | `QaController`（HTTP、DTO；含 `/structured/*`、`/mysql/schema-catalog`、`/mysql/sedimentation/pipeline`、`/mysql/connect`、`/sedimentation/pending`、`/feedback` 等） |
 | `alignment` | `EvidenceAlignmentService`（关键词重合度与启发式告警） |
 | `sedimentation` | `SedimentationQueueService`、`FeedbackPersistenceService` |
 

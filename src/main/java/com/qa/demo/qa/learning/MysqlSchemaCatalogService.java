@@ -189,4 +189,70 @@ public class MysqlSchemaCatalogService {
         }
         return s.replace("|", "/").replace("\r", " ").replace("\n", " ").replace("\t", " ");
     }
+
+    /**
+     * 动态连接参数：允许外部传入数据库连接信息（不依赖预配置）。
+     */
+    public record DynamicConnection(
+            String host,
+            int port,
+            String database,
+            String username,
+            String password
+    ) {
+        public String toJdbcUrl() {
+            return String.format(
+                    "jdbc:mysql://%s:%d/%s?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false",
+                    host, port, database
+            );
+        }
+    }
+
+    /**
+     * 使用动态连接参数导出 Schema 目录。
+     */
+    public SchemaCatalogExport exportCatalogWithConnection(DynamicConnection conn, int maxTables, int maxChars)
+            throws Exception {
+        try (Connection connection = DriverManager.getConnection(
+                conn.toJdbcUrl(),
+                conn.username(),
+                conn.password())) {
+            String schema = conn.database();
+            List<String> tables = listBusinessTables(connection, schema, maxTables);
+            Map<String, String> tableComments = loadTableComments(connection, schema, tables);
+            StringBuilder md = new StringBuilder();
+            md.append("# 数据库结构说明（只读元数据）\n\n");
+            md.append("- **来源**：`information_schema`，仅结构，不包含业务行数据。\n");
+            md.append("- **Schema**：`").append(escapeMdInline(schema)).append("`。\n");
+            md.append("- **连接方式**：动态连接\n");
+            md.append("- **表数量上限**：本次最多列出 ").append(maxTables).append(" 张业务表（`qa_` 前缀系统表已排除）。\n");
+            md.append("- **实际导出表数**：").append(tables.size()).append("。\n\n");
+            md.append("## 表清单\n\n");
+            for (String t : tables) {
+                md.append("- `").append(escapeMdInline(t)).append("`");
+                String c = tableComments.get(t);
+                if (c != null && !c.isBlank()) {
+                    md.append(" — ").append(escapeMdInline(c));
+                }
+                md.append("\n");
+            }
+            md.append("\n---\n\n");
+            for (String table : tables) {
+                appendTableSection(connection, schema, table, md);
+            }
+            String full = md.toString();
+            boolean truncated = full.length() > maxChars;
+            String out = truncated ? full.substring(0, maxChars) + "\n\n… **以下已截断**（超过 " + maxChars + " 字符）。\n" : full;
+            return new SchemaCatalogExport(schema, tables.size(), out, truncated, out.length());
+        }
+    }
+
+    /**
+     * 使用动态连接导出目录；表数与字符上限与 {@link QaAssistantProperties} 中 export 配置一致。
+     */
+    public SchemaCatalogExport exportCatalogWithConnection(DynamicConnection conn) throws Exception {
+        int maxTables = Math.max(1, Math.min(500, properties.getMaxSchemaExportTables()));
+        int maxChars = Math.max(4096, properties.getMaxSchemaExportChars());
+        return exportCatalogWithConnection(conn, maxTables, maxChars);
+    }
 }

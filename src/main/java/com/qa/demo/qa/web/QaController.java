@@ -5,6 +5,7 @@ import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.learning.LearningResponseBuilder;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogAssessmentService;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogService;
+import com.qa.demo.qa.learning.SchemaSedimentationPlanService;
 import com.qa.demo.qa.learning.StructuredIngestJobService;
 import com.qa.demo.qa.learning.StructuredCsvIngestService;
 import com.qa.demo.qa.learning.StructuredTableRowAuditService;
@@ -37,7 +38,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * QA HTTP 入口：编排委托 {@link QaAskOrchestrator}，学习上传/文本委托 {@link ActiveLearningService} 与 {@link LearningResponseBuilder}；结构化行数审计与 CSV 门禁见 {@code /qa/structured/*}；MySQL 元数据目录见 {@code /qa/mysql/schema-catalog}。
+ * QA HTTP 入口：编排委托 {@link QaAskOrchestrator}，学习上传/文本委托 {@link ActiveLearningService} 与 {@link LearningResponseBuilder}；结构化行数审计与 CSV 门禁见 {@code /qa/structured/*}；MySQL 元数据目录见 {@code /qa/mysql/schema-catalog}；结构化沉淀方案见 {@code /qa/mysql/sedimentation/pipeline}。
  */
 @RestController
 @RequestMapping("/qa")
@@ -54,6 +55,7 @@ public class QaController {
     private final MysqlSchemaCatalogAssessmentService mysqlSchemaCatalogAssessmentService;
     private final FeedbackPersistenceService feedbackPersistenceService;
     private final SedimentationQueueService sedimentationQueueService;
+    private final SchemaSedimentationPlanService schemaSedimentationPlanService;
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -66,7 +68,8 @@ public class QaController {
             MysqlSchemaCatalogService mysqlSchemaCatalogService,
             MysqlSchemaCatalogAssessmentService mysqlSchemaCatalogAssessmentService,
             FeedbackPersistenceService feedbackPersistenceService,
-            SedimentationQueueService sedimentationQueueService
+            SedimentationQueueService sedimentationQueueService,
+            SchemaSedimentationPlanService schemaSedimentationPlanService
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -79,6 +82,7 @@ public class QaController {
         this.mysqlSchemaCatalogAssessmentService = mysqlSchemaCatalogAssessmentService;
         this.feedbackPersistenceService = feedbackPersistenceService;
         this.sedimentationQueueService = sedimentationQueueService;
+        this.schemaSedimentationPlanService = schemaSedimentationPlanService;
     }
 
     @PostMapping("/ask")
@@ -537,5 +541,249 @@ public class QaController {
             String jobName,
             Boolean logResult
     ) {
+    }
+
+    /**
+     * @param source {@code configured} 使用 qa.assistant.mysql-*；{@code dynamic} 须填 host/port/database/username/password
+     */
+    public record SedimentationPipelineRequest(
+            @NotBlank String source,
+            String host,
+            Integer port,
+            String database,
+            String username,
+            String password,
+            Boolean persist,
+            String scope
+    ) {
+    }
+
+    /**
+     * 动态数据库连接：传入连接参数，拉取 Schema → 评估 → 写入知识库。
+     */
+    public record DynamicConnectRequest(
+            @NotBlank String host,
+            int port,
+            @NotBlank String database,
+            @NotBlank String username,
+            String password,
+            Boolean assess,
+            Boolean persist,
+            String scope
+    ) {
+    }
+
+    /**
+     * POST /qa/mysql/connect - 动态连接数据库并导出 Schema
+     */
+    @PostMapping("/mysql/connect")
+    public Map<String, Object> mysqlDynamicConnect(@Valid @RequestBody DynamicConnectRequest request) {
+        String rawScope = request.scope() != null && !request.scope().isBlank()
+                ? request.scope()
+                : QaScopes.ENTERPRISE;
+        String normalizedScope = QaScopes.normalize(rawScope);
+        boolean assess = request.assess() != null && Boolean.TRUE.equals(request.assess());
+        boolean persist = request.persist() != null && Boolean.TRUE.equals(request.persist());
+
+        try {
+            MysqlSchemaCatalogService.DynamicConnection conn =
+                    new MysqlSchemaCatalogService.DynamicConnection(
+                            request.host(),
+                            request.port(),
+                            request.database(),
+                            request.username(),
+                            request.password() != null ? request.password() : ""
+                    );
+
+            MysqlSchemaCatalogService.SchemaCatalogExport export =
+                    mysqlSchemaCatalogService.exportCatalogWithConnection(conn, 100, 250_000);
+
+            String catalogMd = export.markdown();
+            MysqlSchemaCatalogAssessmentService.AssessmentOutcome assessmentOutcome = null;
+            String combinedMd = catalogMd;
+            String learnSourceType = "mysql_dynamic_schema_catalog";
+            String learnTrigger = "dynamic_connect_api";
+
+            if (assess) {
+                assessmentOutcome = mysqlSchemaCatalogAssessmentService.assess(export);
+                if (!assessmentOutcome.failed() && !assessmentOutcome.modelText().isBlank()) {
+                    combinedMd = MysqlSchemaCatalogAssessmentService.combineCatalogAndAssessment(
+                            catalogMd,
+                            assessmentOutcome.modelText()
+                    );
+                    learnSourceType = "mysql_dynamic_schema_catalog_assessed";
+                    learnTrigger = "dynamic_connect_api_assessed";
+                }
+            }
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", true);
+            body.put("host", request.host());
+            body.put("port", request.port());
+            body.put("database", request.database());
+            body.put("schema", export.schema());
+            body.put("tableCount", export.tableCount());
+            body.put("markdown", catalogMd);
+            body.put("markdownTruncated", export.markdownTruncated());
+            body.put("markdownCharCount", export.markdownCharCount());
+            body.put("assess", assess);
+            if (assess && assessmentOutcome != null) {
+                body.put("assessmentFailed", assessmentOutcome.failed());
+                if (assessmentOutcome.errorMessage() != null) {
+                    body.put("assessmentError", assessmentOutcome.errorMessage());
+                }
+                body.put("catalogTruncatedForModel", assessmentOutcome.catalogTruncatedForModel());
+                body.put("modelAssessment", assessmentOutcome.failed() ? null : assessmentOutcome.modelText());
+            }
+            body.put("combinedMarkdown", combinedMd);
+            body.put("combinedMarkdownCharCount", combinedMd.length());
+            body.put("persist", persist);
+            body.put("timestamp", OffsetDateTime.now().toString());
+
+            if (persist) {
+                ActiveLearningService.LearningResult result = activeLearningService.learn(
+                        combinedMd,
+                        learnSourceType,
+                        "dynamic-schema-" + request.host() + "-" + request.database(),
+                        learnTrigger,
+                        normalizedScope
+                );
+                body.putAll(learningResponseBuilder.buildLearningResponse(
+                        qaLogService.nextTurnId(),
+                        "mysql-dynamic-schema:" + request.host() + ":" + request.database(),
+                        result,
+                        normalizedScope
+                ));
+                body.put("ok", result.success());
+                body.put("schemaCatalogIngest", Map.of(
+                        "sourceType", learnSourceType,
+                        "host", request.host(),
+                        "database", request.database(),
+                        "tableCount", export.tableCount(),
+                        "markdownTruncated", export.markdownTruncated(),
+                        "assessRequested", assess
+                ));
+            }
+
+            return body;
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "connection_failed" : e.getMessage(),
+                    "host", request.host(),
+                    "port", request.port(),
+                    "database", request.database(),
+                    "persist", persist,
+                    "assess", assess,
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+    }
+
+    /**
+     * 基于表结构元数据：模型输出结构化「可行性 + 沉淀方案 JSON」→ 可选二次生成正文 →
+     * 按方案启用的通路写入 {@code qa_active_knowledge} / Qdrant / Neo4j（物理形态仍由应用白名单固定）。
+     */
+    @PostMapping("/mysql/sedimentation/pipeline")
+    public Map<String, Object> mysqlSedimentationPipeline(@Valid @RequestBody SedimentationPipelineRequest request) {
+        String rawScope = request.scope() != null && !request.scope().isBlank()
+                ? request.scope()
+                : QaScopes.ENTERPRISE;
+        String normalizedScope = QaScopes.normalize(rawScope);
+        boolean persist = Boolean.TRUE.equals(request.persist());
+        String src = request.source() == null ? "" : request.source().trim().toLowerCase();
+
+        MysqlSchemaCatalogService.SchemaCatalogExport export;
+        try {
+            if ("configured".equals(src)) {
+                if (!mysqlSchemaCatalogService.canExport()) {
+                    return Map.of(
+                            "ok", false,
+                            "message", "MySQL 未启用或未配置 mysql-schema。",
+                            "timestamp", OffsetDateTime.now().toString()
+                    );
+                }
+                export = mysqlSchemaCatalogService.exportCatalog();
+            } else if ("dynamic".equals(src)) {
+                if (request.host() == null || request.host().isBlank()
+                        || request.port() == null
+                        || request.database() == null || request.database().isBlank()
+                        || request.username() == null || request.username().isBlank()) {
+                    return Map.of(
+                            "ok", false,
+                            "message", "source=dynamic 时必须提供 host、port、database、username。",
+                            "timestamp", OffsetDateTime.now().toString()
+                    );
+                }
+                MysqlSchemaCatalogService.DynamicConnection conn = new MysqlSchemaCatalogService.DynamicConnection(
+                        request.host(),
+                        request.port(),
+                        request.database(),
+                        request.username(),
+                        request.password() != null ? request.password() : ""
+                );
+                export = mysqlSchemaCatalogService.exportCatalogWithConnection(conn);
+            } else {
+                return Map.of(
+                        "ok", false,
+                        "message", "source 必须为 configured 或 dynamic。",
+                        "timestamp", OffsetDateTime.now().toString()
+                );
+            }
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "schema_export_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+
+        SchemaSedimentationPlanService.PipelineOutcome outcome =
+                schemaSedimentationPlanService.runPipeline(export, persist, normalizedScope);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", outcome.ok());
+        body.put("message", outcome.message());
+        body.put("schema", export.schema());
+        body.put("tableCount", export.tableCount());
+        body.put("persistRequested", persist);
+        body.put("timestamp", OffsetDateTime.now().toString());
+
+        if (outcome.plan() != null) {
+            SchemaSedimentationPlanService.ParsedSedimentationPlan p = outcome.plan();
+            body.put("feasible", p.feasible());
+            body.put("feasibilityRationale", p.feasibilityRationale());
+            body.put("confidence", p.confidence());
+            body.put("planSummaryMarkdown", p.planSummaryMarkdown());
+            body.put("sinkPolicy", Map.of(
+                    "mysql", p.sinkPolicy().mysql(),
+                    "qdrant", p.sinkPolicy().qdrant(),
+                    "neo4j", p.sinkPolicy().neo4j(),
+                    "keywordLimit", p.sinkPolicy().keywordLimit()
+            ));
+            body.put("bodyStrategy", p.bodyStrategy().name());
+            body.put("ingestTitleHint", p.titleHint());
+        }
+        if (outcome.rawPlanJson() != null) {
+            body.put("planJson", outcome.rawPlanJson());
+        }
+        body.put("digestApplied", outcome.digestApplied());
+        body.put("ingestPreview", outcome.ingestPreview());
+
+        if (outcome.learningResult() != null) {
+            ActiveLearningService.LearningResult lr = outcome.learningResult();
+            body.putAll(learningResponseBuilder.buildLearningResponse(
+                    qaLogService.nextTurnId(),
+                    "mysql-sedimentation-pipeline:" + export.schema(),
+                    lr,
+                    normalizedScope
+            ));
+            body.put("sedimentationPipeline", Map.of(
+                    "sourceType", "mysql_schema_sedimentation_plan",
+                    "schema", export.schema(),
+                    "digestApplied", outcome.digestApplied()
+            ));
+        }
+        return body;
     }
 }

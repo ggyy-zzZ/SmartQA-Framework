@@ -1,0 +1,15 @@
+# 仅 Qdrant（向量库）。Neo4j、MySQL 由本机自行启动，勿与本 compose 重复占端口。
+# Neo4j 示例：D:\Tools\neo\neo4j-chs-community-2026.03.1-windows\bin\neo4j.bat console
+# MySQL：本机 3306，库 assistant，首次可执行 data/sql/mysql/assistant_bootstrap.sql
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: demo-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - demo-qdrant-data:/qdrant/storage
+
+volumes:
+  demo-qdrant-data:

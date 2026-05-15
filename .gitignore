@@ -32,6 +32,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Cursor / Claude local ###
+.claude/
+
 ### Local secrets / machine-specific overrides (do not push) ###
 application-local.properties
 .env

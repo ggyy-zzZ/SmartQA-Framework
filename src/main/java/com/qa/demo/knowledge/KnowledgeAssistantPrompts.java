@@ -10,44 +10,41 @@ public final class KnowledgeAssistantPrompts {
     }
 
     public static String intentRouterLlmSystemPrompt() {
-        return """
-                你是知识库问答的路由器：根据用户问题选择最合适的检索路径，不要假设某一固定行业产品或内部系统名称。
-                可选 intent:
-                - graph: 实体之间的关系、归属、层级、关联网络
-                - document: 制度、流程、条款、说明类叙述文本
-                - vector: 语义模糊、口语化、近义表达、难以用关键词精确命中的问题
-                - mysql: 需要查看原始表行、字段明细、结构化记录
-                - sql: 统计、筛选、分组、排序、占比、排行等可单条只读 SQL 表达的问题
-                - hybrid: 需要多路信息一起才能回答
-                - unknown: 缺少关键上下文或明显不在当前知识范围内
-
-                路由原则（按优先级思考，不必穷举业务场景）：
-                - 明显是计数/汇总/排序/筛选 → sql
-                - 明显是「谁和谁什么关系、属于哪条线」→ graph
-                - 明显是「文档里怎么规定、步骤是什么」→ document
-                - 问法很口语、很泛、或需要语义相近匹配 → vector
-                - 需要扫表看字段值、行级明细 → mysql
-                - 多类都沾一点 → hybrid
-                - 信息不够或跑题 → unknown
-
-                输出必须是单行 JSON，格式:
-                {"intent":"graph|document|vector|mysql|sql|hybrid|unknown","confidence":0.0-1.0,"reason":"简短原因"}
-                不要输出除 JSON 外的任何文字。
-                """;
+        return "你是知识库问答的路由器：根据用户问题选择最合适的检索路径，不要假设某一固定行业产品或内部系统名称。\n"
+                + "可选 intent:\n"
+                + "- graph: 实体之间的关系、归属、层级、关联网络\n"
+                + "- document: 制度、流程、条款、说明类叙述文本\n"
+                + "- vector: 语义模糊、口语化、近义表达、难以用关键词精确命中的问题\n"
+                + "- mysql: 需要查看原始表行、字段明细、结构化记录\n"
+                + "- sql: 统计、筛选、分组、排序、占比、排行等可单条只读 SQL 表达的问题\n"
+                + "- hybrid: 需要多路信息一起才能回答\n"
+                + "- unknown: 缺少关键上下文或明显不在当前知识范围内\n\n"
+                + "路由原则（按优先级思考，不必穷举业务场景）：\n"
+                + "- 明显是计数/汇总/排序/筛选 -> sql\n"
+                + "- 明显是「谁和谁什么关系、属于哪条线」-> graph\n"
+                + "- 明显是「文档里怎么规定、步骤是什么」-> document\n"
+                + "- 问法很口语、很泛、或需要语义相近匹配 -> vector\n"
+                + "- 需要扫表看字段值、行级明细 -> mysql\n"
+                + "- 多类都沾一点 -> hybrid\n"
+                + "- 信息不够或跑题 -> unknown\n\n"
+                + "输出必须是单行 JSON，格式:\n"
+                + "{\"intent\":\"graph|document|vector|mysql|sql|hybrid|unknown\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
+                + "不要输出除 JSON 外的任何文字。\n";
     }
 
     public static String sqlGeneratorSystemPrompt(int limit) {
-        return """
-                你是 SQL 生成器：根据用户自然语言问题与提供的 MySQL 表结构摘要，生成一条可执行的只读查询。
-                约束：
-                1) 只允许生成 SELECT 查询。
-                2) 必须带 LIMIT，且 LIMIT 不超过 %d。
-                3) 仅使用摘要中出现的表与字段名。
-                4) 不要生成任何写操作或 DDL。
-                输出必须是单行 JSON：
-                {"sql":"SELECT ...","reason":"简短原因"}
-                不要输出 JSON 以外内容。
-                """.formatted(limit);
+        return String.format(
+                "你是 SQL 生成器：根据用户自然语言问题与提供的 MySQL 表结构摘要，生成一条可执行的只读查询。\n"
+                        + "约束：\n"
+                        + "1) 只允许生成 SELECT 查询。\n"
+                        + "2) 必须带 LIMIT，且 LIMIT 不超过 %d。\n"
+                        + "3) 仅使用摘要中出现的表与字段名。\n"
+                        + "4) 不要生成任何写操作或 DDL。\n"
+                        + "输出必须是单行 JSON：\n"
+                        + "{\"sql\":\"SELECT ...\",\"reason\":\"简短原因\"}\n"
+                        + "不要输出 JSON 以外内容。\n",
+                limit
+        );
     }
 
     /**
