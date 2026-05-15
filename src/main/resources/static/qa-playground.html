@@ -242,6 +242,23 @@
                 <span id="learnStatus" class="learn-status">未上传</span>
             </div>
         </div>
+        <div class="learn-panel" style="margin-top: 14px;">
+            <div class="learn-title">MySQL 数据库学习（将数据库 Schema 作为知识库）</div>
+            <div class="learn-toolbar">
+                <button id="schemaCatalogBtn" type="button">导出 Schema 目录</button>
+                <label style="margin-left: 8px;">
+                    <input id="schemaAssess" type="checkbox" checked> LLM 评估
+                </label>
+                <label style="margin-left: 8px;">
+                    <input id="schemaPersist" type="checkbox" checked> 写入知识库
+                </label>
+                <span id="schemaStatus" class="learn-status">就绪</span>
+            </div>
+            <details style="margin-top: 10px;">
+                <summary>MySQL 连接配置（当前应用配置）</summary>
+                <pre id="mysqlConfigDisplay" style="font-size: 12px; color: #94a3b8;">加载中...</pre>
+            </details>
+        </div>
     </div>
 
     <div class="card">
@@ -279,6 +296,37 @@
     const thinkingEl = document.getElementById("thinking");
     const answerEl = document.getElementById("answer");
     const rawJsonEl = document.getElementById("rawJson");
+    const schemaCatalogBtnEl = document.getElementById("schemaCatalogBtn");
+    const schemaAssessEl = document.getElementById("schemaAssess");
+    const schemaPersistEl = document.getElementById("schemaPersist");
+    const schemaStatusEl = document.getElementById("schemaStatus");
+    const mysqlConfigDisplayEl = document.getElementById("mysqlConfigDisplay");
+
+    // 加载 MySQL 配置信息
+    async function loadMysqlConfig() {
+        try {
+            // 从 application.properties 读取配置信息显示
+            const configText = `MySQL 连接配置：
+- 地址：localhost:3306
+- 数据库：assistant
+- 提示：Schema 目录会从 information_schema 导出所有表结构
+
+注意：请确保 MySQL 服务已启动且应用配置正确`;
+            mysqlConfigDisplayEl.textContent = configText;
+        } catch (e) {
+            mysqlConfigDisplayEl.textContent = "加载配置失败：" + e.message;
+        }
+    }
+
+    async function exportSchemaCatalog(assess, persist, scope) {
+        const resp = await fetch("/qa/mysql/schema-catalog", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({assess, persist, scope})
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return await resp.json();
+    }
 
     function setStatus(text, live) {
         statusTextEl.textContent = text;
@@ -496,7 +544,51 @@
         }
     });
 
-    renderThinking([]);
+    schemaCatalogBtnEl.addEventListener("click", async () => {
+        const scope = scopeModeEl.value || "enterprise";
+        const assess = schemaAssessEl.checked;
+        const persist = schemaPersistEl.checked;
+
+        schemaCatalogBtnEl.disabled = true;
+        setLearnStatus("导出中...", "");
+        setStatus("导出 Schema...", true);
+        answerEl.innerHTML = "";
+        thinkingEl.innerHTML = "";
+        metaEl.innerHTML = "";
+
+        try {
+            const data = await exportSchemaCatalog(assess, persist, scope);
+            if (data.ok) {
+                setLearnStatus("导出成功", "ok");
+                setStatus("完成", false);
+                renderThinking([
+                    {message: "Schema 目录已导出"},
+                    {message: "表数量：" + (data.tableCount || 0)},
+                    {message: "LLM 评估：" + (assess ? "已执行" : "跳过")},
+                    {message: "写入知识库：" + (persist ? "已写入" : "跳过")}
+                ]);
+                renderAnswer("## Schema 目录导出成功\n\n" + (data.markdown || ""));
+                if (data.assessmentFailed === false && data.modelAssessment) {
+                    renderAnswer(renderAnswer._lastContent || "");
+                    answerEl.innerHTML += "\n\n## LLM 评估\n" + data.modelAssessment;
+                }
+                rawJsonEl.textContent = JSON.stringify(data, null, 2);
+            } else {
+                setLearnStatus("导出失败：" + (data.message || "未知错误"), "error");
+                setStatus("失败", false);
+                renderThinking([{message: "导出失败：" + (data.message || "未知错误")}]);
+                rawJsonEl.textContent = JSON.stringify(data, null, 2);
+            }
+        } catch (e) {
+            setLearnStatus("导出失败：" + e.message, "error");
+            setStatus("失败", false);
+            renderThinking([{message: "导出异常：" + e.message}]);
+        } finally {
+            schemaCatalogBtnEl.disabled = false;
+        }
+    });
+
+    loadMysqlConfig();
 </script>
 </body>
 </html>
