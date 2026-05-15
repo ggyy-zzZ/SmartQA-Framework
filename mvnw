@@ -145,6 +145,38 @@ distributionUrlNameMain="${distributionUrlNameMain%-bin}"
 MAVEN_USER_HOME="${MAVEN_USER_HOME:-${HOME}/.m2}"
 MAVEN_HOME="${MAVEN_USER_HOME}/wrapper/dists/${distributionUrlNameMain-}/$(hash_string "$distributionUrl")"
 
+# Spring Boot 3.x needs Java 17+. Prefer a local JDK 21 when present. Opt out: MVN_SKIP_JAVA_PICK=1
+if [ -z "${MVN_SKIP_JAVA_PICK-}" ]; then
+  case "$(uname)" in
+  CYGWIN* | MINGW*)
+    if [ -x "/c/Program Files/Java/jdk-21/bin/javac" ]; then
+      JAVA_HOME="/c/Program Files/Java/jdk-21"
+      export JAVA_HOME
+    fi
+    ;;
+  Darwin*)
+    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+      _mh21="$(/usr/libexec/java_home -v 21 2>/dev/null)" || _mh21=""
+      if [ -n "$_mh21" ] && [ -x "$_mh21/bin/javac" ]; then
+        JAVA_HOME="$_mh21"
+        export JAVA_HOME
+      fi
+      unset _mh21
+    fi
+    ;;
+  Linux*)
+    for _jdkp in /usr/lib/jvm/java-21-openjdk-amd64 /usr/lib/jvm/java-21-openjdk /usr/lib/jvm/jdk-21; do
+      if [ -x "$_jdkp/bin/javac" ]; then
+        JAVA_HOME="$_jdkp"
+        export JAVA_HOME
+        break
+      fi
+    done
+    unset _jdkp
+    ;;
+  esac
+fi
+
 exec_maven() {
   unset MVNW_VERBOSE MVNW_USERNAME MVNW_PASSWORD MVNW_REPOURL || :
   exec "$MAVEN_HOME/bin/$MVN_CMD" "$@" || die "cannot exec $MAVEN_HOME/bin/$MVN_CMD"

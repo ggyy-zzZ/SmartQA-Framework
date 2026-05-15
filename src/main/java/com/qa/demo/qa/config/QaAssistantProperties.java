@@ -100,6 +100,31 @@ public class QaAssistantProperties {
      */
     private String structuredIngestJobLogPath = "";
 
+    /**
+     * 外部服务超时（毫秒）：Neo4j 连接。
+     */
+    private int neo4jConnectTimeoutMs = 5000;
+
+    /**
+     * 外部服务超时（毫秒）：Neo4j 查询。
+     */
+    private int neo4jQueryTimeoutMs = 10000;
+
+    /**
+     * 外部服务超时（毫秒）：Qdrant HTTP 请求。
+     */
+    private int qdrantTimeoutMs = 8000;
+
+    /**
+     * 外部服务超时（毫秒）：MySQL 查询。
+     */
+    private int mysqlQueryTimeoutSeconds = 15;
+
+    /**
+     * 外部服务超时（毫秒）：MiniMax API 请求（流式/非流式）。
+     */
+    private int minimaxTimeoutMs = 60000;
+
     public String getAssistantName() {
         return assistantName;
     }
@@ -338,5 +363,45 @@ public class QaAssistantProperties {
 
     public void setMysqlPerTableLimit(int mysqlPerTableLimit) {
         this.mysqlPerTableLimit = mysqlPerTableLimit;
+    }
+
+    public int getNeo4jConnectTimeoutMs() {
+        return neo4jConnectTimeoutMs;
+    }
+
+    public void setNeo4jConnectTimeoutMs(int neo4jConnectTimeoutMs) {
+        this.neo4jConnectTimeoutMs = neo4jConnectTimeoutMs;
+    }
+
+    public int getNeo4jQueryTimeoutMs() {
+        return neo4jQueryTimeoutMs;
+    }
+
+    public void setNeo4jQueryTimeoutMs(int neo4jQueryTimeoutMs) {
+        this.neo4jQueryTimeoutMs = neo4jQueryTimeoutMs;
+    }
+
+    public int getQdrantTimeoutMs() {
+        return qdrantTimeoutMs;
+    }
+
+    public void setQdrantTimeoutMs(int qdrantTimeoutMs) {
+        this.qdrantTimeoutMs = qdrantTimeoutMs;
+    }
+
+    public int getMysqlQueryTimeoutSeconds() {
+        return mysqlQueryTimeoutSeconds;
+    }
+
+    public void setMysqlQueryTimeoutSeconds(int mysqlQueryTimeoutSeconds) {
+        this.mysqlQueryTimeoutSeconds = mysqlQueryTimeoutSeconds;
+    }
+
+    public int getMinimaxTimeoutMs() {
+        return minimaxTimeoutMs;
+    }
+
+    public void setMinimaxTimeoutMs(int minimaxTimeoutMs) {
+        this.minimaxTimeoutMs = minimaxTimeoutMs;
     }
 }

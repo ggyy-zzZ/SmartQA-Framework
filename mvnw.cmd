@@ -27,6 +27,13 @@
 @REM   MVNW_VERBOSE - true: enable verbose log; others: silence the output
 @REM ----------------------------------------------------------------------------
 
+@REM Spring Boot 3.x needs Java 17+. Prefer JDK 21 when installed (override with set MVN_SKIP_JAVA_PICK=1).
+@IF DEFINED MVN_SKIP_JAVA_PICK GOTO :mv_after_java_pick
+@IF NOT EXIST "%ProgramFiles%\Java\jdk-21\bin\java.exe" GOTO :mv_after_java_pick
+@SET "JAVA_HOME=%ProgramFiles%\Java\jdk-21"
+@SET "PATH=%JAVA_HOME%\bin;%PATH%"
+:mv_after_java_pick
+
 @IF "%__MVNW_ARG0_NAME__%"=="" (SET __MVNW_ARG0_NAME__=%~nx0)
 @SET __MVNW_CMD__=
 @SET __MVNW_ERROR__=

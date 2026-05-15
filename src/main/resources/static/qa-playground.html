@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>知识库助手 · 操作台</title>
+    <title>知识库助手</title>
     <style>
         :root {
             --bg: #070a14;
@@ -16,6 +16,8 @@
             --muted: #94a3b8;
             --line: rgba(148, 163, 184, 0.24);
             --glow: 0 0 18px rgba(0, 229, 255, 0.25);
+            --success: #34d399;
+            --error: #fda4af;
             --warn-bg: rgba(251, 191, 36, 0.12);
             --warn-border: rgba(251, 191, 36, 0.45);
         }
@@ -27,136 +29,423 @@
                 linear-gradient(180deg, #06080f 0%, var(--bg) 100%);
             font-family: "Microsoft YaHei", Arial, sans-serif;
             color: var(--text);
+            min-height: 100vh;
         }
-        .wrap { max-width: 920px; margin: 24px auto; padding: 0 16px 48px; }
+        .wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 24px 0 20px;
+        }
+        .header h1 {
+            margin: 0 0 8px;
+            font-size: 26px;
+            color: #c4f8ff;
+            text-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+        }
+        .header .lead {
+            margin: 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        /* Flow indicator */
+        .flow {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin: 20px 0 24px;
+            flex-wrap: wrap;
+        }
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .flow-step .num {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--card-2);
+            border: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+        }
+        .flow-step.active .num {
+            background: var(--primary);
+            color: #000;
+            border-color: var(--primary);
+        }
+        .flow-step.active {
+            color: var(--primary);
+        }
+        .flow-arrow {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        /* Card */
         .card {
             background: var(--card);
             border-radius: 14px;
             box-shadow: 0 10px 28px rgba(2, 6, 23, 0.6), inset 0 0 0 1px rgba(56, 189, 248, 0.08);
             padding: 18px 20px;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             border: 1px solid rgba(56, 189, 248, 0.16);
         }
-        .hero h1 {
-            margin: 0 0 8px;
-            font-size: 24px;
-            color: #c4f8ff;
-            text-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 12px;
+            font-size: 16px;
+            color: #b7f6ff;
+            font-weight: 600;
         }
-        .hero .lead { margin: 0 0 12px; color: var(--muted); font-size: 14px; line-height: 1.6; }
-        .toc {
-            display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none;
+        .section-title .step {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-2));
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
         }
-        .toc a {
-            font-size: 13px; color: #7dd3fc; text-decoration: none;
-            padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(15, 23, 42, 0.8);
+        .section-title .desc {
+            font-size: 13px;
+            color: var(--muted);
+            font-weight: 400;
         }
-        .toc a:hover { border-color: rgba(0, 229, 255, 0.45); color: #bae6fd; }
-        .section-h2 {
-            margin: 0 0 8px; font-size: 17px; color: #b7f6ff; font-weight: 700;
-            display: flex; align-items: center; gap: 8px;
+
+        /* Input area */
+        textarea, input[type="text"], input[type="password"], input[type="number"] {
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 229, 255, 0.22);
+            padding: 10px 12px;
+            font-size: 14px;
+            background: #091125;
+            color: #dbeafe;
+            font-family: inherit;
         }
-        .step-num {
-            display: inline-flex; align-items: center; justify-content: center;
-            width: 26px; height: 26px; border-radius: 8px; font-size: 13px; font-weight: 800;
-            background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff;
+        textarea { min-height: 80px; resize: vertical; }
+        textarea:focus, input:focus {
+            outline: none;
+            border-color: rgba(0, 229, 255, 0.55);
+            box-shadow: var(--glow);
         }
-        .guide {
-            margin: 0 0 14px; padding: 10px 12px; border-radius: 10px;
-            background: rgba(15, 23, 42, 0.7); border: 1px dashed rgba(56, 189, 248, 0.3);
-            color: #cbd5e1; font-size: 13px; line-height: 1.65;
+        textarea::placeholder, input::placeholder { color: #475569; }
+
+        /* Toolbar */
+        .toolbar {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
         }
-        .warn {
-            margin: 0 0 14px; padding: 10px 12px; border-radius: 10px;
-            background: var(--warn-bg); border: 1px solid var(--warn-border);
-            color: #fde68a; font-size: 13px; line-height: 1.65;
+        .toolbar label {
+            color: #a5b4fc;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
-        textarea, .inp {
-            width: 100%; box-sizing: border-box;
-            border-radius: 10px; border: 1px solid rgba(0, 229, 255, 0.22);
-            padding: 10px 12px; font-size: 14px;
-            background: #091125; color: #dbeafe;
-        }
-        textarea { min-height: 88px; resize: vertical; }
-        textarea:focus, .inp:focus {
-            outline: none; border-color: rgba(0, 229, 255, 0.55); box-shadow: var(--glow);
-        }
-        .toolbar { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .toolbar label { color: #a5b4fc; font-size: 13px; }
         select {
-            border-radius: 8px; border: 1px solid rgba(0, 229, 255, 0.28);
-            background: #0b1228; color: #cbd5e1; padding: 6px 8px; font-size: 13px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 229, 255, 0.28);
+            background: #0b1228;
+            color: #cbd5e1;
+            padding: 6px 8px;
+            font-size: 13px;
         }
         button {
-            border: none; border-radius: 10px;
+            border: none;
+            border-radius: 10px;
             background: linear-gradient(90deg, var(--primary) 0%, var(--primary-2) 100%);
-            color: #fff; padding: 10px 16px; font-size: 14px; cursor: pointer;
+            color: #fff;
+            padding: 10px 18px;
+            font-size: 14px;
+            cursor: pointer;
             box-shadow: 0 0 14px rgba(124, 58, 237, 0.42);
+            font-family: inherit;
         }
         button:hover { filter: brightness(1.06); }
         button:disabled { background: #475569; cursor: not-allowed; filter: none; box-shadow: none; }
         button.secondary {
-            background: #1e293b; border: 1px solid rgba(148, 163, 184, 0.35);
+            background: #1e293b;
+            border: 1px solid rgba(148, 163, 184, 0.35);
             box-shadow: none;
+            padding: 8px 14px;
         }
-        .sub-block {
-            margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(56, 189, 248, 0.22);
+        button.secondary:hover { border-color: rgba(0, 229, 255, 0.45); }
+
+        /* Status */
+        .status {
+            font-size: 13px;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .sub-block:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
-        .sub-title { font-size: 14px; color: #a5f3fc; margin-bottom: 8px; font-weight: 600; }
+        .status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: #64748b;
+        }
+        .status .dot.live {
+            background: var(--success);
+            box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.16);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .status.ok { color: var(--success); }
+        .status.error { color: var(--error); }
+
+        /* Learn section */
+        .sub-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px dashed rgba(56, 189, 248, 0.22);
+        }
+        .sub-section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+        .sub-title {
+            font-size: 14px;
+            color: #a5f3fc;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .sub-title span {
+            font-size: 12px;
+            color: var(--muted);
+            font-weight: 400;
+        }
+        .hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin: 6px 0 0;
+            line-height: 1.5;
+        }
+
+        /* Grid */
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .grid3 { display: grid; grid-template-columns: 1fr 88px 1fr; gap: 8px; }
-        .status { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 8px; }
-        .dot { width: 8px; height: 8px; border-radius: 999px; background: #64748b; }
-        .dot.live { background: #00ffa3; box-shadow: 0 0 0 6px rgba(0,255,163,0.16); }
-        .learn-status { font-size: 12px; color: var(--muted); }
-        .learn-status.ok { color: #34d399; }
-        .learn-status.error { color: #fda4af; }
-        .section-title { font-weight: 700; margin-bottom: 10px; color: #b7f6ff; }
-        .thinking-list {
-            min-height: 80px; background: var(--card-2); border: 1px solid var(--line);
-            border-radius: 10px; padding: 10px;
+        .grid3 { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 8px; }
+
+        /* Thinking/Answer */
+        .thinking-box, .answer-box {
+            background: var(--card-2);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 12px;
+            min-height: 60px;
         }
-        .thinking-item { font-size: 13px; color: #cbd5e1; padding: 4px 0; }
-        .answer-box { min-height: 100px; line-height: 1.75; font-size: 15px; color: #e2e8f0; }
+        .thinking-item {
+            font-size: 13px;
+            color: #cbd5e1;
+            padding: 3px 0;
+        }
+        .thinking-item::before { content: "• "; color: var(--primary); }
+        .answer-box {
+            min-height: 100px;
+            line-height: 1.75;
+            font-size: 15px;
+            color: #e2e8f0;
+        }
         .answer-box h1, .answer-box h2, .answer-box h3 { margin: 10px 0 8px; }
-        .meta-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+        .answer-box table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+        .answer-box td, .answer-box th {
+            border: 1px solid var(--line);
+            padding: 6px 10px;
+            text-align: left;
+        }
+
+        /* Meta pills */
+        .meta-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
         .pill {
-            font-size: 12px; border-radius: 999px; padding: 4px 10px;
-            background: var(--primary-soft); color: #a5f3fc; border: 1px solid rgba(34, 211, 238, 0.28);
+            font-size: 11px;
+            border-radius: 999px;
+            padding: 4px 10px;
+            background: var(--primary-soft);
+            color: #a5f3fc;
+            border: 1px solid rgba(34, 211, 238, 0.28);
         }
-        details summary { cursor: pointer; color: #93c5fd; font-size: 13px; }
+
+        /* Raw JSON */
+        details { margin-top: 10px; }
+        details summary { cursor: pointer; color: #93c5fd; font-size: 12px; }
         pre {
-            margin: 8px 0 0; border-radius: 10px; background: #050b1b; color: #cbd5e1;
-            padding: 10px; white-space: pre-wrap; word-break: break-word; font-size: 12px;
+            margin: 8px 0 0;
+            border-radius: 10px;
+            background: #050b1b;
+            color: #cbd5e1;
+            padding: 10px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 11px;
             border: 1px solid rgba(56, 189, 248, 0.18);
+            max-height: 300px;
+            overflow-y: auto;
         }
-        input[type="file"] { color: #cbd5e1; font-size: 13px; max-width: 100%; }
+
+        /* Links */
+        .links {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .links a {
+            font-size: 12px;
+            color: #7dd3fc;
+            text-decoration: none;
+        }
+        .links a:hover { text-decoration: underline; }
+
+        /* Checkbox styling */
+        input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--primary);
+        }
+
+        /* Response status */
+        .response-section {
+            margin-top: 14px;
+        }
+        .learn-status {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .learn-status.ok { color: var(--success); }
+        .learn-status.error { color: var(--error); }
     </style>
 </head>
 <body>
 <div class="wrap">
 
-    <div class="card hero" id="top">
-        <h1>知识库助手 · 操作台</h1>
-        <p class="lead">
-            按下面顺序操作即可：<strong>先学知识</strong>（文档 / 文本 / CSV / 表结构），再用最上面的<strong>提问</strong>检索与回答。
-            问答时 MySQL 检索走的是应用配置的库（默认 <code>assistant</code>），与下方「动态连接」的库可以不是同一个。
-        </p>
-        <ul class="toc">
-            <li><a href="#sec-ask">① 提问</a></li>
-            <li><a href="#sec-learn">② 学习知识</a></li>
-            <li><a href="#sec-mysql-app">③ 固定库 · 表结构</a></li>
-            <li><a href="#sec-mysql-dyn">④ 动态库 · 表结构 / 沉淀方案</a></li>
-            <li><a href="#sec-audit">⑤ 行数自检</a></li>
-            <li><a href="/qa/assistant/runtime-summary" target="_blank" rel="noopener">MiniMax 配置检查</a></li>
-        </ul>
+    <div class="header">
+        <h1>知识库助手</h1>
+        <p class="lead">先学习知识，再提问检索。操作简单，分步执行。</p>
     </div>
 
+    <!-- Flow indicator -->
+    <div class="flow">
+        <div class="flow-step active">
+            <span class="num">1</span>
+            <span>学习知识</span>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">
+            <span class="num">2</span>
+            <span>提问</span>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">
+            <span class="num">3</span>
+            <span>查看结果</span>
+        </div>
+    </div>
+
+    <!-- Section 1: Learn Knowledge -->
+    <div class="card" id="sec-learn">
+        <div class="section-title">
+            <span class="step">1</span>
+            <span>学习知识</span>
+            <span class="desc">（把内容存到知识库）</span>
+        </div>
+
+        <!-- 1.1 Text learning -->
+        <div class="sub-section">
+            <div class="sub-title">粘贴文本学习 <span>（适合说明文字、FAQ等）</span></div>
+            <input id="learnTextTitle" type="text" placeholder="标题（可选），例如：产品说明 2026">
+            <textarea id="learnTextBody" style="margin-top:8px;" placeholder="把要学习的内容粘贴到这里…"></textarea>
+            <div class="toolbar">
+                <button id="learnTextBtn">保存</button>
+                <span id="learnTextStatus" class="learn-status"></span>
+            </div>
+        </div>
+
+        <!-- 1.2 CSV learning -->
+        <div class="sub-section">
+            <div class="sub-title">上传 CSV 学习 <span>（表格数据）</span></div>
+            <div class="toolbar">
+                <input id="csvFile" type="file" accept=".csv">
+                <label style="font-size:12px;"><input id="csvHeaderRow" type="checkbox" checked> 首行是表头</label>
+                <button id="csvIngestBtn">上传 CSV</button>
+                <span id="csvStatus" class="learn-status"></span>
+            </div>
+            <p class="hint">支持 UTF-8 编码的 CSV 文件。数据行会当作文本存入知识库。</p>
+        </div>
+
+        <!-- 1.3 MySQL schema learning -->
+        <div class="sub-section">
+            <div class="sub-title">学习 MySQL 表结构 <span>（不会读取表里的行数据）</span></div>
+            <div class="grid2">
+                <input id="dbHost" class="inp" type="text" placeholder="主机，例如 localhost" value="localhost">
+                <input id="dbPort" class="inp" type="number" placeholder="端口" value="3306">
+            </div>
+            <div class="grid2" style="margin-top:8px;">
+                <input id="dbName" class="inp" type="text" placeholder="数据库名，例如 tdcomp">
+                <input id="dbUser" class="inp" type="text" placeholder="用户名" value="root">
+            </div>
+            <div style="margin-top:8px;">
+                <input id="dbPass" class="inp" type="password" placeholder="密码（可空）" style="max-width:200px;">
+            </div>
+            <div class="toolbar" style="margin-top:10px;">
+                <button id="dbConnectBtn">连接并学习表结构</button>
+                <label><input id="dbPersist" type="checkbox" checked> 写入知识库</label>
+                <span id="dbStatus" class="learn-status"></span>
+            </div>
+        </div>
+
+        <!-- 1.4 Export MySQL table to CSV -->
+        <div class="sub-section">
+            <div class="sub-title">导出 MySQL 表数据为 CSV <span>（下载表数据）</span></div>
+            <div class="grid2">
+                <input id="exportHost" class="inp" type="text" placeholder="主机" value="localhost">
+                <input id="exportPort" class="inp" type="number" placeholder="端口" value="3306">
+            </div>
+            <div class="grid2" style="margin-top:8px;">
+                <input id="exportDb" class="inp" type="text" placeholder="数据库名">
+                <input id="exportUser" class="inp" type="text" placeholder="用户名" value="root">
+            </div>
+            <div style="margin-top:8px;">
+                <input id="exportPass" class="inp" type="password" placeholder="密码" style="max-width:200px;">
+                <input id="exportTable" class="inp" type="text" placeholder="表名" style="margin-left:8px;width:120px;">
+            </div>
+            <div class="toolbar" style="margin-top:10px;">
+                <button id="exportCsvBtn">导出 CSV</button>
+                <input id="exportOffset" type="number" placeholder="起始行" value="0" style="width:70px;">
+                <label style="font-size:12px;">最大行数
+                    <input id="exportLimit" type="number" value="10000" style="width:70px;">
+                </label>
+                <span id="exportStatus" class="learn-status"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: Ask Question -->
     <div class="card" id="sec-ask">
-        <h2 class="section-h2"><span class="step-num">1</span> 提问</h2>
-        <p class="guide">输入自然语言问题；勾选「流式」可边看边出字。知识范围与下方学习时保持一致（一般选「企业知识库」）。</p>
-        <textarea id="question" placeholder="例如：示例科技有限公司的经营范围是什么？"></textarea>
+        <div class="section-title">
+            <span class="step">2</span>
+            <span>提问</span>
+            <span class="desc">（检索知识库回答问题）</span>
+        </div>
+        <textarea id="question" placeholder="输入你的问题，例如：示例公司的经营范围是什么？"></textarea>
         <div class="toolbar">
             <label>知识范围
                 <select id="scopeMode">
@@ -164,162 +453,94 @@
                     <option value="personal">个人知识库</option>
                 </select>
             </label>
-            <label><input id="streamMode" type="checkbox" checked> 流式输出</label>
-            <button id="askBtn" type="button">发送问题</button>
+            <label><input id="streamMode" type="checkbox" checked> 流式输出（边看边出字）</label>
+            <button id="askBtn">发送问题</button>
             <span id="status" class="status"><span id="statusDot" class="dot"></span><span id="statusText">就绪</span></span>
         </div>
     </div>
 
-    <div class="card" id="sec-learn">
-        <h2 class="section-h2"><span class="step-num">2</span> 学习知识（写入助手库 / 向量 / 图谱）</h2>
-        <p class="guide">
-            <strong>想学习业务表里的真实数据</strong>：请用 <strong>CSV 上传</strong>（从业务库导出 CSV）或 <strong>粘贴文本</strong>。
-            下面「动态 MySQL」两条按钮<strong>只学习表结构元数据</strong>，不会把各表里的行数据搬进知识库。
-        </p>
+    <!-- Section 3: Results -->
+    <div class="card" id="sec-result">
+        <div class="section-title">
+            <span class="step">3</span>
+            <span>回答结果</span>
+        </div>
 
-        <div class="sub-block">
-            <div class="sub-title">2.1 上传 Markdown 文件（.md）</div>
-            <div class="toolbar">
-                <input id="learnFile" type="file" accept=".md,text/markdown">
-                <button id="learnBtn" type="button">上传并学习</button>
-                <span id="learnStatus" class="learn-status">未上传</span>
+        <div class="response-section">
+            <div class="sub-title" style="color:var(--muted);">思考过程</div>
+            <div id="thinking" class="thinking-box">
+                <div class="thinking-item" style="color:var(--muted);">等待请求...</div>
             </div>
         </div>
 
-        <div class="sub-block">
-            <div class="sub-title">2.2 粘贴文本学习</div>
-            <p class="guide" style="margin-top:0">适合贴一小段说明、FAQ、或从别处复制的表格文字。标题会显示在知识记录里。</p>
-            <input id="learnTextTitle" class="inp" type="text" placeholder="标题（可选），如：tdcomp 订单表说明 2026-05">
-            <textarea id="learnTextBody" style="margin-top:8px; min-height:120px;" placeholder="把要学习的正文粘贴到这里…"></textarea>
-            <div class="toolbar">
-                <button id="learnTextBtn" type="button">保存为知识</button>
-                <span id="learnTextStatus" class="learn-status"></span>
-            </div>
+        <div class="response-section">
+            <div class="sub-title" style="color:var(--muted);">回答内容</div>
+            <div id="answer" class="answer-box"></div>
         </div>
 
-        <div class="sub-block">
-            <div class="sub-title">2.3 上传 CSV（表行数据 → 当作文本学习）</div>
-            <p class="guide" style="margin-top:0">UTF-8 CSV；首行为表头请勾选「首行是表头」。行数超过服务端上限会被拒绝（见返回 JSON）。</p>
-            <div class="toolbar">
-                <input id="csvFile" type="file" accept=".csv,text/csv">
-                <label><input id="csvHeaderRow" type="checkbox" checked> 首行是表头</label>
-                <button id="csvIngestBtn" type="button">上传 CSV 并学习</button>
-                <span id="csvStatus" class="learn-status"></span>
-            </div>
+        <div class="response-section">
+            <div class="sub-title" style="color:var(--muted);">摘要</div>
+            <div id="meta" class="meta-pills"></div>
         </div>
-    </div>
 
-    <div class="card" id="sec-mysql-app">
-        <h2 class="section-h2"><span class="step-num">3</span> 固定库：导出 Schema（仅表结构）</h2>
-        <p class="guide">使用应用里配置的 MySQL（默认库 <code>assistant</code>），从 <code>information_schema</code> 生成<strong>表结构说明</strong>。可选 LLM 评估、写入知识库。</p>
-        <div class="toolbar">
-            <button id="schemaCatalogBtn" type="button">导出 Schema 并学习</button>
-            <label><input id="schemaAssess" type="checkbox" checked> LLM 评估</label>
-            <label><input id="schemaPersist" type="checkbox" checked> 写入知识库</label>
-            <span id="schemaStatus" class="learn-status">就绪</span>
-        </div>
-        <details style="margin-top:10px;">
-            <summary>当前应用里的 MySQL 连接说明（静态文案）</summary>
-            <pre id="mysqlConfigDisplay" style="font-size:12px;color:#94a3b8;">- 默认 jdbc 指向本机 assistant 库
-- 问答时的 SQL 检索也使用该配置
-- 与下方「动态连接」可指向不同库</pre>
-        </details>
-    </div>
-
-    <div class="card" id="sec-mysql-dyn">
-        <h2 class="section-h2"><span class="step-num">4</span> 动态连接其它 MySQL 库</h2>
-        <div class="warn">
-            <strong>重要：</strong>「连接并导出 Schema」与「结构化沉淀方案」只会读取<strong>库表结构元数据</strong>（含列、索引等说明），
-            <strong>不会 SELECT 各业务表里的真实行</strong>。若你要把 tdcomp 等库里的<strong>真实数据</strong>也学进去，请回到<strong>第 2 步</strong>用 CSV 或粘贴文本。
-        </div>
-        <div class="grid3" style="margin-bottom:8px;">
-            <input id="dbHost" class="inp" type="text" placeholder="主机，如 localhost" value="localhost">
-            <input id="dbPort" class="inp" type="number" placeholder="端口" value="3306" style="width:88px;">
-            <input id="dbName" class="inp" type="text" placeholder="数据库名，如 tdcomp">
-        </div>
-        <div class="grid2" style="margin-bottom:8px;">
-            <input id="dbUser" class="inp" type="text" placeholder="用户名" value="root">
-            <input id="dbPass" class="inp" type="password" placeholder="密码（可空）">
-        </div>
-        <div class="toolbar" style="margin-bottom:10px;">
-            <button id="dbConnectBtn" type="button">连接并导出 Schema（+可选评估/写入）</button>
-            <label><input id="dbAssess" type="checkbox" checked> LLM 评估</label>
-            <label><input id="dbPersist" type="checkbox" checked> 写入知识库</label>
-            <span id="dbStatus" class="learn-status">就绪</span>
-        </div>
-        <div class="toolbar" style="padding-top:10px; border-top:1px dashed rgba(56,189,248,0.25);">
-            <button id="sedimentationPipelineBtn" type="button" class="secondary">结构化沉淀方案（模型 JSON + 可选 digest + 写入）</button>
-            <label><input id="sedimentationPersist" type="checkbox"> 确认写入（会调用大模型，可能产生费用）</label>
-        </div>
-        <p class="guide" style="margin-bottom:0">沉淀方案未勾选「确认写入」时，只返回方案 JSON 供查看，不落库。</p>
-    </div>
-
-    <div class="card" id="sec-audit">
-        <h2 class="section-h2"><span class="step-num">5</span> 行数自检（仅配置的 assistant 库）</h2>
-        <p class="guide">在下方填写<strong>表名</strong>（不含库名），多表用英文逗号分隔，例如：<code>employee,company</code>。用于在大量 CSV 学习前确认行数是否超过服务端上限。</p>
-        <input id="rowAuditTables" class="inp" type="text" placeholder="employee,company">
-        <div class="toolbar">
-            <button id="rowAuditBtn" type="button" class="secondary">检查行数</button>
-            <span id="rowAuditStatus" class="learn-status"></span>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="section-title">思考过程</div>
-        <div id="thinking" class="thinking-list"></div>
-    </div>
-
-    <div class="card">
-        <div class="section-title">回答 / 导出内容</div>
-        <div id="answer" class="answer-box"></div>
-    </div>
-
-    <div class="card">
-        <div class="section-title">摘要</div>
-        <div id="meta" class="meta-pills"></div>
-        <details style="margin-top:10px;">
+        <details>
             <summary>原始 JSON（调试用）</summary>
             <pre id="rawJson"></pre>
         </details>
     </div>
 
-    <p style="text-align:center;font-size:12px;color:#64748b;">
-        <a href="#top" style="color:#7dd3fc;">回到顶部</a>
-    </p>
+    <!-- Links -->
+    <div class="links">
+        <a href="/qa/assistant/runtime-summary" target="_blank">MiniMax 配置检查</a>
+        <a href="#top">回到顶部</a>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
+    // Elements
     const questionEl = document.getElementById("question");
     const scopeModeEl = document.getElementById("scopeMode");
     const streamModeEl = document.getElementById("streamMode");
     const askBtnEl = document.getElementById("askBtn");
-    const learnBtnEl = document.getElementById("learnBtn");
-    const learnFileEl = document.getElementById("learnFile");
-    const learnStatusEl = document.getElementById("learnStatus");
-    const learnTextTitleEl = document.getElementById("learnTextTitle");
-    const learnTextBodyEl = document.getElementById("learnTextBody");
-    const learnTextBtnEl = document.getElementById("learnTextBtn");
-    const learnTextStatusEl = document.getElementById("learnTextStatus");
-    const csvFileEl = document.getElementById("csvFile");
-    const csvHeaderRowEl = document.getElementById("csvHeaderRow");
-    const csvIngestBtnEl = document.getElementById("csvIngestBtn");
-    const csvStatusEl = document.getElementById("csvStatus");
-    const rowAuditTablesEl = document.getElementById("rowAuditTables");
-    const rowAuditBtnEl = document.getElementById("rowAuditBtn");
-    const rowAuditStatusEl = document.getElementById("rowAuditStatus");
     const statusTextEl = document.getElementById("statusText");
     const statusDotEl = document.getElementById("statusDot");
     const metaEl = document.getElementById("meta");
     const thinkingEl = document.getElementById("thinking");
     const answerEl = document.getElementById("answer");
     const rawJsonEl = document.getElementById("rawJson");
-    const schemaCatalogBtnEl = document.getElementById("schemaCatalogBtn");
-    const schemaAssessEl = document.getElementById("schemaAssess");
-    const schemaPersistEl = document.getElementById("schemaPersist");
-    const schemaStatusEl = document.getElementById("schemaStatus");
-    const mysqlConfigDisplayEl = document.getElementById("mysqlConfigDisplay");
 
+    const learnTextTitleEl = document.getElementById("learnTextTitle");
+    const learnTextBodyEl = document.getElementById("learnTextBody");
+    const learnTextBtnEl = document.getElementById("learnTextBtn");
+    const learnTextStatusEl = document.getElementById("learnTextStatus");
+
+    const csvFileEl = document.getElementById("csvFile");
+    const csvHeaderRowEl = document.getElementById("csvHeaderRow");
+    const csvIngestBtnEl = document.getElementById("csvIngestBtn");
+    const csvStatusEl = document.getElementById("csvStatus");
+
+    const dbHostEl = document.getElementById("dbHost");
+    const dbPortEl = document.getElementById("dbPort");
+    const dbNameEl = document.getElementById("dbName");
+    const dbUserEl = document.getElementById("dbUser");
+    const dbPassEl = document.getElementById("dbPass");
+    const dbPersistEl = document.getElementById("dbPersist");
+    const dbConnectBtnEl = document.getElementById("dbConnectBtn");
+    const dbStatusEl = document.getElementById("dbStatus");
+
+    const exportHostEl = document.getElementById("exportHost");
+    const exportPortEl = document.getElementById("exportPort");
+    const exportDbEl = document.getElementById("exportDb");
+    const exportUserEl = document.getElementById("exportUser");
+    const exportPassEl = document.getElementById("exportPass");
+    const exportTableEl = document.getElementById("exportTable");
+    const exportOffsetEl = document.getElementById("exportOffset");
+    const exportLimitEl = document.getElementById("exportLimit");
+    const exportCsvBtnEl = document.getElementById("exportCsvBtn");
+    const exportStatusEl = document.getElementById("exportStatus");
+
+    // Helper functions
     function setStatus(text, live) {
         statusTextEl.textContent = text;
         statusDotEl.className = live ? "dot live" : "dot";
@@ -335,27 +556,25 @@
     function renderMeta(meta) {
         const intentMap = {
             graph: "图谱检索", vector: "语义检索", document: "文档检索",
-            mysql: "数据库检索", sql: "结构化查询", hybrid: "混合检索", unknown: "待补充信息", learning: "学习"
+            mysql: "数据库检索", sql: "结构化查询", hybrid: "混合检索", unknown: "待补充", learning: "学习"
         };
         const items = [
-            "范围：" + (meta.scope === "personal" ? "个人知识库" : "企业知识库"),
-            "意图：" + (intentMap[meta.intent] || meta.intent || "未识别"),
-            "可回答：" + (meta.canAnswer ? "是" : "否"),
-            "置信度：" + (meta.confidence == null ? "-" : Number(meta.confidence).toFixed(2)),
-            "会话ID：" + (meta.turnId || "-")
+            (meta.scope === "personal" ? "个人" : "企业") + "知识库",
+            "意图:" + (intentMap[meta.intent] || meta.intent || "-"),
+            meta.canAnswer ? "可回答" : "无法回答",
+            "置信度:" + (meta.confidence == null ? "-" : Number(meta.confidence).toFixed(2))
         ];
         metaEl.innerHTML = items.map(x => `<span class="pill">${escapeHtml(x)}</span>`).join("");
     }
 
     function renderThinking(items) {
-        if (!items.length) {
-            thinkingEl.innerHTML = `<div class="thinking-item">等待请求...</div>`;
+        if (!items || !items.length) {
+            thinkingEl.innerHTML = `<div class="thinking-item" style="color:var(--muted);">等待请求...</div>`;
             return;
         }
-        thinkingEl.innerHTML = items.map(item => {
-            const msg = escapeHtml(item.message || "");
-            return `<div class="thinking-item">• ${msg}</div>`;
-        }).join("");
+        thinkingEl.innerHTML = items.map(item =>
+            `<div class="thinking-item">${escapeHtml(item.message || "")}</div>`
+        ).join("");
     }
 
     function renderAnswer(text) {
@@ -367,6 +586,14 @@
         }
     }
 
+    function clearResult() {
+        thinkingEl.innerHTML = `<div class="thinking-item" style="color:var(--muted);">处理中...</div>`;
+        answerEl.innerHTML = "";
+        metaEl.innerHTML = "";
+        rawJsonEl.textContent = "";
+    }
+
+    // Ask question - normal
     async function askNormal(question, scope) {
         const resp = await fetch("/qa/ask", {
             method: "POST",
@@ -374,124 +601,82 @@
             body: JSON.stringify({question, scope})
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
-        const data = await resp.json();
-        renderMeta(data);
-        renderAnswer(data.answer || "");
-        rawJsonEl.textContent = JSON.stringify(data, null, 2);
+        return await resp.json();
     }
 
+    // Ask question - stream
     function askStream(question, scope) {
-        const result = {answer: "", thinking: []};
         return new Promise((resolve, reject) => {
             const url = "/qa/ask/stream?question=" + encodeURIComponent(question)
                 + "&scope=" + encodeURIComponent(scope) + "&t=" + Date.now();
             const es = new EventSource(url);
+            const result = {answer: "", thinking: []};
+
             es.addEventListener("thinking", (event) => {
                 const payload = JSON.parse(event.data);
                 result.thinking.push(payload);
                 renderThinking(result.thinking);
                 setStatus("思考中...", true);
-                rawJsonEl.textContent = JSON.stringify(result, null, 2);
             });
             es.addEventListener("meta", (event) => {
-                const payload = JSON.parse(event.data);
-                Object.assign(result, payload);
-                renderMeta(payload);
-                rawJsonEl.textContent = JSON.stringify(result, null, 2);
+                renderMeta(JSON.parse(event.data));
             });
             es.addEventListener("delta", (event) => {
                 result.answer += event.data || "";
                 renderAnswer(result.answer);
-                setStatus("回答生成中...", true);
-                rawJsonEl.textContent = JSON.stringify(result, null, 2);
+                setStatus("生成中...", true);
             });
             es.addEventListener("final", (event) => {
                 const payload = JSON.parse(event.data);
                 Object.assign(result, payload);
                 renderMeta(payload);
-                renderAnswer(payload.answer || result.answer || "");
                 rawJsonEl.textContent = JSON.stringify(result, null, 2);
             });
             es.addEventListener("done", () => { es.close(); resolve(); });
             es.addEventListener("qa_error", (event) => {
                 es.close();
-                try { reject(new Error(JSON.parse(event.data || "{}").message || "stream error")); }
+                try { reject(new Error(JSON.parse(event.data).message || "stream error")); }
                 catch (e) { reject(new Error("stream error")); }
             });
-            es.addEventListener("error", () => { es.close(); reject(new Error("流式连接中断")); });
+            es.addEventListener("error", () => { es.close(); reject(new Error("连接中断")); });
         });
     }
 
+    // Ask button
     askBtnEl.addEventListener("click", async () => {
         const question = questionEl.value.trim();
         const scope = scopeModeEl.value || "enterprise";
         if (!question) { alert("请先输入问题"); return; }
         askBtnEl.disabled = true;
-        answerEl.innerHTML = "";
-        thinkingEl.innerHTML = "";
-        metaEl.innerHTML = "";
-        rawJsonEl.textContent = "";
+        clearResult();
         setStatus("连接中...", true);
         try {
-            if (streamModeEl.checked) await askStream(question, scope);
-            else await askNormal(question, scope);
+            if (streamModeEl.checked) {
+                await askStream(question, scope);
+            } else {
+                const data = await askNormal(question, scope);
+                renderMeta(data);
+                renderAnswer(data.answer || "");
+                rawJsonEl.textContent = JSON.stringify(data, null, 2);
+                if (data.evidence && data.evidence.length > 0) {
+                    renderThinking([{message: "检索到 " + data.evidence.length + " 条相关证据"}]);
+                }
+            }
             setStatus("完成", false);
         } catch (e) {
-            setStatus("失败：" + e.message, false);
+            setStatus("失败:" + e.message, false);
+            renderThinking([{message: "错误：" + e.message}]);
         } finally {
             askBtnEl.disabled = false;
         }
     });
 
-    async function learnByUpload(file, scope) {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("trigger", "manual_upload_ui");
-        formData.append("scope", scope);
-        const resp = await fetch("/qa/learn/upload", {method: "POST", body: formData});
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        return await resp.json();
-    }
-
-    function setLearnStatus(text, state) {
-        learnStatusEl.textContent = text;
-        learnStatusEl.className = "learn-status" + (state ? " " + state : "");
-    }
-
-    learnBtnEl.addEventListener("click", async () => {
-        const file = learnFileEl.files && learnFileEl.files[0];
-        const scope = scopeModeEl.value || "enterprise";
-        if (!file) { alert("请先选择 .md 文件"); return; }
-        if (!/\.md$/i.test(file.name)) { alert("仅支持 .md"); return; }
-        learnBtnEl.disabled = true;
-        setLearnStatus("上传中...", "");
-        setStatus("学习中...", true);
-        rawJsonEl.textContent = "";
-        thinkingEl.innerHTML = "";
-        metaEl.innerHTML = "";
-        answerEl.innerHTML = "";
-        try {
-            const data = await learnByUpload(file, scope);
-            const ok = !!data.canAnswer;
-            setLearnStatus(ok ? "学习成功" : "学习失败", ok ? "ok" : "error");
-            setStatus(ok ? "学习完成" : "学习失败", false);
-            renderMeta(data);
-            renderThinking([{message: "已上传：" + file.name}, {message: ok ? "已写入多路存储" : "请查看 JSON"}]);
-            renderAnswer(data.answer || "");
-            rawJsonEl.textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
-            setLearnStatus("失败：" + e.message, "error");
-            setStatus("学习失败", false);
-        } finally {
-            learnBtnEl.disabled = false;
-        }
-    });
-
+    // Learn text
     learnTextBtnEl.addEventListener("click", async () => {
         const content = (learnTextBodyEl.value || "").trim();
-        const title = (learnTextTitleEl.value || "").trim() || "pasted_text";
+        const title = (learnTextTitleEl.value || "").trim() || "粘贴文本";
         const scope = scopeModeEl.value || "enterprise";
-        if (!content) { alert("请先粘贴正文"); return; }
+        if (!content) { alert("请先粘贴要学习的内容"); return; }
         learnTextBtnEl.disabled = true;
         learnTextStatusEl.textContent = "提交中...";
         learnTextStatusEl.className = "learn-status";
@@ -504,14 +689,11 @@
             });
             if (!resp.ok) throw new Error("HTTP " + resp.status);
             const data = await resp.json();
-            const ok = !!data.canAnswer;
-            learnTextStatusEl.textContent = ok ? "已保存" : "未完全成功";
+            const ok = !!data.ok;
+            learnTextStatusEl.textContent = ok ? "已保存" : "失败";
             learnTextStatusEl.className = "learn-status " + (ok ? "ok" : "error");
-            setStatus("完成", false);
-            renderMeta(data);
-            renderThinking([{message: "粘贴文本学习：" + title}, {message: ok ? "写入完成" : "见 JSON"}]);
-            renderAnswer(data.answer || "");
-            rawJsonEl.textContent = JSON.stringify(data, null, 2);
+            setStatus(ok ? "学习完成" : "失败", false);
+            renderThinking([{message: "已保存为知识：" + title}]);
         } catch (e) {
             learnTextStatusEl.textContent = e.message;
             learnTextStatusEl.className = "learn-status error";
@@ -521,10 +703,11 @@
         }
     });
 
+    // CSV learn
     csvIngestBtnEl.addEventListener("click", async () => {
         const file = csvFileEl.files && csvFileEl.files[0];
         const scope = scopeModeEl.value || "enterprise";
-        if (!file) { alert("请选择 CSV"); return; }
+        if (!file) { alert("请选择 CSV 文件"); return; }
         csvIngestBtnEl.disabled = true;
         csvStatusEl.textContent = "上传中...";
         csvStatusEl.className = "learn-status";
@@ -537,18 +720,11 @@
             const resp = await fetch("/qa/structured/csv-ingest", {method: "POST", body: fd});
             if (!resp.ok) throw new Error("HTTP " + resp.status);
             const data = await resp.json();
-            const ok = !!data.canAnswer;
-            csvStatusEl.textContent = ok ? "学习完成" : (data.message || "失败");
+            const ok = !!data.ok;
+            csvStatusEl.textContent = ok ? "学习完成" : (data.rejectionReason || "失败");
             csvStatusEl.className = "learn-status " + (ok ? "ok" : "error");
-            setStatus("完成", false);
-            renderMeta(data);
-            renderThinking([
-                {message: "CSV：" + file.name},
-                {message: "首行表头：" + (csvHeaderRowEl.checked ? "是" : "否")},
-                {message: ok ? "已写入知识库通道" : (data.rejectionReason || data.message || "见 JSON")}
-            ]);
-            renderAnswer(data.answer || "");
-            rawJsonEl.textContent = JSON.stringify(data, null, 2);
+            setStatus(ok ? "完成" : "失败", false);
+            renderThinking([{message: "CSV 已学习：" + file.name}]);
         } catch (e) {
             csvStatusEl.textContent = e.message;
             csvStatusEl.className = "learn-status error";
@@ -558,222 +734,98 @@
         }
     });
 
-    rowAuditBtnEl.addEventListener("click", async () => {
-        const raw = (rowAuditTablesEl.value || "").trim();
-        if (!raw) { alert("请填写表名"); return; }
-        const tables = raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
-        rowAuditBtnEl.disabled = true;
-        rowAuditStatusEl.textContent = "检查中...";
-        try {
-            const resp = await fetch("/qa/structured/row-audit", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({tables})
-            });
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            const data = await resp.json();
-            const ok = !!data.ok;
-            rowAuditStatusEl.textContent = ok ? "均在行数上限内" : "存在超限或失败表";
-            rowAuditStatusEl.className = "learn-status " + (ok ? "ok" : "error");
-            renderThinking((data.audits || []).map(a =>
-                ({message: a.table + " 行数=" + a.rowCount + " 上限=" + a.limit + " " + (a.withinLimit ? "OK" : "超限/失败")})
-            ));
-            rawJsonEl.textContent = JSON.stringify(data, null, 2);
-            renderAnswer("## 行数自检\n\n```json\n" + JSON.stringify(data.audits, null, 2) + "\n```");
-        } catch (e) {
-            rowAuditStatusEl.textContent = e.message;
-            rowAuditStatusEl.className = "learn-status error";
-        } finally {
-            rowAuditBtnEl.disabled = false;
-        }
-    });
-
-    async function exportSchemaCatalog(assess, persist, scope) {
-        const resp = await fetch("/qa/mysql/schema-catalog", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({assess, persist, scope})
-        });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        return await resp.json();
-    }
-
-    schemaCatalogBtnEl.addEventListener("click", async () => {
-        const scope = scopeModeEl.value || "enterprise";
-        const assess = schemaAssessEl.checked;
-        const persist = schemaPersistEl.checked;
-        schemaCatalogBtnEl.disabled = true;
-        setLearnStatus("导出中...", "");
-        setStatus("导出 Schema...", true);
-        answerEl.innerHTML = "";
-        thinkingEl.innerHTML = "";
-        metaEl.innerHTML = "";
-        try {
-            const data = await exportSchemaCatalog(assess, persist, scope);
-            if (data.ok) {
-                setLearnStatus("成功", "ok");
-                setStatus("完成", false);
-                const lines = [{message: "固定库 Schema 已导出"}, {message: "表数量：" + (data.tableCount || 0)}];
-                if (assess) {
-                    if (data.assessmentFailed) {
-                        lines.push({message: "LLM 评估失败(已降级)"});
-                        if (data.assessmentError) lines.push({message: "原因：" + data.assessmentError});
-                    } else lines.push({message: "LLM 评估已执行"});
-                }
-                lines.push({message: persist ? (data.ok ? "已写入知识库" : "写入失败见 JSON") : "未写入"});
-                renderThinking(lines);
-                let md = "## 固定库 Schema\n\n" + (data.markdown || "");
-                if (data.modelAssessment && !data.assessmentFailed) md += "\n\n## LLM 评估\n\n" + data.modelAssessment;
-                renderAnswer(md);
-                if (data.knowledgeId) renderMeta({scope, intent: "learning", canAnswer: !!data.canAnswer, confidence: data.confidence, turnId: data.turnId || "-"});
-                rawJsonEl.textContent = JSON.stringify(data, null, 2);
-            } else {
-                setLearnStatus("失败", "error");
-                setStatus("失败", false);
-                renderThinking([{message: data.message || "错误"}]);
-                rawJsonEl.textContent = JSON.stringify(data, null, 2);
-            }
-        } catch (e) {
-            setLearnStatus(e.message, "error");
-            setStatus("失败", false);
-        } finally {
-            schemaCatalogBtnEl.disabled = false;
-        }
-    });
-
-    const dbConnectBtnEl = document.getElementById("dbConnectBtn");
-    const dbHostEl = document.getElementById("dbHost");
-    const dbPortEl = document.getElementById("dbPort");
-    const dbNameEl = document.getElementById("dbName");
-    const dbUserEl = document.getElementById("dbUser");
-    const dbPassEl = document.getElementById("dbPass");
-    const dbAssessEl = document.getElementById("dbAssess");
-    const dbPersistEl = document.getElementById("dbPersist");
-    const dbStatusEl = document.getElementById("dbStatus");
-
-    async function connectAndExportSchema(host, port, database, username, password, assess, persist, scope) {
-        const resp = await fetch("/qa/mysql/connect", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({host, port, database, username, password, assess, persist, scope})
-        });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        return await resp.json();
-    }
-
+    // MySQL connect and learn
     dbConnectBtnEl.addEventListener("click", async () => {
         const host = (dbHostEl.value || "").trim();
         const port = parseInt(String(dbPortEl.value || "3306"), 10) || 3306;
         const database = (dbNameEl.value || "").trim();
         const username = (dbUserEl.value || "").trim();
         const password = dbPassEl.value || "";
-        const assess = dbAssessEl.checked;
         const persist = dbPersistEl.checked;
         const scope = scopeModeEl.value || "enterprise";
         if (!host || !database || !username) { alert("请填写主机、数据库名、用户名"); return; }
         dbConnectBtnEl.disabled = true;
-        dbStatusEl.textContent = "处理中...";
+        dbStatusEl.textContent = "连接中...";
         dbStatusEl.className = "learn-status";
-        setStatus("动态连接...", true);
-        answerEl.innerHTML = "";
-        thinkingEl.innerHTML = "";
-        metaEl.innerHTML = "";
+        setStatus("连接 MySQL...", true);
+        clearResult();
         try {
-            const data = await connectAndExportSchema(host, port, database, username, password, assess, persist, scope);
+            const resp = await fetch("/qa/mysql/connect", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({host, port, database, username, password, assess: false, persist, scope})
+            });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const data = await resp.json();
             if (data.ok) {
-                dbStatusEl.textContent = "完成";
+                dbStatusEl.textContent = persist ? "已学习" : "已导出";
                 dbStatusEl.className = "learn-status ok";
                 setStatus("完成", false);
-                const thinkDyn = [
-                    {message: "已连接 " + host + ":" + port + " / 库 " + database + "（仅表结构元数据）"},
-                    {message: "表数量：" + (data.tableCount || 0)}
-                ];
-                if (assess) {
-                    if (data.assessmentFailed) {
-                        thinkDyn.push({message: "LLM 评估失败(已降级)"});
-                        if (data.assessmentError) thinkDyn.push({message: "原因：" + data.assessmentError});
-                    } else thinkDyn.push({message: "LLM 评估已执行"});
-                } else thinkDyn.push({message: "未评估"});
-                if (!persist) thinkDyn.push({message: "未写入知识库"});
-                else if (data.ok) thinkDyn.push({message: "已写入（见 sinkStatus）"});
-                else thinkDyn.push({message: "写入失败：" + ((data.answer || "").replace(/^主动学习失败：/, "") || "见 JSON")});
-                renderThinking(thinkDyn);
-                let md = "## 动态库 Schema（非行数据）\n\n" + (data.markdown || "");
-                if (data.modelAssessment && !data.assessmentFailed) md += "\n\n## LLM 评估\n\n" + data.modelAssessment;
+                renderThinking([{message: "已学习 " + database + " 的表结构（" + (data.tableCount || 0) + " 张表）"}]);
+                let md = "## " + database + " 表结构\n\n" + (data.markdown || "");
                 renderAnswer(md);
-                if (data.knowledgeId) renderMeta({scope, intent: "learning", canAnswer: !!data.canAnswer, confidence: data.confidence, turnId: data.turnId || "-"});
-                rawJsonEl.textContent = JSON.stringify(data, null, 2);
             } else {
                 dbStatusEl.textContent = "失败";
                 dbStatusEl.className = "learn-status error";
                 setStatus("失败", false);
-                renderThinking([{message: data.message || "连接失败"}]);
-                rawJsonEl.textContent = JSON.stringify(data, null, 2);
+                renderThinking([{message: "连接失败：" + data.message}]);
             }
+            rawJsonEl.textContent = JSON.stringify(data, null, 2);
         } catch (e) {
             dbStatusEl.textContent = e.message;
             dbStatusEl.className = "learn-status error";
             setStatus("失败", false);
+            renderThinking([{message: "错误：" + e.message}]);
         } finally {
             dbConnectBtnEl.disabled = false;
         }
     });
 
-    async function runSedimentationPipeline(host, port, database, username, password, persist, scope) {
-        const resp = await fetch("/qa/mysql/sedimentation/pipeline", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({source: "dynamic", host, port, database, username, password, persist, scope})
-        });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        return await resp.json();
-    }
+    // Export MySQL table to CSV
+    exportCsvBtnEl.addEventListener("click", async () => {
+        const host = (exportHostEl.value || "").trim();
+        const port = parseInt(String(exportPortEl.value || "3306"), 10) || 3306;
+        const database = (exportDbEl.value || "").trim();
+        const username = (exportUserEl.value || "").trim();
+        const password = exportPassEl.value || "";
+        const table = (exportTableEl.value || "").trim();
+        const offset = parseInt(String(exportOffsetEl.value || "0"), 10) || 0;
+        const limit = parseInt(String(exportLimitEl.value || "10000"), 10) || 10000;
 
-    const sedimentationBtnEl = document.getElementById("sedimentationPipelineBtn");
-    sedimentationBtnEl.addEventListener("click", async () => {
-        const host = (dbHostEl.value || "").trim();
-        const port = parseInt(String(dbPortEl.value || "3306"), 10) || 3306;
-        const database = (dbNameEl.value || "").trim();
-        const username = (dbUserEl.value || "").trim();
-        const password = dbPassEl.value || "";
-        const persist = document.getElementById("sedimentationPersist").checked;
-        const scope = scopeModeEl.value || "enterprise";
-        if (!host || !database || !username) { alert("请先填写动态连接信息"); return; }
-        sedimentationBtnEl.disabled = true;
-        dbStatusEl.textContent = "沉淀方案...";
-        dbStatusEl.className = "learn-status";
-        setStatus("沉淀方案...", true);
-        answerEl.innerHTML = "";
-        thinkingEl.innerHTML = "";
-        metaEl.innerHTML = "";
+        if (!host || !database || !username || !table) {
+            alert("请填写主机、数据库名、用户名和表名"); return;
+        }
+        exportCsvBtnEl.disabled = true;
+        exportStatusEl.textContent = "导出中...";
+        exportStatusEl.className = "learn-status";
+        setStatus("导出 CSV...", true);
         try {
-            const data = await runSedimentationPipeline(host, port, database, username, password, persist, scope);
-            if (data.ok) {
-                dbStatusEl.textContent = persist ? "已执行" : "仅预览";
-                dbStatusEl.className = "learn-status ok";
-                setStatus("完成", false);
-                renderThinking([
-                    {message: "库 " + database + " feasible=" + data.feasible},
-                    {message: "digest：" + (data.digestApplied ? "是" : "否")},
-                    {message: "写入：" + (persist ? "是" : "否")}
-                ]);
-                let md = "## 沉淀方案摘要\n\n" + (data.planSummaryMarkdown || "(无)");
-                if (data.ingestPreview) md += "\n\n## 正文预览\n\n" + data.ingestPreview;
-                renderAnswer(md);
-                if (data.knowledgeId) renderMeta({scope, intent: "learning", canAnswer: !!data.canAnswer, confidence: data.confidence, turnId: data.turnId || "-"});
-                rawJsonEl.textContent = JSON.stringify(data, null, 2);
-            } else {
-                dbStatusEl.textContent = "失败";
-                dbStatusEl.className = "learn-status error";
-                setStatus("失败", false);
-                renderThinking([{message: data.message || "失败"}]);
-                rawJsonEl.textContent = JSON.stringify(data, null, 2);
+            const resp = await fetch("/qa/mysql/table/export-csv", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({host, port, database, username, password, table, offset, limit})
+            });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const blob = await resp.blob();
+            if (blob.size === 0 || resp.headers.get("content-type")?.includes("text/plain")) {
+                throw new Error("无数据或导出失败");
             }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = table + "_" + offset + ".csv";
+            a.click();
+            URL.revokeObjectURL(url);
+            exportStatusEl.textContent = "已下载";
+            exportStatusEl.className = "learn-status ok";
+            setStatus("完成", false);
+            renderThinking([{message: "已导出 " + table + " 到 CSV（" + blob.size + " bytes）"}]);
         } catch (e) {
-            dbStatusEl.textContent = e.message;
-            dbStatusEl.className = "learn-status error";
+            exportStatusEl.textContent = e.message;
+            exportStatusEl.className = "learn-status error";
+            setStatus("失败", false);
         } finally {
-            sedimentationBtnEl.disabled = false;
+            exportCsvBtnEl.disabled = false;
         }
     });
 </script>

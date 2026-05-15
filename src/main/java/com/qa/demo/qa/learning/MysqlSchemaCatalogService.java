@@ -255,4 +255,142 @@ public class MysqlSchemaCatalogService {
         int maxChars = Math.max(4096, properties.getMaxSchemaExportChars());
         return exportCatalogWithConnection(conn, maxTables, maxChars);
     }
+
+    /**
+     * 获取数据库表关联关系（外键）。
+     * 查询 information_schema.KEY_COLUMN_USAGE 返回表间外键关系。
+     */
+    public List<TableRelationship> getTableRelationships(Connection connection, String schema) throws Exception {
+        List<TableRelationship> relationships = new ArrayList<>();
+        String sql = """
+                SELECT
+                    kcu.table_name AS from_table,
+                    kcu.column_name AS from_column,
+                    kcu.referenced_table_name AS to_table,
+                    kcu.referenced_column_name AS to_column,
+                    kcu.constraint_name AS constraint_name
+                FROM information_schema.KEY_COLUMN_USAGE kcu
+                WHERE kcu.table_schema = ?
+                  AND kcu.referenced_table_name IS NOT NULL
+                  AND kcu.referenced_table_name != kcu.table_name
+                ORDER BY kcu.table_name, kcu.column_name
+                """;
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    relationships.add(new TableRelationship(
+                            rs.getString("from_table"),
+                            rs.getString("from_column"),
+                            rs.getString("to_table"),
+                            rs.getString("to_column"),
+                            rs.getString("constraint_name")
+                    ));
+                }
+            }
+        }
+        return relationships;
+    }
+
+    /**
+     * 使用动态连接获取表关联关系。
+     */
+    public List<TableRelationship> getTableRelationshipsWithConnection(DynamicConnection conn) throws Exception {
+        try (Connection connection = DriverManager.getConnection(conn.toJdbcUrl(), conn.username(), conn.password())) {
+            return getTableRelationships(connection, conn.database());
+        }
+    }
+
+    /**
+     * 读取表的样本数据（用于评估阶段）。
+     * @param connection 数据库连接
+     * @param schema schema 名称
+     * @param table 表名
+     * @param limit 最大返回行数
+     */
+    public List<Map<String, String>> readTableSampleData(Connection connection, String schema, String table, int limit)
+            throws Exception {
+        List<Map<String, String>> result = new ArrayList<>();
+        if (!isSafeIdentifier(table) || !isSafeIdentifier(schema)) {
+            throw new IllegalArgumentException("Invalid table or schema name");
+        }
+        String sql = "SELECT * FROM `" + schema + "`.`" + table + "` LIMIT " + limit;
+        try (PreparedStatement ps = connection.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            int columnCount = rs.getMetaData().getColumnCount();
+            while (rs.next()) {
+                Map<String, String> row = new LinkedHashMap<>();
+                for (int i = 1; i <= columnCount; i++) {
+                    String columnName = rs.getMetaData().getColumnLabel(i);
+                    String value = rs.getString(i);
+                    row.put(columnName, value);
+                }
+                result.add(row);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 使用动态连接读取表样本数据。
+     */
+    public List<Map<String, String>> readTableSampleDataWithConnection(DynamicConnection conn, String table, int limit)
+            throws Exception {
+        try (Connection connection = DriverManager.getConnection(conn.toJdbcUrl(), conn.username(), conn.password())) {
+            return readTableSampleData(connection, conn.database(), table, limit);
+        }
+    }
+
+    /**
+     * 读取表全量数据（用于沉淀阶段）。
+     * @param connection 数据库连接
+     * @param schema schema 名称
+     * @param table 表名
+     * @param offset 起始偏移
+     * @param limit 最大返回行数
+     */
+    public List<Map<String, String>> readTableData(Connection connection, String schema, String table, long offset, int limit)
+            throws Exception {
+        List<Map<String, String>> result = new ArrayList<>();
+        if (!isSafeIdentifier(table) || !isSafeIdentifier(schema)) {
+            throw new IllegalArgumentException("Invalid table or schema name");
+        }
+        String sql = "SELECT * FROM `" + schema + "`.`" + table + "` LIMIT " + limit + " OFFSET " + offset;
+        try (PreparedStatement ps = connection.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            int columnCount = rs.getMetaData().getColumnCount();
+            while (rs.next()) {
+                Map<String, String> row = new LinkedHashMap<>();
+                for (int i = 1; i <= columnCount; i++) {
+                    String columnName = rs.getMetaData().getColumnLabel(i);
+                    String value = rs.getString(i);
+                    row.put(columnName, value);
+                }
+                result.add(row);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 使用动态连接读取表全量数据（分页）。
+     */
+    public List<Map<String, String>> readTableDataWithConnection(DynamicConnection conn, String table, long offset, int limit)
+            throws Exception {
+        try (Connection connection = DriverManager.getConnection(conn.toJdbcUrl(), conn.username(), conn.password())) {
+            return readTableData(connection, conn.database(), table, offset, limit);
+        }
+    }
+
+    /**
+     * 表关联关系记录
+     */
+    public record TableRelationship(
+            String fromTable,
+            String fromColumn,
+            String toTable,
+            String toColumn,
+            String constraintName
+    ) {
+    }
 }

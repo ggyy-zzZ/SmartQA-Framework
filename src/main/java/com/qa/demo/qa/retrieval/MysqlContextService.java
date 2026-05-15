@@ -10,6 +10,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -72,11 +73,16 @@ public class MysqlContextService {
     }
 
     private Connection openConnection() throws SQLException {
-        return DriverManager.getConnection(
+        Connection conn = DriverManager.getConnection(
                 properties.getMysqlUrl(),
                 properties.getMysqlUsername(),
                 properties.getMysqlPassword()
         );
+        int seconds = Math.max(1, properties.getMysqlQueryTimeoutSeconds());
+        try (Statement stmt = conn.createStatement()) {
+            stmt.setQueryTimeout(seconds);
+        }
+        return conn;
     }
 
     private List<TableSpec> loadSearchableTables(Connection connection) throws SQLException {

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -19,6 +20,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -32,10 +34,17 @@ public class MiniMaxClient {
     private final HttpClient httpClient;
 
     public MiniMaxClient(ObjectMapper objectMapper, QaAssistantProperties properties) {
-        this.restClient = RestClient.builder().build();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(properties.getMinimaxTimeoutMs());
+        factory.setReadTimeout(properties.getMinimaxTimeoutMs());
+        this.restClient = RestClient.builder()
+                .requestFactory(factory)
+                .build();
         this.objectMapper = objectMapper;
         this.properties = properties;
-        this.httpClient = HttpClient.newBuilder().build();
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(properties.getMinimaxTimeoutMs()))
+                .build();
     }
 
     @FunctionalInterface

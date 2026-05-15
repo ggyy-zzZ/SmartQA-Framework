@@ -14,6 +14,7 @@ import com.qa.demo.qa.orchestration.QaAskOrchestrator;
 import com.qa.demo.qa.response.QaLogService;
 import com.qa.demo.qa.sedimentation.FeedbackPersistenceService;
 import com.qa.demo.qa.sedimentation.SedimentationQueueService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -569,6 +570,29 @@ public class QaController {
     ) {
     }
 
+    public record TableSampleRequest(
+            @NotBlank String host,
+            int port,
+            @NotBlank String database,
+            @NotBlank String username,
+            String password,
+            @NotBlank String table,
+            Integer limit
+    ) {
+    }
+
+    public record TableDataRequest(
+            @NotBlank String host,
+            int port,
+            @NotBlank String database,
+            @NotBlank String username,
+            String password,
+            @NotBlank String table,
+            Long offset,
+            Integer limit
+    ) {
+    }
+
     /**
      * @param source {@code configured} 使用 qa.assistant.mysql-*；{@code dynamic} 须填 host/port/database/username/password
      */
@@ -811,5 +835,175 @@ public class QaController {
             ));
         }
         return body;
+    }
+
+    /**
+     * 获取数据库表关联关系（外键）。
+     */
+    @PostMapping("/mysql/relationships")
+    public Map<String, Object> mysqlTableRelationships(@Valid @RequestBody DynamicConnectRequest request) {
+        try {
+            MysqlSchemaCatalogService.DynamicConnection conn =
+                    new MysqlSchemaCatalogService.DynamicConnection(
+                            request.host(),
+                            request.port(),
+                            request.database(),
+                            request.username(),
+                            request.password() != null ? request.password() : ""
+                    );
+
+            List<MysqlSchemaCatalogService.TableRelationship> relationships =
+                    mysqlSchemaCatalogService.getTableRelationshipsWithConnection(conn);
+
+            return Map.of(
+                    "ok", true,
+                    "host", request.host(),
+                    "port", request.port(),
+                    "database", request.database(),
+                    "relationships", relationships,
+                    "count", relationships.size(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "get_relationships_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+    }
+
+    /**
+     * 读取单表样本数据（用于评估阶段）。
+     */
+    @PostMapping("/mysql/table/sample")
+    public Map<String, Object> mysqlTableSampleData(
+            @Valid @RequestBody TableSampleRequest request
+    ) {
+        try {
+            MysqlSchemaCatalogService.DynamicConnection conn =
+                    new MysqlSchemaCatalogService.DynamicConnection(
+                            request.host(),
+                            request.port(),
+                            request.database(),
+                            request.username(),
+                            request.password() != null ? request.password() : ""
+                    );
+
+            int limit = request.limit() != null && request.limit() > 0 ? request.limit() : 10;
+            List<Map<String, String>> sampleData =
+                    mysqlSchemaCatalogService.readTableSampleDataWithConnection(conn, request.table(), limit);
+
+            return Map.of(
+                    "ok", true,
+                    "host", request.host(),
+                    "port", request.port(),
+                    "database", request.database(),
+                    "table", request.table(),
+                    "sampleData", sampleData,
+                    "rowCount", sampleData.size(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "read_sample_data_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+    }
+
+    /**
+     * 读取表全量数据（用于沉淀阶段，支持分页）。
+     */
+    @PostMapping("/mysql/table/data")
+    public Map<String, Object> mysqlTableData(
+            @Valid @RequestBody TableDataRequest request
+    ) {
+        try {
+            MysqlSchemaCatalogService.DynamicConnection conn =
+                    new MysqlSchemaCatalogService.DynamicConnection(
+                            request.host(),
+                            request.port(),
+                            request.database(),
+                            request.username(),
+                            request.password() != null ? request.password() : ""
+                    );
+
+            long offset = request.offset() != null ? request.offset() : 0;
+            int limit = request.limit() != null && request.limit() > 0 ? request.limit() : 1000;
+            List<Map<String, String>> tableData =
+                    mysqlSchemaCatalogService.readTableDataWithConnection(conn, request.table(), offset, limit);
+
+            return Map.of(
+                    "ok", true,
+                    "host", request.host(),
+                    "port", request.port(),
+                    "database", request.database(),
+                    "table", request.table(),
+                    "offset", offset,
+                    "limit", limit,
+                    "data", tableData,
+                    "rowCount", tableData.size(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "read_table_data_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+    }
+
+    /**
+     * 导出表数据为 CSV 文件（下载）。
+     */
+    @PostMapping("/mysql/table/export-csv")
+    public void exportTableAsCsv(
+            @Valid @RequestBody TableDataRequest request,
+            HttpServletResponse response
+    ) {
+        try {
+            MysqlSchemaCatalogService.DynamicConnection conn =
+                    new MysqlSchemaCatalogService.DynamicConnection(
+                            request.host(),
+                            request.port(),
+                            request.database(),
+                            request.username(),
+                            request.password() != null ? request.password() : ""
+                    );
+
+            long offset = request.offset() != null ? request.offset() : 0;
+            int limit = request.limit() != null && request.limit() > 0 ? request.limit() : 10000;
+            List<Map<String, String>> tableData =
+                    mysqlSchemaCatalogService.readTableDataWithConnection(conn, request.table(), offset, limit);
+
+            if (tableData.isEmpty()) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().write("No data found");
+                return;
+            }
+
+            StringBuilder csv = new StringBuilder();
+            // Header
+            Map<String, String> firstRow = tableData.get(0);
+            csv.append(String.join(",", firstRow.keySet())).append("\n");
+            // Data rows
+            for (Map<String, String> row : tableData) {
+                csv.append(String.join(",", row.values())).append("\n");
+            }
+
+            String filename = request.table() + "_" + offset + ".csv";
+            response.setContentType("text/csv;charset=UTF-8");
+            response.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+            response.getWriter().write(csv.toString());
+
+        } catch (Exception e) {
+            try {
+                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                response.getWriter().write("Error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
     }
 }
