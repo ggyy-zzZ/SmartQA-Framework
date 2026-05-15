@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -96,14 +97,22 @@ public class MiniMaxClient {
                         Map.of("role", "user", "name", "User", "content", userMessage)
                 )
         );
-        String response = restClient.post()
-                .uri(properties.getApiUrl())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(String.class);
-        return parseNonStreamAssistantContent(response);
+        try {
+            String response = restClient.post()
+                    .uri(properties.getApiUrl())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+            return parseNonStreamAssistantContent(response);
+        } catch (RestClientResponseException e) {
+            String bodySnippet = abbreviateForError(e.getResponseBodyAsString());
+            throw new IllegalStateException(
+                    "MiniMax HTTP " + e.getStatusCode().value() + (bodySnippet.isBlank() ? "" : ": " + bodySnippet),
+                    e
+            );
+        }
     }
 
     private String parseNonStreamAssistantContent(String response) {
@@ -114,9 +123,23 @@ public class MiniMaxClient {
                     && !"success".equalsIgnoreCase(statusMsgNode.asText())) {
                 throw new IllegalStateException("MiniMax API error: " + statusMsgNode.asText());
             }
-            JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
+            JsonNode messageNode = root.path("choices").path(0).path("message");
+            JsonNode contentNode = messageNode.path("content");
             if (contentNode.isTextual() && !contentNode.asText().isBlank()) {
                 return contentNode.asText();
+            }
+            // 部分推理模型先填 reasoning_content，content 可能暂空；评估等非流式场景合并取用
+            String reasoning = messageNode.path("reasoning_content").asText("").trim();
+            if (!reasoning.isBlank()) {
+                String contentFallback = contentNode.isTextual() ? contentNode.asText().trim() : "";
+                if (!contentFallback.isBlank()) {
+                    return reasoning + "\n\n" + contentFallback;
+                }
+                return reasoning;
+            }
+            JsonNode choiceText = root.path("choices").path(0).path("text");
+            if (choiceText.isTextual() && !choiceText.asText().isBlank()) {
+                return choiceText.asText();
             }
             JsonNode replyNode = root.path("reply");
             if (replyNode.isTextual() && !replyNode.asText().isBlank()) {
@@ -126,12 +149,21 @@ public class MiniMaxClient {
             if (outputTextNode.isTextual() && !outputTextNode.asText().isBlank()) {
                 return outputTextNode.asText();
             }
-            throw new IllegalStateException("Model returned empty content: " + response);
+            throw new IllegalStateException("Model returned empty content: " + abbreviateForError(response));
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to parse model response: " + e.getMessage(), e);
         }
+    }
+
+    private static String abbreviateForError(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.replace('\n', ' ').trim();
+        int max = 800;
+        return s.length() <= max ? s : s.substring(0, max) + "…";
     }
 
     public String askWithEvidenceStream(String question, List<ContextChunk> chunks, StreamListener listener) {

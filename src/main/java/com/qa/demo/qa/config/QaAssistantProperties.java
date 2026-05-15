@@ -233,7 +233,7 @@ public class QaAssistantProperties {
     }
 
     public void setApiKey(String apiKey) {
-        this.apiKey = apiKey;
+        this.apiKey = apiKey == null ? null : apiKey.trim();
     }
 
     public int getRetrievalTopK() {

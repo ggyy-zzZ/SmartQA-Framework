@@ -1,5 +1,6 @@
 package com.qa.demo.qa.web;
 
+import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.QaScopes;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.learning.LearningResponseBuilder;
@@ -56,6 +57,7 @@ public class QaController {
     private final FeedbackPersistenceService feedbackPersistenceService;
     private final SedimentationQueueService sedimentationQueueService;
     private final SchemaSedimentationPlanService schemaSedimentationPlanService;
+    private final QaAssistantProperties assistantProperties;
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -69,7 +71,8 @@ public class QaController {
             MysqlSchemaCatalogAssessmentService mysqlSchemaCatalogAssessmentService,
             FeedbackPersistenceService feedbackPersistenceService,
             SedimentationQueueService sedimentationQueueService,
-            SchemaSedimentationPlanService schemaSedimentationPlanService
+            SchemaSedimentationPlanService schemaSedimentationPlanService,
+            QaAssistantProperties assistantProperties
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -83,6 +86,29 @@ public class QaController {
         this.feedbackPersistenceService = feedbackPersistenceService;
         this.sedimentationQueueService = sedimentationQueueService;
         this.schemaSedimentationPlanService = schemaSedimentationPlanService;
+        this.assistantProperties = assistantProperties;
+    }
+
+    /**
+     * 本地排障：核对当前 JVM 读到的 MiniMax 配置（不返回密钥明文）。
+     * 若此处显示未配置，而终端 curl 正常，说明 IDE/另一进程未继承 {@code MINIMAX_API_KEY}。
+     */
+    @GetMapping("/assistant/runtime-summary")
+    public Map<String, Object> assistantRuntimeSummary() {
+        String key = assistantProperties.getApiKey();
+        boolean present = key != null && !key.isBlank();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("minimaxApiKeyPresent", present);
+        body.put("minimaxApiKeyCharLength", present ? key.length() : 0);
+        body.put("minimaxApiUrl", assistantProperties.getApiUrl());
+        body.put("minimaxModel", assistantProperties.getModel());
+        body.put("mysqlEnabled", assistantProperties.isMysqlEnabled());
+        body.put("vectorEnabled", assistantProperties.isVectorEnabled());
+        body.put("hint", present
+                ? "密钥非空；若仍报 login fail，请核对是否为有效 MiniMax Chat API Key 并已重启进程。"
+                : "未读到 qa.assistant.api-key（通常应来自环境变量 MINIMAX_API_KEY 或 application-local.properties）；与 curl 成功的终端不是同一环境。");
+        body.put("timestamp", OffsetDateTime.now().toString());
+        return body;
     }
 
     @PostMapping("/ask")
