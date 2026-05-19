@@ -3,6 +3,7 @@ package com.qa.demo.qa.web;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.QaScopes;
 import com.qa.demo.qa.learning.ActiveLearningService;
+import com.qa.demo.qa.learning.BatchCsvAnalysisService;
 import com.qa.demo.qa.learning.LearningResponseBuilder;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogAssessmentService;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogService;
@@ -59,6 +60,7 @@ public class QaController {
     private final SedimentationQueueService sedimentationQueueService;
     private final SchemaSedimentationPlanService schemaSedimentationPlanService;
     private final QaAssistantProperties assistantProperties;
+    private final BatchCsvAnalysisService batchCsvAnalysisService;
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -73,7 +75,8 @@ public class QaController {
             FeedbackPersistenceService feedbackPersistenceService,
             SedimentationQueueService sedimentationQueueService,
             SchemaSedimentationPlanService schemaSedimentationPlanService,
-            QaAssistantProperties assistantProperties
+            QaAssistantProperties assistantProperties,
+            BatchCsvAnalysisService batchCsvAnalysisService
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -88,6 +91,7 @@ public class QaController {
         this.sedimentationQueueService = sedimentationQueueService;
         this.schemaSedimentationPlanService = schemaSedimentationPlanService;
         this.assistantProperties = assistantProperties;
+        this.batchCsvAnalysisService = batchCsvAnalysisService;
     }
 
     /**
@@ -380,6 +384,167 @@ public class QaController {
                 "withinLimit", true
         ));
         return body;
+    }
+
+    private final BatchCsvAnalysisService batchCsvAnalysisService;
+
+    /**
+     * 批量 CSV 分析：上传多个 CSV 文件，分析表结构、检测关联、生成学习方案。
+     * 不实际写入知识库，只返回分析结果供确认。
+     */
+    @PostMapping(value = "/structured/csv-batch-analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> analyzeBatchCsv(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestParam(defaultValue = "true") boolean headerRow,
+            @RequestParam(defaultValue = QaScopes.ENTERPRISE) String scope
+    ) {
+        if (files == null || files.length == 0) {
+            return Map.of(
+                    "ok", false,
+                    "message", "请上传至少一个 CSV 文件",
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+
+        String normalizedScope = QaScopes.normalize(scope);
+        try {
+            List<BatchCsvAnalysisService.CsvFileData> csvFiles = new ArrayList<>();
+            for (MultipartFile file : files) {
+                if (file != null && !file.isEmpty() && file.getOriginalFilename() != null
+                        && file.getOriginalFilename().toLowerCase().endsWith(".csv")) {
+                    csvFiles.add(new BatchCsvAnalysisService.CsvFileData(
+                            file.getOriginalFilename(),
+                            file.getBytes()
+                    ));
+                }
+            }
+
+            if (csvFiles.isEmpty()) {
+                return Map.of(
+                        "ok", false,
+                        "message", "没有有效的 CSV 文件",
+                        "timestamp", OffsetDateTime.now().toString()
+                );
+            }
+
+            BatchCsvAnalysisService.BatchAnalysisResult result =
+                    batchCsvAnalysisService.analyzeBatch(csvFiles);
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", true);
+            body.put("fileCount", csvFiles.size());
+            body.put("scope", normalizedScope);
+
+            List<Map<String, Object>> tableInfos = new ArrayList<>();
+            for (BatchCsvAnalysisService.CsvTableInfo table : result.tables()) {
+                tableInfos.add(Map.of(
+                        "tableName", table.tableName(),
+                        "filename", table.filename(),
+                        "columns", table.columns(),
+                        "columnTypes", table.columnTypes().stream().map(Enum::name).toList(),
+                        "rowCount", table.rowCount()
+                ));
+            }
+            body.put("tables", tableInfos);
+
+            List<Map<String, Object>> relationships = new ArrayList<>();
+            for (BatchCsvAnalysisService.TableRelationship rel : result.relationships()) {
+                relationships.add(Map.of(
+                        "fromTable", rel.fromTable(),
+                        "toTable", rel.toTable(),
+                        "sharedColumn", rel.sharedColumn(),
+                        "relationshipType", rel.relationshipType().name(),
+                        "note", rel.note()
+                ));
+            }
+            body.put("relationships", relationships);
+
+            Map<String, Object> planInfo = new LinkedHashMap<>();
+            List<Map<String, Object>> strategies = new ArrayList<>();
+            for (BatchCsvAnalysisService.LearningStrategy strategy : result.learningPlan().strategies()) {
+                strategies.add(Map.of(
+                        "tableName", strategy.tableName(),
+                        "strategyType", strategy.strategyType().name(),
+                        "recommendation", strategy.recommendation(),
+                        "rowCount", strategy.rowCount()
+                ));
+            }
+            planInfo.put("strategies", strategies);
+            planInfo.put("overallRecommendation", result.learningPlan().overallRecommendation());
+            body.put("learningPlan", planInfo);
+
+            body.put("timestamp", OffsetDateTime.now().toString());
+            return body;
+
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "analysis_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+    }
+
+    /**
+     * 执行批量 CSV 学习：根据分析结果一键学习所有 CSV 文件。
+     */
+    @PostMapping(value = "/structured/csv-batch-learn", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> learnBatchCsv(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestParam(defaultValue = "true") boolean headerRow,
+            @RequestParam(defaultValue = QaScopes.ENTERPRISE) String scope
+    ) {
+        if (files == null || files.length == 0) {
+            return Map.of(
+                    "ok", false,
+                    "message", "请上传至少一个 CSV 文件",
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+
+        String normalizedScope = QaScopes.normalize(scope);
+        try {
+            List<BatchCsvAnalysisService.CsvFileData> csvFiles = new ArrayList<>();
+            for (MultipartFile file : files) {
+                if (file != null && !file.isEmpty() && file.getOriginalFilename() != null
+                        && file.getOriginalFilename().toLowerCase().endsWith(".csv")) {
+                    csvFiles.add(new BatchCsvAnalysisService.CsvFileData(
+                            file.getOriginalFilename(),
+                            file.getBytes()
+                    ));
+                }
+            }
+
+            if (csvFiles.isEmpty()) {
+                return Map.of(
+                        "ok", false,
+                        "message", "没有有效的 CSV 文件",
+                        "timestamp", OffsetDateTime.now().toString()
+                    );
+            }
+
+            BatchCsvAnalysisService.BatchAnalysisResult analysis =
+                    batchCsvAnalysisService.analyzeBatch(csvFiles);
+            List<ActiveLearningService.LearningResult> results =
+                    batchCsvAnalysisService.executeLearning(analysis, normalizedScope);
+
+            long successCount = results.stream().filter(ActiveLearningService.LearningResult::success).count();
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", successCount > 0);
+            body.put("fileCount", csvFiles.size());
+            body.put("successCount", successCount);
+            body.put("scope", normalizedScope);
+            body.put("timestamp", OffsetDateTime.now().toString());
+            return body;
+
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "learning_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
     }
 
     /**
