@@ -414,7 +414,7 @@
 
         <!-- 1.4 Export MySQL table to CSV -->
         <div class="sub-section">
-            <div class="sub-title">导出 MySQL 表数据为 CSV <span>（下载表数据）</span></div>
+            <div class="sub-title">导出 MySQL 表数据为 CSV <span>（下载全量数据）</span></div>
             <div class="grid2">
                 <input id="exportHost" class="inp" type="text" placeholder="主机" value="localhost">
                 <input id="exportPort" class="inp" type="number" placeholder="端口" value="3306">
@@ -428,11 +428,8 @@
                 <input id="exportTable" class="inp" type="text" placeholder="表名" style="margin-left:8px;width:120px;">
             </div>
             <div class="toolbar" style="margin-top:10px;">
-                <button id="exportCsvBtn">导出 CSV</button>
-                <input id="exportOffset" type="number" placeholder="起始行" value="0" style="width:70px;">
-                <label style="font-size:12px;">最大行数
-                    <input id="exportLimit" type="number" value="10000" style="width:70px;">
-                </label>
+                <button id="exportCsvBtn">导出全量 CSV</button>
+                <button id="exportAllCsvBtn">导出所有表(ZIP)</button>
                 <span id="exportStatus" class="learn-status"></span>
             </div>
         </div>
@@ -535,9 +532,8 @@
     const exportUserEl = document.getElementById("exportUser");
     const exportPassEl = document.getElementById("exportPass");
     const exportTableEl = document.getElementById("exportTable");
-    const exportOffsetEl = document.getElementById("exportOffset");
-    const exportLimitEl = document.getElementById("exportLimit");
     const exportCsvBtnEl = document.getElementById("exportCsvBtn");
+    const exportAllCsvBtnEl = document.getElementById("exportAllCsvBtn");
     const exportStatusEl = document.getElementById("exportStatus");
 
     // Helper functions
@@ -789,8 +785,6 @@
         const username = (exportUserEl.value || "").trim();
         const password = exportPassEl.value || "";
         const table = (exportTableEl.value || "").trim();
-        const offset = parseInt(String(exportOffsetEl.value || "0"), 10) || 0;
-        const limit = parseInt(String(exportLimitEl.value || "10000"), 10) || 10000;
 
         if (!host || !database || !username || !table) {
             alert("请填写主机、数据库名、用户名和表名"); return;
@@ -803,7 +797,7 @@
             const resp = await fetch("/qa/mysql/table/export-csv", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({host, port, database, username, password, table, offset, limit})
+                body: JSON.stringify({host, port, database, username, password, table})
             });
             if (!resp.ok) throw new Error("HTTP " + resp.status);
             const blob = await resp.blob();
@@ -813,19 +807,64 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = table + "_" + offset + ".csv";
+            a.download = table + "_all.csv";
             a.click();
             URL.revokeObjectURL(url);
             exportStatusEl.textContent = "已下载";
             exportStatusEl.className = "learn-status ok";
             setStatus("完成", false);
-            renderThinking([{message: "已导出 " + table + " 到 CSV（" + blob.size + " bytes）"}]);
+            renderThinking([{message: "已导出 " + table + " 全量数据到 CSV（" + blob.size + " bytes）"}]);
         } catch (e) {
             exportStatusEl.textContent = e.message;
             exportStatusEl.className = "learn-status error";
             setStatus("失败", false);
         } finally {
             exportCsvBtnEl.disabled = false;
+        }
+    });
+
+    // Export all MySQL tables to ZIP
+    exportAllCsvBtnEl.addEventListener("click", async () => {
+        const host = (exportHostEl.value || "").trim();
+        const port = parseInt(String(exportPortEl.value || "3306"), 10) || 3306;
+        const database = (exportDbEl.value || "").trim();
+        const username = (exportUserEl.value || "").trim();
+        const password = exportPassEl.value || "";
+
+        if (!host || !database || !username) {
+            alert("请填写主机、数据库名和用户名"); return;
+        }
+        exportAllCsvBtnEl.disabled = true;
+        exportStatusEl.textContent = "导出中(所有表)...";
+        exportStatusEl.className = "learn-status";
+        setStatus("导出所有表...", true);
+        try {
+            const resp = await fetch("/qa/mysql/tables/export-all-csv", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({host, port, database, username, password})
+            });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const blob = await resp.blob();
+            if (blob.size === 0 || resp.headers.get("content-type")?.includes("text/plain")) {
+                throw new Error("导出失败");
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = database + "_all_tables.zip";
+            a.click();
+            URL.revokeObjectURL(url);
+            exportStatusEl.textContent = "已下载";
+            exportStatusEl.className = "learn-status ok";
+            setStatus("完成", false);
+            renderThinking([{message: "已导出 " + database + " 所有表全量数据到 ZIP（" + blob.size + " bytes）"}]);
+        } catch (e) {
+            exportStatusEl.textContent = e.message;
+            exportStatusEl.className = "learn-status error";
+            setStatus("失败", false);
+        } finally {
+            exportAllCsvBtnEl.disabled = false;
         }
     });
 </script>

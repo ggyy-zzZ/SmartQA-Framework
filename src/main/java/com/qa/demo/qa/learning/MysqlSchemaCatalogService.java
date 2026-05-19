@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 基于 {@link QaAssistantProperties} 中已配置的 MySQL，只读查询 {@code information_schema}，
@@ -380,6 +382,69 @@ public class MysqlSchemaCatalogService {
         try (Connection connection = DriverManager.getConnection(conn.toJdbcUrl(), conn.username(), conn.password())) {
             return readTableData(connection, conn.database(), table, offset, limit);
         }
+    }
+
+    /**
+     * 获取数据库所有业务表名（排除 qa_ 前缀系统表）。
+     */
+    public List<String> listAllTablesWithConnection(DynamicConnection conn) throws Exception {
+        try (Connection connection = DriverManager.getConnection(conn.toJdbcUrl(), conn.username(), conn.password())) {
+            String schema = conn.database();
+            return listBusinessTables(connection, schema, 1000); // 获取足够多的表
+        }
+    }
+
+    /**
+     * 将数据列表转换为 CSV 格式字符串（不包含 BOM）。
+     */
+    public String convertToCsv(List<Map<String, String>> data) {
+        if (data == null || data.isEmpty()) {
+            return "";
+        }
+        StringBuilder csv = new StringBuilder();
+        Map<String, String> firstRow = data.get(0);
+        csv.append(String.join(",", firstRow.keySet())).append("\n");
+        for (Map<String, String> row : data) {
+            csv.append(String.join(",", row.values())).append("\n");
+        }
+        return csv.toString();
+    }
+
+    /**
+     * 导出所有表数据为 ZIP 文件（每个表一个 CSV 文件）。
+     * @param conn 数据库连接
+     * @param outputStream 输出流（用于写入 ZIP 数据）
+     * @return 导出的表数量
+     */
+    public int exportAllTablesAsZip(DynamicConnection conn, java.io.OutputStream outputStream) throws Exception {
+        List<String> tables = listAllTablesWithConnection(conn);
+        int batchSize = 5000;
+
+        try (ZipOutputStream zipOut = new ZipOutputStream(outputStream)) {
+            for (String table : tables) {
+                List<Map<String, String>> allData = new ArrayList<>();
+                long offset = 0;
+
+                // 读取全量数据
+                while (true) {
+                    List<Map<String, String>> batch = readTableDataWithConnection(conn, table, offset, batchSize);
+                    if (batch.isEmpty()) break;
+                    allData.addAll(batch);
+                    offset += batch.size();
+                    if (batch.size() < batchSize) break;
+                }
+
+                // 添加到 ZIP
+                ZipEntry entry = new ZipEntry(table + "_all.csv");
+                zipOut.putNextEntry(entry);
+                String csvContent = convertToCsv(allData);
+                if (!csvContent.isEmpty()) {
+                    zipOut.write(csvContent.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+                zipOut.closeEntry();
+            }
+        }
+        return tables.size();
     }
 
     /**

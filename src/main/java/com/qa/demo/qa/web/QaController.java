@@ -957,7 +957,7 @@ public class QaController {
     }
 
     /**
-     * 导出表数据为 CSV 文件（下载）。
+     * 导出表数据为 CSV 文件（下载，支持全量）。
      */
     @PostMapping("/mysql/table/export-csv")
     public void exportTableAsCsv(
@@ -974,27 +974,37 @@ public class QaController {
                             request.password() != null ? request.password() : ""
                     );
 
-            long offset = request.offset() != null ? request.offset() : 0;
-            int limit = request.limit() != null && request.limit() > 0 ? request.limit() : 10000;
-            List<Map<String, String>> tableData =
-                    mysqlSchemaCatalogService.readTableDataWithConnection(conn, request.table(), offset, limit);
+            int batchSize = 5000;
+            List<Map<String, String>> allData = new java.util.ArrayList<>();
+            long offset = 0;
 
-            if (tableData.isEmpty()) {
+            // 循环读取全量数据
+            while (true) {
+                List<Map<String, String>> batch =
+                        mysqlSchemaCatalogService.readTableDataWithConnection(conn, request.table(), offset, batchSize);
+                if (batch.isEmpty()) break;
+                allData.addAll(batch);
+                offset += batch.size();
+                if (batch.size() < batchSize) break;
+            }
+
+            if (allData.isEmpty()) {
                 response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.setContentType("text/plain;charset=UTF-8");
                 response.getWriter().write("No data found");
                 return;
             }
 
             StringBuilder csv = new StringBuilder();
             // Header
-            Map<String, String> firstRow = tableData.get(0);
+            Map<String, String> firstRow = allData.get(0);
             csv.append(String.join(",", firstRow.keySet())).append("\n");
             // Data rows
-            for (Map<String, String> row : tableData) {
+            for (Map<String, String> row : allData) {
                 csv.append(String.join(",", row.values())).append("\n");
             }
 
-            String filename = request.table() + "_" + offset + ".csv";
+            String filename = request.table() + "_all.csv";
             response.setContentType("text/csv;charset=UTF-8");
             response.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
             response.getWriter().write(csv.toString());
@@ -1002,6 +1012,41 @@ public class QaController {
         } catch (Exception e) {
             try {
                 response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                response.setContentType("text/plain;charset=UTF-8");
+                response.getWriter().write("Error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 导出所有表数据为 ZIP 文件（下载全量数据）。
+     */
+    @PostMapping("/mysql/tables/export-all-csv")
+    public void exportAllTablesAsCsvZip(
+            @Valid @RequestBody DynamicConnectRequest request,
+            HttpServletResponse response
+    ) {
+        try {
+            MysqlSchemaCatalogService.DynamicConnection conn =
+                    new MysqlSchemaCatalogService.DynamicConnection(
+                            request.host(),
+                            request.port(),
+                            request.database(),
+                            request.username(),
+                            request.password() != null ? request.password() : ""
+                    );
+
+            String filename = request.database() + "_all_tables.zip";
+            response.setContentType("application/zip;charset=UTF-8");
+            response.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+
+            int tableCount = mysqlSchemaCatalogService.exportAllTablesAsZip(conn, response.getOutputStream());
+            response.flushBuffer();
+
+        } catch (Exception e) {
+            try {
+                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                response.setContentType("text/plain;charset=UTF-8");
                 response.getWriter().write("Error: " + e.getMessage());
             } catch (Exception ignored) {}
         }
