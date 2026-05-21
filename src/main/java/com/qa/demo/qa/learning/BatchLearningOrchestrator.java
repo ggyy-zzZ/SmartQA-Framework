@@ -1,26 +1,20 @@
 package com.qa.demo.qa.learning;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.answer.MiniMaxClient;
 import com.qa.demo.qa.config.QaAssistantProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.sql.*;
 import java.util.*;
 
-/**
- * 批量学习编排器：黑盒处理用户操作
- * <p>
- * 流程：
- * 1. 接收多个 CSV 文件，创建学习任务（落库）
- * 2. 分析 CSV 结构、检测关联、生成学习方案（LLM 参与）
- * 3. 方案评估：是否需要知识图谱、向量（LLM 参与）
- * 4. 执行学习：MySQL 先行（减轻上下文压力），按需触发向量/图谱
- * 5. 更新任务状态
- * <p>
- * 用户视角：选择文件 → 一键学习 → 完成（中间过程对用户不可见）
- */
 @Service
 public class BatchLearningOrchestrator {
+
+    private static final Logger log = LoggerFactory.getLogger(BatchLearningOrchestrator.class);
 
     private static final String LEARNING_TASK_TABLE = "qa_learning_task";
     private static final String LEARNING_TASK_ITEM_TABLE = "qa_learning_task_item";
@@ -29,6 +23,7 @@ public class BatchLearningOrchestrator {
     private final BatchCsvAnalysisService batchCsvAnalysisService;
     private final ActiveLearningService activeLearningService;
     private final MiniMaxClient miniMaxClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public BatchLearningOrchestrator(
             QaAssistantProperties properties,
@@ -228,7 +223,7 @@ public class BatchLearningOrchestrator {
                 String relPayload = buildRelationshipPayload(analysis.tables(), analysis.relationships());
                 activeLearningService.learn(relPayload, "csv_relationships", "csv_cross_table", "csv_batch_api", scope);
             } catch (Exception e) {
-                // 关联学习失败不影响主流程
+                log.warn("Cross-table relationship learning failed (non-critical): {}", e.getMessage());
             }
         }
     }
@@ -249,7 +244,8 @@ public class BatchLearningOrchestrator {
             ps.setString(1, errorMsg);
             ps.setString(2, taskId);
             ps.executeUpdate();
-        } catch (SQLException ignored) {
+        } catch (SQLException e) {
+            log.error("Failed to update task {} status to failed: {}", taskId, e.getMessage());
         }
     }
 
@@ -270,7 +266,8 @@ public class BatchLearningOrchestrator {
                     ));
                 }
             }
-        } catch (SQLException ignored) {
+        } catch (SQLException e) {
+            log.error("Failed to get task items for {}: {}", taskId, e.getMessage());
         }
         return items;
     }
@@ -303,7 +300,7 @@ public class BatchLearningOrchestrator {
                 return parseEvaluation(response, analysis);
             }
         } catch (Exception e) {
-            // LLM 调用失败，使用默认策略（仅 MySQL）
+            log.warn("LLM evaluation failed, using default strategy: {}", e.getMessage());
         }
         return defaultEvaluation(analysis);
     }
@@ -396,7 +393,12 @@ public class BatchLearningOrchestrator {
     }
 
     private String toJson(Object obj) {
-        return obj.toString();
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            log.error("JSON serialization failed: {}", e.getMessage());
+            return "{}";
+        }
     }
 
     private Connection getConnection() throws SQLException {
@@ -452,7 +454,8 @@ public class BatchLearningOrchestrator {
              Statement stmt = conn.createStatement()) {
             stmt.execute(createTaskTable);
             stmt.execute(createItemTable);
-        } catch (SQLException ignored) {
+        } catch (SQLException e) {
+            log.error("Failed to ensure learning task tables exist: {}", e.getMessage());
         }
     }
 

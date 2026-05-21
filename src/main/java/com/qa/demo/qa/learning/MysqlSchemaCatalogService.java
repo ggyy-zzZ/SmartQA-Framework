@@ -63,12 +63,17 @@ public class MysqlSchemaCatalogService {
                 properties.getMysqlPassword())) {
             List<String> tables = listBusinessTables(connection, schema, maxTables);
             Map<String, String> tableComments = loadTableComments(connection, schema, tables);
+            // 获取表关联关系
+            List<TableRelationship> relationships = getTableRelationships(connection, schema);
+
             StringBuilder md = new StringBuilder();
             md.append("# 数据库结构说明（只读元数据）\n\n");
             md.append("- **来源**：`information_schema`，仅结构，不包含业务行数据。\n");
             md.append("- **Schema**：`").append(escapeMdInline(schema)).append("`。\n");
             md.append("- **表数量上限**：本次最多列出 ").append(maxTables).append(" 张业务表（`qa_` 前缀系统表已排除）。\n");
-            md.append("- **实际导出表数**：").append(tables.size()).append("。\n\n");
+            md.append("- **实际导出表数**：").append(tables.size()).append("。\n");
+            md.append("- **检测到的关联数**：").append(relationships.size()).append("。\n\n");
+
             md.append("## 表清单\n\n");
             for (String t : tables) {
                 md.append("- `").append(escapeMdInline(t)).append("`");
@@ -78,7 +83,40 @@ public class MysqlSchemaCatalogService {
                 }
                 md.append("\n");
             }
+
+            // 输出表关联关系
             md.append("\n---\n\n");
+            md.append("## 表关联关系（外键）\n\n");
+            if (relationships.isEmpty()) {
+                md.append("_未检测到外键关系_（可能未设置外键，或使用动态列关联）。\n\n");
+            } else {
+                md.append("| 从表 | 从列 | 到表 | 到列 | 约束名 |\n");
+                md.append("|------|------|------|------|--------|\n");
+                for (TableRelationship rel : relationships) {
+                    md.append("| `").append(escapeMdInline(rel.fromTable())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.fromColumn())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.toTable())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.toColumn())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.constraintName() != null ? rel.constraintName() : "")).append("` |\n");
+                }
+                md.append("\n");
+                md.append("### 关联说明\n");
+                Map<String, List<TableRelationship>> byFromTable = new LinkedHashMap<>();
+                for (TableRelationship rel : relationships) {
+                    byFromTable.computeIfAbsent(rel.fromTable(), k -> new ArrayList<>()).add(rel);
+                }
+                for (Map.Entry<String, List<TableRelationship>> entry : byFromTable.entrySet()) {
+                    md.append("- **").append(escapeMdInline(entry.getKey())).append("** 通过 ");
+                    List<String> relDescs = new ArrayList<>();
+                    for (TableRelationship rel : entry.getValue()) {
+                        relDescs.add("`" + escapeMdInline(rel.fromColumn()) + "` → " + rel.toTable() + "." + rel.toColumn());
+                    }
+                    md.append(String.join(", ", relDescs)).append("\n");
+                }
+                md.append("\n");
+            }
+
+            md.append("---\n\n");
             for (String table : tables) {
                 appendTableSection(connection, schema, table, md);
             }
@@ -222,13 +260,19 @@ public class MysqlSchemaCatalogService {
             String schema = conn.database();
             List<String> tables = listBusinessTables(connection, schema, maxTables);
             Map<String, String> tableComments = loadTableComments(connection, schema, tables);
+            // 获取表关联关系
+            List<TableRelationship> relationships = getTableRelationships(connection, schema);
+
             StringBuilder md = new StringBuilder();
             md.append("# 数据库结构说明（只读元数据）\n\n");
             md.append("- **来源**：`information_schema`，仅结构，不包含业务行数据。\n");
             md.append("- **Schema**：`").append(escapeMdInline(schema)).append("`。\n");
             md.append("- **连接方式**：动态连接\n");
             md.append("- **表数量上限**：本次最多列出 ").append(maxTables).append(" 张业务表（`qa_` 前缀系统表已排除）。\n");
-            md.append("- **实际导出表数**：").append(tables.size()).append("。\n\n");
+            md.append("- **实际导出表数**：").append(tables.size()).append("。\n");
+            md.append("- **检测到的关联数**：").append(relationships.size()).append("。\n\n");
+
+            // 输出表清单
             md.append("## 表清单\n\n");
             for (String t : tables) {
                 md.append("- `").append(escapeMdInline(t)).append("`");
@@ -238,7 +282,42 @@ public class MysqlSchemaCatalogService {
                 }
                 md.append("\n");
             }
+
+            // 输出表关联关系
             md.append("\n---\n\n");
+            md.append("## 表关联关系（外键）\n\n");
+            if (relationships.isEmpty()) {
+                md.append("_未检测到外键关系_（可能未设置外键，或使用动态列关联）。\n\n");
+            } else {
+                md.append("| 从表 | 从列 | 到表 | 到列 | 约束名 |\n");
+                md.append("|------|------|------|------|--------|\n");
+                for (TableRelationship rel : relationships) {
+                    md.append("| `").append(escapeMdInline(rel.fromTable())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.fromColumn())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.toTable())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.toColumn())).append("`")
+                            .append(" | `").append(escapeMdInline(rel.constraintName() != null ? rel.constraintName() : "")).append("` |\n");
+                }
+                md.append("\n");
+                md.append("### 关联说明\n");
+                // 按从表分组输出，方便理解
+                Map<String, List<TableRelationship>> byFromTable = new LinkedHashMap<>();
+                for (TableRelationship rel : relationships) {
+                    byFromTable.computeIfAbsent(rel.fromTable(), k -> new ArrayList<>()).add(rel);
+                }
+                for (Map.Entry<String, List<TableRelationship>> entry : byFromTable.entrySet()) {
+                    md.append("- **").append(escapeMdInline(entry.getKey())).append("** 通过 ");
+                    List<String> relDescs = new ArrayList<>();
+                    for (TableRelationship rel : entry.getValue()) {
+                        relDescs.add("`" + escapeMdInline(rel.fromColumn()) + "` → " + rel.toTable() + "." + rel.toColumn());
+                    }
+                    md.append(String.join(", ", relDescs)).append("\n");
+                }
+                md.append("\n");
+            }
+
+            md.append("---\n\n");
+            md.append("## 表结构详情\n\n");
             for (String table : tables) {
                 appendTableSection(connection, schema, table, md);
             }
@@ -261,9 +340,12 @@ public class MysqlSchemaCatalogService {
     /**
      * 获取数据库表关联关系（外键）。
      * 查询 information_schema.KEY_COLUMN_USAGE 返回表间外键关系。
+     * 同时基于列名模式（如 *_id）进行关联推断。
      */
     public List<TableRelationship> getTableRelationships(Connection connection, String schema) throws Exception {
         List<TableRelationship> relationships = new ArrayList<>();
+
+        // 1. 外键约束（显式外键）
         String sql = """
                 SELECT
                     kcu.table_name AS from_table,
@@ -291,6 +373,67 @@ public class MysqlSchemaCatalogService {
                 }
             }
         }
+
+        // 2. 基于列名模式的推断（隐式外键）
+        // 收集所有表的主键/ID 列
+        Map<String, String> tableIdColumns = new LinkedHashMap<>();
+        Map<String, List<String>> allColumns = new LinkedHashMap<>();
+        for (String table : listBusinessTables(connection, schema, 1000)) {
+            List<String> cols = new ArrayList<>();
+            String idCol = null;
+            String sql2 = "SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position";
+            try (PreparedStatement ps = connection.prepareStatement(sql2)) {
+                ps.setString(1, schema);
+                ps.setString(2, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String col = rs.getString("column_name");
+                        cols.add(col);
+                        if (col.equalsIgnoreCase("id")) {
+                            idCol = col;
+                        }
+                    }
+                }
+            }
+            allColumns.put(table, cols);
+            if (idCol != null) {
+                tableIdColumns.put(table.toLowerCase(), idCol);
+            }
+        }
+
+        // 查找 *_id 列引用其他表的情况
+        for (Map.Entry<String, List<String>> entry : allColumns.entrySet()) {
+            String fromTable = entry.getKey();
+            for (String col : entry.getValue()) {
+                String colLower = col.toLowerCase();
+                // 检查是否是外键模式：table_name_id 或 *_id
+                if (colLower.endsWith("_id")) {
+                    String potentialRef = colLower.replace("_id", "");
+                    // 查找是否有匹配的表
+                    for (Map.Entry<String, String> idEntry : tableIdColumns.entrySet()) {
+                        if (idEntry.getKey().equals(potentialRef)) {
+                            // 找到可能的引用
+                            String toTable = idEntry.getKey();
+                            // 检查是否已存在显式外键
+                            boolean exists = relationships.stream()
+                                    .anyMatch(r -> r.fromTable().equals(fromTable)
+                                            && r.fromColumn().equals(col)
+                                            && r.toTable().equalsIgnoreCase(toTable));
+                            if (!exists) {
+                                relationships.add(new TableRelationship(
+                                        fromTable,
+                                        col,
+                                        toTable,
+                                        idEntry.getValue(),
+                                        "pattern_inferred:" + col + "->" + toTable + ".id"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return relationships;
     }
 

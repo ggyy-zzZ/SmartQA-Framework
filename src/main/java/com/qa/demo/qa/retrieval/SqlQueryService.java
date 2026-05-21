@@ -1,10 +1,14 @@
 package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.knowledge.KnowledgeAssistantPrompts;
+import com.qa.demo.qa.config.CacheConfig;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -30,6 +34,7 @@ import java.util.regex.Pattern;
 @Service
 public class SqlQueryService {
 
+    private static final Logger log = LoggerFactory.getLogger(SqlQueryService.class);
     private static final Pattern LIMIT_PATTERN = Pattern.compile("(?i)\\blimit\\s+\\d+");
     private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("(?s)```(?:sql|json)?\\s*(.*?)\\s*```");
     private static final Pattern PERSON_NAME_PATTERN = Pattern.compile("([\\u4e00-\\u9fa5]{2,4}?)(?:现在|目前|现任|是|担任|作为|在|的|有哪些|哪些)");
@@ -86,6 +91,13 @@ public class SqlQueryService {
             return List.of();
         }
         int limitedTopK = Math.max(1, Math.min(topK, 20));
+        String cacheKey = question + ":" + limitedTopK;
+        return retrieveTopChunksCached(cacheKey, question, limitedTopK);
+    }
+
+    @Cacheable(value = CacheConfig.RETRIEVAL_CACHE, key = "#root.method.name + ':' + #key")
+    public List<ContextChunk> retrieveTopChunksCached(String key, String question, int topK) {
+        int limitedTopK = Math.max(1, Math.min(topK, 20));
         try (Connection connection = DriverManager.getConnection(
                 properties.getMysqlUrl(),
                 properties.getMysqlUsername(),
@@ -105,7 +117,8 @@ public class SqlQueryService {
                 return List.of();
             }
             return executeSqlToChunks(connection, normalizedSql, limitedTopK);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("retrieveTopChunksCached failed: {}", e.getMessage());
             return List.of();
         }
     }
@@ -185,7 +198,8 @@ public class SqlQueryService {
                     ));
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.debug("retrievePersonRoleChunks failed: {}", e.getMessage());
             return List.of();
         }
         if (chunks.isEmpty()) {
@@ -215,7 +229,8 @@ public class SqlQueryService {
                 }
                 tableColumns.computeIfAbsent(tableName, k -> new ArrayList<>()).add(columnName);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.debug("loadSchemaSummary failed: {}", e.getMessage());
             return "";
         }
 
@@ -330,7 +345,7 @@ public class SqlQueryService {
                     if (companyName.isBlank()) {
                         companyName = "unknown";
                     }
-                    String snippet = "sql=" + sql + "; row=" + flattenRow(row);
+                    String snippet = "row=" + flattenRow(row);
                     double score = 20.0 - rowIndex * 0.5;
                     chunks.add(new ContextChunk(
                             companyId,
@@ -342,7 +357,8 @@ public class SqlQueryService {
                     ));
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("executeSqlToChunks failed: {}", e.getMessage());
             return List.of();
         }
         return chunks;
@@ -509,7 +525,8 @@ public class SqlQueryService {
                     hits.add(new EmployeeHit(rs.getInt("id"), safe(rs.getString("name"))));
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.debug("findEmployeesByName failed: {}", e.getMessage());
             return List.of();
         }
         return hits;
