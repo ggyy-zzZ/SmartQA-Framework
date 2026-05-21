@@ -1,5 +1,6 @@
 package com.qa.demo.qa.intent;
 
+import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.QaScopes;
 import org.springframework.stereotype.Service;
@@ -9,12 +10,21 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 企业对象指代模糊时的澄清判断与候选展示文案。
+ * 歧义指代澄清：当问题中存在"我们公司"、"这家"等模糊指代时，先让用户澄清再检索。
+ * <p>
+ * 歧义短语列表从配置文件动态加载（qa.assistant.ambiguous-phrases.{scope}），
+ * 支持按 scope（enterprise/personal）配置不同的模式。
  */
 @Service
 public class CompanyClarificationAdvisor {
 
-    public boolean needsCompanyClarification(String question, String scope) {
+    private final QaAssistantProperties properties;
+
+    public CompanyClarificationAdvisor(QaAssistantProperties properties) {
+        this.properties = properties;
+    }
+
+    public boolean needsClarification(String question, String scope) {
         if (QaScopes.PERSONAL.equals(scope)) {
             return false;
         }
@@ -31,27 +41,20 @@ public class CompanyClarificationAdvisor {
         if (aggregateIntent) {
             return false;
         }
-        return refersToUnnamedObject(lower);
+        return refersToAmbiguousPhrase(lower, scope);
     }
 
     /**
-     * 「这家 / 我们单位 / 哪家公司」等说法没有落到具体名称时，先澄清比盲检索更稳妥。
+     * 检查问题是否包含指定 scope 的歧义指代短语。
      */
-    public boolean refersToUnnamedObject(String lower) {
-        return lower.contains("这家")
-                || lower.contains("那家")
-                || lower.contains("该公司")
-                || lower.contains("本公司")
-                || lower.contains("我们公司")
-                || lower.contains("这个公司")
-                || lower.contains("我司")
-                || lower.contains("我们单位")
-                || lower.contains("咱们公司")
-                || lower.contains("哪家公司")
-                || lower.contains("哪个公司")
-                || lower.contains("哪一家公司")
-                || lower.contains("什么公司")
-                || lower.contains("哪一家企业");
+    private boolean refersToAmbiguousPhrase(String lower, String scope) {
+        List<String> phrases = properties.getAmbiguousPhrasesForScope(scope);
+        for (String phrase : phrases) {
+            if (lower.contains(phrase.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String buildClarificationAnswer(List<CompanyCandidate> candidates) {

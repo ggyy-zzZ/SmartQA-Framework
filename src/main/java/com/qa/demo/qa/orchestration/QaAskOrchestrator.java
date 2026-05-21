@@ -127,7 +127,7 @@ public class QaAskOrchestrator {
 
         if (!explicitCompanyHint
                 && !skipCompanyClarify
-                && clarificationAdvisor.needsCompanyClarification(question, scope)
+                && clarificationAdvisor.needsClarification(question, scope)
                 && !retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             List<CompanyCandidate> candidates = graphContextService.suggestCompanyCandidates(question, 5);
             String clarifyAnswer = clarificationAdvisor.buildClarificationAnswer(candidates);
@@ -309,7 +309,7 @@ public class QaAskOrchestrator {
 
                 if (!explicitCompanyHint
                         && !skipCompanyClarify
-                        && clarificationAdvisor.needsCompanyClarification(question, scope)
+                        && clarificationAdvisor.needsClarification(question, scope)
                         && !retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
                     List<CompanyCandidate> candidates = graphContextService.suggestCompanyCandidates(question, 5);
                     sseStreamSupport.emitThinking(emitter, "clarify", "当前指代不够具体，需要先确认你要查询的是哪一个对象。");

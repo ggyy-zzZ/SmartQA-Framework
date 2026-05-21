@@ -4,6 +4,11 @@ import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 @Validated
 @ConfigurationProperties(prefix = "qa.assistant")
 public class QaAssistantProperties {
@@ -124,6 +129,12 @@ public class QaAssistantProperties {
      * 外部服务超时（毫秒）：MiniMax API 请求（流式/非流式）。
      */
     private int minimaxTimeoutMs = 60000;
+
+    /**
+     * 歧义指代短语配置（逗号分隔），按 scope 分类。
+     * 格式：scope.ambiguous-phrases（如 qa.ambiguous-phrases.enterprise=咱们公司,我们公司,...）
+     */
+    private Map<String, String> ambiguousPhrases = new HashMap<>();
 
     public String getAssistantName() {
         return assistantName;
@@ -403,5 +414,24 @@ public class QaAssistantProperties {
 
     public void setMinimaxTimeoutMs(int minimaxTimeoutMs) {
         this.minimaxTimeoutMs = minimaxTimeoutMs;
+    }
+
+    public Map<String, String> getAmbiguousPhrases() {
+        return ambiguousPhrases;
+    }
+
+    public void setAmbiguousPhrases(Map<String, String> ambiguousPhrases) {
+        this.ambiguousPhrases = ambiguousPhrases;
+    }
+
+    /**
+     * 获取指定 scope 的歧义短语列表。
+     */
+    public List<String> getAmbiguousPhrasesForScope(String scope) {
+        String phrases = ambiguousPhrases.get(scope);
+        if (phrases == null || phrases.isBlank()) {
+            return List.of();
+        }
+        return Arrays.asList(phrases.split(","));
     }
 }
