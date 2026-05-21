@@ -24,6 +24,7 @@ public class QaRetrievalPipeline {
     private final DocumentContextService documentContextService;
     private final ActiveLearningService activeLearningService;
     private final QaAssistantProperties properties;
+    private final EntityTableMapper entityTableMapper;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -32,7 +33,8 @@ public class QaRetrievalPipeline {
             SqlQueryService sqlQueryService,
             DocumentContextService documentContextService,
             ActiveLearningService activeLearningService,
-            QaAssistantProperties properties
+            QaAssistantProperties properties,
+            EntityTableMapper entityTableMapper
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -41,6 +43,7 @@ public class QaRetrievalPipeline {
         this.documentContextService = documentContextService;
         this.activeLearningService = activeLearningService;
         this.properties = properties;
+        this.entityTableMapper = entityTableMapper;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -48,7 +51,7 @@ public class QaRetrievalPipeline {
 
     public RetrievalResult retrieveByIntent(String intent, String question) throws IOException {
         String normalized = intent == null ? "" : intent.toLowerCase();
-        return switch (normalized) {
+        RetrievalResult base = switch (normalized) {
             case "graph" -> retrieveGraphFirst(question);
             case "vector" -> retrieveVectorFirst(question);
             case "document" -> retrieveDocumentFirst(question);
@@ -58,6 +61,37 @@ public class QaRetrievalPipeline {
             case "unknown" -> new RetrievalResult("unknown", List.of());
             default -> retrieveHybrid(question);
         };
+        return appendSupplementalTables(base, question);
+    }
+
+    /**
+     * 追加检测到的 supplemental tables 查询结果。
+     */
+    private RetrievalResult appendSupplementalTables(RetrievalResult base, String question) {
+        List<String> supplementalTables = entityTableMapper.getSupplementalTablesForQuestion(question);
+        if (supplementalTables.isEmpty()) {
+            return base;
+        }
+        List<ContextChunk> merged = new ArrayList<>(base.evidence());
+        Set<String> seen = new HashSet<>();
+        for (ContextChunk c : base.evidence()) {
+            seen.add(c.source() + "|" + c.companyId());
+        }
+        int supplementalLimit = Math.max(1, properties.getMysqlTopK());
+        for (String table : supplementalTables) {
+            List<ContextChunk> supplemental = mysqlContextService.querySupplementalTable(table, question, supplementalLimit);
+            for (ContextChunk c : supplemental) {
+                String key = c.source() + "|" + c.companyId();
+                if (seen.add(key)) {
+                    merged.add(c);
+                }
+            }
+        }
+        int cap = Math.max(properties.getRetrievalTopK(), 12);
+        if (merged.size() > cap) {
+            merged = new ArrayList<>(merged.subList(0, cap));
+        }
+        return new RetrievalResult("supplemental_appended_" + base.retrievalSource(), merged);
     }
 
     public List<ContextChunk> safeActiveLearningRetrieve(String question, String scope) {

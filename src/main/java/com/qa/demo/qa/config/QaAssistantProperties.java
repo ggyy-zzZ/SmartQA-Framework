@@ -40,6 +40,13 @@ public class QaAssistantProperties {
     private int mysqlPerTableLimit = 3;
 
     /**
+     * 业务数据库 URL（用于 supplemental table 查询，如 tdcomp.employee）。
+     */
+    private String businessMysqlUrl = "jdbc:mysql://localhost:3306/tdcomp?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false";
+    private String businessMysqlUsername = "root";
+    private String businessMysqlPassword = "root";
+
+    /**
      * 在系统提示中展示的助手称谓，勿绑定某一商业产品名。
      */
     private String assistantName = "知识库问答助手";
@@ -135,6 +142,13 @@ public class QaAssistantProperties {
      * 格式：scope.ambiguous-phrases（如 qa.ambiguous-phrases.enterprise=咱们公司,我们公司,...）
      */
     private Map<String, String> ambiguousPhrases = new HashMap<>();
+
+    /**
+     * 实体类型 → 表名映射（逗号分隔多表）。
+     * 用于检索时追加查询 supplemental tables。
+     * 格式：entity-type.table（如 qa.assistant.entity-table-mapping.employee=tdcomp.employee）
+     */
+    private Map<String, String> entityTableMapping = new HashMap<>();
 
     public String getAssistantName() {
         return assistantName;
@@ -433,5 +447,48 @@ public class QaAssistantProperties {
             return List.of();
         }
         return Arrays.asList(phrases.split(","));
+    }
+
+    public Map<String, String> getEntityTableMapping() {
+        return entityTableMapping;
+    }
+
+    public void setEntityTableMapping(Map<String, String> entityTableMapping) {
+        this.entityTableMapping = entityTableMapping;
+    }
+
+    /**
+     * 获取指定实体类型对应的表名列表。
+     */
+    public List<String> getTablesForEntityType(String entityType) {
+        String tables = entityTableMapping.get(entityType);
+        if (tables == null || tables.isBlank()) {
+            return List.of();
+        }
+        return Arrays.asList(tables.split(","));
+    }
+
+    public String getBusinessMysqlUrl() {
+        return businessMysqlUrl;
+    }
+
+    public void setBusinessMysqlUrl(String businessMysqlUrl) {
+        this.businessMysqlUrl = businessMysqlUrl;
+    }
+
+    public String getBusinessMysqlUsername() {
+        return businessMysqlUsername;
+    }
+
+    public void setBusinessMysqlUsername(String businessMysqlUsername) {
+        this.businessMysqlUsername = businessMysqlUsername;
+    }
+
+    public String getBusinessMysqlPassword() {
+        return businessMysqlPassword;
+    }
+
+    public void setBusinessMysqlPassword(String businessMysqlPassword) {
+        this.businessMysqlPassword = businessMysqlPassword;
     }
 }

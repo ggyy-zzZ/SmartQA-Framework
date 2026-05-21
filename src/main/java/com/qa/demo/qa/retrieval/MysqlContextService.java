@@ -382,4 +382,117 @@ public class MysqlContextService {
 
     private record ScoredChunk(ContextChunk chunk, double score) {
     }
+
+    /**
+     * 查询指定的 supplemental table（用于实体类型触发的追加查询）。
+     * 查询业务库（tdcomp）而非系统库（assistant）。
+     */
+    public List<ContextChunk> querySupplementalTable(String tableName, String question, int topK) {
+        if (tableName == null || tableName.isBlank()) {
+            return List.of();
+        }
+        List<String> tokens = extractTokens(question);
+        if (tokens.isEmpty()) {
+            return List.of();
+        }
+        try (Connection connection = openBusinessConnection()) {
+            List<String> textColumns = loadTextColumns(connection, tableName);
+            if (textColumns.isEmpty()) {
+                return List.of();
+            }
+            String whereClause = buildWhereClause(textColumns, tokens.size());
+            if (whereClause.isBlank()) {
+                return List.of();
+            }
+            String sql = "SELECT * FROM `" + tableName + "` WHERE " + whereClause + " LIMIT ?";
+            List<ScoredChunk> chunks = new ArrayList<>();
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                int idx = 1;
+                for (String token : tokens) {
+                    ps.setString(idx++, "%" + token + "%");
+                }
+                ps.setInt(idx, Math.max(1, topK));
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        Map<String, String> row = readRow(rs);
+                        if (row.isEmpty()) {
+                            continue;
+                        }
+                        String textBlob = flattenRow(row);
+                        int hitCount = countTokenHits(textBlob, tokens);
+                        if (hitCount <= 0) {
+                            continue;
+                        }
+                        String companyId = pickValue(row, "company_id", "companyid", "ent_id", "corp_id", "owner_id", "id");
+                        String companyName = pickValue(row, "company_name", "companyname", "ent_name", "corp_name", "name", "employee_name");
+                        if (companyId.isBlank()) {
+                            companyId = "unknown";
+                        }
+                        if (companyName.isBlank()) {
+                            companyName = "unknown";
+                        }
+                        String snippet = buildSnippet(row);
+                        double score = 8.0 + hitCount * 1.5;
+                        ContextChunk chunk = new ContextChunk(
+                                companyId,
+                                companyName,
+                                "supplemental:" + tableName,
+                                snippet,
+                                score,
+                                "supplemental-" + tableName
+                        );
+                        chunks.add(new ScoredChunk(chunk, score));
+                    }
+                }
+            }
+            if (chunks.isEmpty()) {
+                return List.of();
+            }
+            chunks.sort(Comparator.comparingDouble(ScoredChunk::score).reversed());
+            List<ContextChunk> result = new ArrayList<>();
+            for (int i = 0; i < Math.min(topK, chunks.size()); i++) {
+                result.add(chunks.get(i).chunk());
+            }
+            return result;
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private Connection openBusinessConnection() throws SQLException {
+        Connection conn = DriverManager.getConnection(
+                properties.getBusinessMysqlUrl(),
+                properties.getBusinessMysqlUsername(),
+                properties.getBusinessMysqlPassword()
+        );
+        int seconds = Math.max(1, properties.getMysqlQueryTimeoutSeconds());
+        try (Statement stmt = conn.createStatement()) {
+            stmt.setQueryTimeout(seconds);
+        }
+        return conn;
+    }
+
+    private List<String> loadTextColumns(Connection connection, String tableName) throws SQLException {
+        String sql = """
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                AND table_name = ?
+                ORDER BY ordinal_position
+                """;
+        List<String> textColumns = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, tableName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String colName = rs.getString("column_name");
+                    String dataType = rs.getString("data_type");
+                    if (colName != null && TEXT_TYPES.contains(dataType == null ? "" : dataType.toLowerCase(Locale.ROOT))) {
+                        textColumns.add(colName);
+                    }
+                }
+            }
+        }
+        return textColumns;
+    }
 }
