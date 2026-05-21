@@ -1,9 +1,11 @@
 package com.qa.demo.qa.web;
 
+import java.util.ArrayList;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.QaScopes;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.learning.BatchCsvAnalysisService;
+import com.qa.demo.qa.learning.BatchLearningOrchestrator;
 import com.qa.demo.qa.learning.LearningResponseBuilder;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogAssessmentService;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogService;
@@ -61,6 +63,7 @@ public class QaController {
     private final SchemaSedimentationPlanService schemaSedimentationPlanService;
     private final QaAssistantProperties assistantProperties;
     private final BatchCsvAnalysisService batchCsvAnalysisService;
+    private final BatchLearningOrchestrator batchLearningOrchestrator;
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -76,7 +79,8 @@ public class QaController {
             SedimentationQueueService sedimentationQueueService,
             SchemaSedimentationPlanService schemaSedimentationPlanService,
             QaAssistantProperties assistantProperties,
-            BatchCsvAnalysisService batchCsvAnalysisService
+            BatchCsvAnalysisService batchCsvAnalysisService,
+            BatchLearningOrchestrator batchLearningOrchestrator
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -92,6 +96,7 @@ public class QaController {
         this.schemaSedimentationPlanService = schemaSedimentationPlanService;
         this.assistantProperties = assistantProperties;
         this.batchCsvAnalysisService = batchCsvAnalysisService;
+        this.batchLearningOrchestrator = batchLearningOrchestrator;
     }
 
     /**
@@ -386,8 +391,6 @@ public class QaController {
         return body;
     }
 
-    private final BatchCsvAnalysisService batchCsvAnalysisService;
-
     /**
      * 批量 CSV 分析：上传多个 CSV 文件，分析表结构、检测关联、生成学习方案。
      * 不实际写入知识库，只返回分析结果供确认。
@@ -542,6 +545,108 @@ public class QaController {
             return Map.of(
                     "ok", false,
                     "message", e.getMessage() == null ? "learning_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+    }
+
+    /**
+     * 一键批量学习（黑盒）：多选 CSV → 分析 → 方案生成与评估 → 执行学习
+     * <p>
+     * 用户视角：选择多个 CSV 文件 → 一键学习 → 完成
+     * 内部流程对用户不可见，由 BatchLearningOrchestrator 编排：
+     * 1. 创建学习任务（落库）
+     * 2. 批量分析 CSV 结构
+     * 3. LLM 评估方案（是否需要向量/图谱）
+     * 4. MySQL 先行沉淀，按需触发向量/图谱
+     */
+    @PostMapping(value = "/structured/csv-batch-learn-auto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> learnBatchCsvAuto(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestParam(defaultValue = QaScopes.ENTERPRISE) String scope
+    ) {
+        if (files == null || files.length == 0) {
+            return Map.of(
+                    "ok", false,
+                    "message", "请上传至少一个 CSV 文件",
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+
+        String normalizedScope = QaScopes.normalize(scope);
+        try {
+            List<BatchCsvAnalysisService.CsvFileData> csvFiles = new ArrayList<>();
+            for (MultipartFile file : files) {
+                if (file != null && !file.isEmpty() && file.getOriginalFilename() != null
+                        && file.getOriginalFilename().toLowerCase().endsWith(".csv")) {
+                    csvFiles.add(new BatchCsvAnalysisService.CsvFileData(
+                            file.getOriginalFilename(),
+                            file.getBytes()
+                    ));
+                }
+            }
+
+            if (csvFiles.isEmpty()) {
+                return Map.of(
+                        "ok", false,
+                        "message", "没有有效的 CSV 文件",
+                        "timestamp", OffsetDateTime.now().toString()
+                );
+            }
+
+            BatchLearningOrchestrator.LearningTaskResult result =
+                    batchLearningOrchestrator.learnBatch(csvFiles, normalizedScope);
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", result.ok());
+            body.put("taskId", result.taskId());
+            body.put("message", result.message());
+            body.put("fileCount", result.fileCount());
+            body.put("timestamp", OffsetDateTime.now().toString());
+            return body;
+
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "learning_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
+        }
+    }
+
+    /**
+     * 查询批量学习任务状态
+     */
+    @GetMapping("/structured/csv-batch-learn/status")
+    public Map<String, Object> getBatchLearnStatus(@RequestParam String taskId) {
+        try {
+            BatchLearningOrchestrator.LearningTaskStatus status =
+                    batchLearningOrchestrator.getTaskStatus(taskId);
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", true);
+            body.put("taskId", status.taskId());
+            body.put("status", status.status());
+            body.put("fileCount", status.fileCount());
+            body.put("errorMessage", status.errorMessage());
+
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (var item : status.items()) {
+                items.add(Map.of(
+                        "tableName", item.tableName(),
+                        "filename", item.filename(),
+                        "status", item.status(),
+                        "knowledgeId", item.knowledgeId() != null ? item.knowledgeId() : "",
+                        "errorMessage", item.errorMessage() != null ? item.errorMessage() : ""
+                ));
+            }
+            body.put("items", items);
+            body.put("timestamp", OffsetDateTime.now().toString());
+            return body;
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage(),
                     "timestamp", OffsetDateTime.now().toString()
             );
         }

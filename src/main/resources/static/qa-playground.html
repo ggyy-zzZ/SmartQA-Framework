@@ -381,14 +381,14 @@
 
         <!-- 1.2 CSV learning -->
         <div class="sub-section">
-            <div class="sub-title">上传 CSV 学习 <span>（表格数据）</span></div>
+            <div class="sub-title">上传 CSV 学习 <span>（支持多选，自动分析方案）</span></div>
             <div class="toolbar">
-                <input id="csvFile" type="file" accept=".csv">
+                <input id="csvFile" type="file" accept=".csv" multiple>
                 <label style="font-size:12px;"><input id="csvHeaderRow" type="checkbox" checked> 首行是表头</label>
-                <button id="csvIngestBtn">上传 CSV</button>
+                <button id="csvBatchLearnBtn">一键批量学习</button>
                 <span id="csvStatus" class="learn-status"></span>
             </div>
-            <p class="hint">支持 UTF-8 编码的 CSV 文件。数据行会当作文本存入知识库。</p>
+            <p class="hint">支持多选 CSV 文件，系统自动分析表结构、检测关联、生成学习方案，一键完成学习。</p>
         </div>
 
         <!-- 1.3 MySQL schema learning -->
@@ -514,7 +514,7 @@
 
     const csvFileEl = document.getElementById("csvFile");
     const csvHeaderRowEl = document.getElementById("csvHeaderRow");
-    const csvIngestBtnEl = document.getElementById("csvIngestBtn");
+    const csvBatchLearnBtnEl = document.getElementById("csvBatchLearnBtn");
     const csvStatusEl = document.getElementById("csvStatus");
 
     const dbHostEl = document.getElementById("dbHost");
@@ -699,34 +699,41 @@
         }
     });
 
-    // CSV learn
-    csvIngestBtnEl.addEventListener("click", async () => {
-        const file = csvFileEl.files && csvFileEl.files[0];
+    // CSV batch learn (multi-select, auto plan)
+    csvBatchLearnBtnEl.addEventListener("click", async () => {
+        const files = csvFileEl.files;
         const scope = scopeModeEl.value || "enterprise";
-        if (!file) { alert("请选择 CSV 文件"); return; }
-        csvIngestBtnEl.disabled = true;
-        csvStatusEl.textContent = "上传中...";
+        if (!files || files.length === 0) { alert("请选择 CSV 文件"); return; }
+        csvBatchLearnBtnEl.disabled = true;
+        csvStatusEl.textContent = "学习中...";
         csvStatusEl.className = "learn-status";
-        setStatus("CSV 学习中...", true);
+        setStatus("CSV 批量学习中...", true);
         try {
             const fd = new FormData();
-            fd.append("file", file);
-            fd.append("headerRow", csvHeaderRowEl.checked ? "true" : "false");
+            for (const file of files) {
+                fd.append("files", file);
+            }
             fd.append("scope", scope);
-            const resp = await fetch("/qa/structured/csv-ingest", {method: "POST", body: fd});
+            const resp = await fetch("/qa/structured/csv-batch-learn-auto", {method: "POST", body: fd});
             if (!resp.ok) throw new Error("HTTP " + resp.status);
             const data = await resp.json();
             const ok = !!data.ok;
-            csvStatusEl.textContent = ok ? "学习完成" : (data.rejectionReason || "失败");
-            csvStatusEl.className = "learn-status " + (ok ? "ok" : "error");
-            setStatus(ok ? "完成" : "失败", false);
-            renderThinking([{message: "CSV 已学习：" + file.name}]);
+            if (ok) {
+                csvStatusEl.textContent = "学习完成（" + files.length + " 个文件）";
+                csvStatusEl.className = "learn-status ok";
+                setStatus("完成", false);
+                renderThinking([{message: "CSV 批量学习完成：" + files.length + " 个文件"}]);
+            } else {
+                csvStatusEl.textContent = data.message || "失败";
+                csvStatusEl.className = "learn-status error";
+                setStatus("失败", false);
+            }
         } catch (e) {
             csvStatusEl.textContent = e.message;
             csvStatusEl.className = "learn-status error";
             setStatus("失败", false);
         } finally {
-            csvIngestBtnEl.disabled = false;
+            csvBatchLearnBtnEl.disabled = false;
         }
     });
 
