@@ -18,126 +18,68 @@
             --glow: 0 0 18px rgba(0, 229, 255, 0.25);
             --success: #34d399;
             --error: #fda4af;
-            --warn-bg: rgba(251, 191, 36, 0.12);
-            --warn-border: rgba(251, 191, 36, 0.45);
         }
         body {
             margin: 0;
-            background:
-                radial-gradient(circle at 15% 20%, rgba(124, 58, 237, 0.28), transparent 40%),
-                radial-gradient(circle at 80% 0%, rgba(0, 229, 255, 0.2), transparent 38%),
-                linear-gradient(180deg, #06080f 0%, var(--bg) 100%);
+            background: linear-gradient(180deg, #06080f 0%, var(--bg) 100%);
             font-family: "Microsoft YaHei", Arial, sans-serif;
             color: var(--text);
             min-height: 100vh;
         }
-        .wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+        .wrap { max-width: 800px; margin: 0 auto; padding: 20px 16px 60px; }
 
-        /* Header */
         .header {
             text-align: center;
-            padding: 24px 0 20px;
+            padding: 30px 0 24px;
         }
         .header h1 {
             margin: 0 0 8px;
-            font-size: 26px;
+            font-size: 28px;
             color: #c4f8ff;
             text-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
         }
-        .header .lead {
-            margin: 0;
-            color: var(--muted);
-            font-size: 14px;
-        }
+        .header p { margin: 0; color: var(--muted); font-size: 14px; }
 
-        /* Flow indicator */
-        .flow {
-            display: flex;
-            justify-content: center;
-            gap: 8px;
-            margin: 20px 0 24px;
-            flex-wrap: wrap;
-        }
-        .flow-step {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 13px;
-            color: var(--muted);
-        }
-        .flow-step .num {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            background: var(--card-2);
-            border: 1px solid var(--line);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-        }
-        .flow-step.active .num {
-            background: var(--primary);
-            color: #000;
-            border-color: var(--primary);
-        }
-        .flow-step.active {
-            color: var(--primary);
-        }
-        .flow-arrow {
-            color: var(--muted);
-            font-size: 11px;
-        }
-
-        /* Card */
         .card {
             background: var(--card);
-            border-radius: 14px;
+            border-radius: 16px;
             box-shadow: 0 10px 28px rgba(2, 6, 23, 0.6), inset 0 0 0 1px rgba(56, 189, 248, 0.08);
-            padding: 18px 20px;
-            margin-bottom: 14px;
+            padding: 20px 24px;
+            margin-bottom: 16px;
             border: 1px solid rgba(56, 189, 248, 0.16);
         }
-        .section-title {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 0 0 12px;
-            font-size: 16px;
+        .card-title {
+            font-size: 18px;
             color: #b7f6ff;
             font-weight: 600;
+            margin: 0 0 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .section-title .step {
-            width: 28px;
-            height: 28px;
+        .card-title .icon {
+            width: 32px;
+            height: 32px;
             border-radius: 8px;
             background: linear-gradient(135deg, var(--primary), var(--primary-2));
-            color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-        }
-        .section-title .desc {
-            font-size: 13px;
-            color: var(--muted);
-            font-weight: 400;
+            font-size: 16px;
         }
 
-        /* Input area */
         textarea, input[type="text"], input[type="password"], input[type="number"] {
             width: 100%;
             box-sizing: border-box;
             border-radius: 10px;
             border: 1px solid rgba(0, 229, 255, 0.22);
-            padding: 10px 12px;
+            padding: 12px 14px;
             font-size: 14px;
             background: #091125;
             color: #dbeafe;
             font-family: inherit;
         }
-        textarea { min-height: 80px; resize: vertical; }
+        textarea { min-height: 100px; resize: vertical; }
         textarea:focus, input:focus {
             outline: none;
             border-color: rgba(0, 229, 255, 0.55);
@@ -145,39 +87,24 @@
         }
         textarea::placeholder, input::placeholder { color: #475569; }
 
-        /* Toolbar */
         .toolbar {
-            margin-top: 10px;
+            margin-top: 12px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             flex-wrap: wrap;
-        }
-        .toolbar label {
-            color: #a5b4fc;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        select {
-            border-radius: 8px;
-            border: 1px solid rgba(0, 229, 255, 0.28);
-            background: #0b1228;
-            color: #cbd5e1;
-            padding: 6px 8px;
-            font-size: 13px;
         }
         button {
             border: none;
             border-radius: 10px;
             background: linear-gradient(90deg, var(--primary) 0%, var(--primary-2) 100%);
             color: #fff;
-            padding: 10px 18px;
-            font-size: 14px;
+            padding: 12px 24px;
+            font-size: 15px;
             cursor: pointer;
             box-shadow: 0 0 14px rgba(124, 58, 237, 0.42);
             font-family: inherit;
+            font-weight: 500;
         }
         button:hover { filter: brightness(1.06); }
         button:disabled { background: #475569; cursor: not-allowed; filter: none; box-shadow: none; }
@@ -185,153 +112,92 @@
             background: #1e293b;
             border: 1px solid rgba(148, 163, 184, 0.35);
             box-shadow: none;
-            padding: 8px 14px;
+            padding: 10px 16px;
         }
         button.secondary:hover { border-color: rgba(0, 229, 255, 0.45); }
 
-        /* Status */
+        select {
+            border-radius: 8px;
+            border: 1px solid rgba(0, 229, 255, 0.28);
+            background: #0b1228;
+            color: #cbd5e1;
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+
         .status {
             font-size: 13px;
             color: var(--muted);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .status .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: #64748b;
-        }
-        .status .dot.live {
-            background: var(--success);
-            box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.16);
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
         }
         .status.ok { color: var(--success); }
         .status.error { color: var(--error); }
 
-        /* Learn section */
-        .sub-section {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px dashed rgba(56, 189, 248, 0.22);
-        }
-        .sub-section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-        .sub-title {
-            font-size: 14px;
-            color: #a5f3fc;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-        .sub-title span {
-            font-size: 12px;
-            color: var(--muted);
-            font-weight: 400;
-        }
-        .hint {
-            font-size: 12px;
-            color: var(--muted);
-            margin: 6px 0 0;
-            line-height: 1.5;
-        }
-
-        /* Grid */
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .grid3 { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 8px; }
-
-        /* Thinking/Answer */
-        .thinking-box, .answer-box {
+        .thinking-box {
             background: var(--card-2);
             border: 1px solid var(--line);
-            border-radius: 10px;
-            padding: 12px;
+            border-radius: 12px;
+            padding: 14px 16px;
             min-height: 60px;
-        }
-        .thinking-item {
-            font-size: 13px;
+            font-size: 14px;
             color: #cbd5e1;
-            padding: 3px 0;
+            line-height: 1.6;
         }
+        .thinking-item { padding: 2px 0; }
         .thinking-item::before { content: "• "; color: var(--primary); }
+
         .answer-box {
-            min-height: 100px;
-            line-height: 1.75;
+            background: var(--card-2);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            min-height: 120px;
+            line-height: 1.8;
             font-size: 15px;
             color: #e2e8f0;
         }
-        .answer-box h1, .answer-box h2, .answer-box h3 { margin: 10px 0 8px; }
+        .answer-box h1, .answer-box h2, .answer-box h3 { margin: 12px 0 8px; color: #b7f6ff; }
         .answer-box table { border-collapse: collapse; width: 100%; margin: 10px 0; }
         .answer-box td, .answer-box th {
             border: 1px solid var(--line);
-            padding: 6px 10px;
+            padding: 8px 12px;
             text-align: left;
         }
 
-        /* Meta pills */
-        .meta-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-        .pill {
-            font-size: 11px;
-            border-radius: 999px;
-            padding: 4px 10px;
-            background: var(--primary-soft);
-            color: #a5f3fc;
-            border: 1px solid rgba(34, 211, 238, 0.28);
+        .result-section { margin-top: 16px; }
+        .result-label {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 8px;
+            font-weight: 500;
         }
 
-        /* Raw JSON */
-        details { margin-top: 10px; }
-        details summary { cursor: pointer; color: #93c5fd; font-size: 12px; }
-        pre {
-            margin: 8px 0 0;
-            border-radius: 10px;
-            background: #050b1b;
-            color: #cbd5e1;
-            padding: 10px;
-            white-space: pre-wrap;
-            word-break: break-word;
-            font-size: 11px;
-            border: 1px solid rgba(56, 189, 248, 0.18);
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        /* Links */
         .links {
-            display: flex;
-            gap: 16px;
-            justify-content: center;
-            margin-top: 20px;
-            flex-wrap: wrap;
+            text-align: center;
+            margin-top: 24px;
         }
         .links a {
             font-size: 12px;
             color: #7dd3fc;
             text-decoration: none;
+            margin: 0 12px;
         }
         .links a:hover { text-decoration: underline; }
 
-        /* Checkbox styling */
-        input[type="checkbox"] {
-            width: 14px;
-            height: 14px;
-            accent-color: var(--primary);
-        }
+        .simple-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
-        /* Response status */
-        .response-section {
-            margin-top: 14px;
+        .learn-section {
+            background: var(--card-2);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
         }
-        .learn-status {
-            font-size: 12px;
-            color: var(--muted);
+        .learn-section-title {
+            font-size: 15px;
+            color: #a5f3fc;
+            margin-bottom: 10px;
+            font-weight: 600;
         }
-        .learn-status.ok { color: var(--success); }
-        .learn-status.error { color: var(--error); }
     </style>
 </head>
 <body>
@@ -339,223 +205,93 @@
 
     <div class="header">
         <h1>知识库助手</h1>
-        <p class="lead">先学习知识，再提问检索。操作简单，分步执行。</p>
+        <p>先学习，后提问，答案即刻呈现</p>
     </div>
 
-    <!-- Flow indicator -->
-    <div class="flow">
-        <div class="flow-step active">
-            <span class="num">1</span>
-            <span>学习知识</span>
-        </div>
-        <span class="flow-arrow">→</span>
-        <div class="flow-step">
-            <span class="num">2</span>
-            <span>提问</span>
-        </div>
-        <span class="flow-arrow">→</span>
-        <div class="flow-step">
-            <span class="num">3</span>
-            <span>查看结果</span>
-        </div>
-    </div>
+    <!-- Section 1: Learn -->
+    <div class="card">
+        <div class="card-title"><span class="icon">📚</span>学习知识</div>
 
-    <!-- Section 1: Learn Knowledge -->
-    <div class="card" id="sec-learn">
-        <div class="section-title">
-            <span class="step">1</span>
-            <span>学习知识</span>
-            <span class="desc">（把内容存到知识库）</span>
-        </div>
-
-        <!-- 1.1 Text learning -->
-        <div class="sub-section">
-            <div class="sub-title">粘贴文本学习 <span>（适合说明文字、FAQ等）</span></div>
-            <input id="learnTextTitle" type="text" placeholder="标题（可选），例如：产品说明 2026">
-            <textarea id="learnTextBody" style="margin-top:8px;" placeholder="把要学习的内容粘贴到这里…"></textarea>
+        <div class="learn-section">
+            <div class="learn-section-title">粘贴文本学习</div>
+            <input id="learnTextTitle" type="text" placeholder="标题（可选）">
+            <textarea id="learnTextBody" style="margin-top:8px;" placeholder="粘贴要学习的内容..."></textarea>
             <div class="toolbar">
                 <button id="learnTextBtn">保存</button>
-                <span id="learnTextStatus" class="learn-status"></span>
+                <span id="learnTextStatus" class="status"></span>
             </div>
         </div>
 
-        <!-- 1.2 CSV learning -->
-        <div class="sub-section">
-            <div class="sub-title">上传 CSV 学习 <span>（支持多选，自动分析方案）</span></div>
+        <div class="learn-section">
+            <div class="learn-section-title">多专家智能学习</div>
+            <div class="simple-grid">
+                <input id="expertHost" type="text" placeholder="主机" value="localhost">
+                <input id="expertPort" type="number" placeholder="端口" value="3306">
+            </div>
+            <div class="simple-grid" style="margin-top:10px;">
+                <input id="expertDb" type="text" placeholder="数据库名">
+                <input id="expertUser" type="text" placeholder="用户名" value="root">
+            </div>
+            <div style="margin-top:10px;">
+                <input id="expertPass" type="password" placeholder="密码" style="max-width:200px;">
+            </div>
             <div class="toolbar">
-                <input id="csvFile" type="file" accept=".csv" multiple>
-                <label style="font-size:12px;"><input id="csvHeaderRow" type="checkbox" checked> 首行是表头</label>
-                <button id="csvBatchLearnBtn">一键批量学习</button>
-                <span id="csvStatus" class="learn-status"></span>
+                <button id="expertLearnBtn">一键智能学习</button>
+                <span id="expertStatus" class="status"></span>
             </div>
-            <p class="hint">支持多选 CSV 文件，系统自动分析表结构、检测关联、生成学习方案，一键完成学习。</p>
-        </div>
-
-        <!-- 1.3 MySQL schema learning -->
-        <div class="sub-section">
-            <div class="sub-title">学习 MySQL 表结构 <span>（不会读取表里的行数据）</span></div>
-            <div class="grid2">
-                <input id="dbHost" class="inp" type="text" placeholder="主机，例如 localhost" value="localhost">
-                <input id="dbPort" class="inp" type="number" placeholder="端口" value="3306">
-            </div>
-            <div class="grid2" style="margin-top:8px;">
-                <input id="dbName" class="inp" type="text" placeholder="数据库名，例如 tdcomp">
-                <input id="dbUser" class="inp" type="text" placeholder="用户名" value="root">
-            </div>
-            <div style="margin-top:8px;">
-                <input id="dbPass" class="inp" type="password" placeholder="密码（可空）" style="max-width:200px;">
-            </div>
-            <div class="toolbar" style="margin-top:10px;">
-                <button id="dbConnectBtn">连接并学习表结构</button>
-                <label><input id="dbPersist" type="checkbox" checked> 写入知识库</label>
-                <span id="dbStatus" class="learn-status"></span>
-            </div>
-        </div>
-
-        <!-- 1.4 Multi-expert learning -->
-        <div class="sub-section">
-            <div class="sub-title">多专家协作学习 <span>（模拟数据分析专家、系统架构师、学习策略专家共同协作）</span></div>
-            <div class="grid2">
-                <input id="expertHost" class="inp" type="text" placeholder="主机" value="localhost">
-                <input id="expertPort" class="inp" type="number" placeholder="端口" value="3306">
-            </div>
-            <div class="grid2" style="margin-top:8px;">
-                <input id="expertDb" class="inp" type="text" placeholder="数据库名">
-                <input id="expertUser" class="inp" type="text" placeholder="用户名" value="root">
-            </div>
-            <div style="margin-top:8px;">
-                <input id="expertPass" class="inp" type="password" placeholder="密码" style="max-width:200px;">
-            </div>
-            <div class="toolbar" style="margin-top:10px;">
-                <button id="expertLearnBtn">多专家学习</button>
-                <span id="expertStatus" class="learn-status"></span>
-            </div>
-            <p class="hint">多专家协作：数据分析专家分析表结构 → 系统架构师评估存储方案 → 学习策略专家生成执行方案</p>
-        </div>
-
-        <!-- 1.5 Export MySQL table to CSV -->
-        <div class="sub-section">
-            <div class="sub-title">导出 MySQL 表数据为 CSV <span>（下载全量数据）</span></div>
-            <div class="grid2">
-                <input id="exportHost" class="inp" type="text" placeholder="主机" value="localhost">
-                <input id="exportPort" class="inp" type="number" placeholder="端口" value="3306">
-            </div>
-            <div class="grid2" style="margin-top:8px;">
-                <input id="exportDb" class="inp" type="text" placeholder="数据库名">
-                <input id="exportUser" class="inp" type="text" placeholder="用户名" value="root">
-            </div>
-            <div style="margin-top:8px;">
-                <input id="exportPass" class="inp" type="password" placeholder="密码" style="max-width:200px;">
-                <input id="exportTable" class="inp" type="text" placeholder="表名" style="margin-left:8px;width:120px;">
-            </div>
-            <div class="toolbar" style="margin-top:10px;">
-                <button id="exportCsvBtn">导出全量 CSV</button>
-                <button id="exportAllCsvBtn">导出所有表(ZIP)</button>
-                <span id="exportStatus" class="learn-status"></span>
-            </div>
+            <p class="hint">系统自动分析表结构、检测关联、生成学习方案</p>
         </div>
     </div>
 
-    <!-- Section 2: Ask Question -->
-    <div class="card" id="sec-ask">
-        <div class="section-title">
-            <span class="step">2</span>
-            <span>提问</span>
-            <span class="desc">（检索知识库回答问题）</span>
-        </div>
-        <textarea id="question" placeholder="输入你的问题，例如：示例公司的经营范围是什么？"></textarea>
+    <!-- Section 2: Ask -->
+    <div class="card">
+        <div class="card-title"><span class="icon">💬</span>提问</div>
+        <textarea id="question" placeholder="输入你的问题..."></textarea>
         <div class="toolbar">
-            <label>知识范围
-                <select id="scopeMode">
-                    <option value="enterprise" selected>企业知识库</option>
-                    <option value="personal">个人知识库</option>
-                </select>
-            </label>
-            <label><input id="streamMode" type="checkbox" checked> 流式输出（边看边出字）</label>
-            <button id="askBtn">发送问题</button>
-            <span id="status" class="status"><span id="statusDot" class="dot"></span><span id="statusText">就绪</span></span>
+            <select id="scopeMode">
+                <option value="enterprise" selected>企业知识库</option>
+                <option value="personal">个人知识库</option>
+            </select>
+            <button id="askBtn">发送</button>
+            <span id="statusText" class="status">就绪</span>
         </div>
     </div>
 
-    <!-- Section 3: Results -->
-    <div class="card" id="sec-result">
-        <div class="section-title">
-            <span class="step">3</span>
-            <span>回答结果</span>
-        </div>
+    <!-- Section 3: Result -->
+    <div class="card">
+        <div class="card-title"><span class="icon">✨</span>回答</div>
 
-        <div class="response-section">
-            <div class="sub-title" style="color:var(--muted);">思考过程</div>
+        <div class="result-section">
+            <div class="result-label">思考过程</div>
             <div id="thinking" class="thinking-box">
-                <div class="thinking-item" style="color:var(--muted);">等待请求...</div>
+                <div class="thinking-item" style="color:var(--muted);">等待提问...</div>
             </div>
         </div>
 
-        <div class="response-section">
-            <div class="sub-title" style="color:var(--muted);">回答内容</div>
+        <div class="result-section">
+            <div class="result-label">回答</div>
             <div id="answer" class="answer-box"></div>
         </div>
-
-        <div class="response-section">
-            <div class="sub-title" style="color:var(--muted);">摘要</div>
-            <div id="meta" class="meta-pills"></div>
-        </div>
-
-        <details>
-            <summary>原始 JSON（调试用）</summary>
-            <pre id="rawJson"></pre>
-        </details>
     </div>
 
-    <!-- Links -->
     <div class="links">
-        <a href="/qa/assistant/runtime-summary" target="_blank">MiniMax 配置检查</a>
-        <a href="#top">回到顶部</a>
+        <a href="/qa/assistant/runtime-summary" target="_blank">配置检查</a>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-    // Elements
     const questionEl = document.getElementById("question");
     const scopeModeEl = document.getElementById("scopeMode");
-    const streamModeEl = document.getElementById("streamMode");
     const askBtnEl = document.getElementById("askBtn");
     const statusTextEl = document.getElementById("statusText");
-    const statusDotEl = document.getElementById("statusDot");
-    const metaEl = document.getElementById("meta");
     const thinkingEl = document.getElementById("thinking");
     const answerEl = document.getElementById("answer");
-    const rawJsonEl = document.getElementById("rawJson");
 
     const learnTextTitleEl = document.getElementById("learnTextTitle");
     const learnTextBodyEl = document.getElementById("learnTextBody");
     const learnTextBtnEl = document.getElementById("learnTextBtn");
     const learnTextStatusEl = document.getElementById("learnTextStatus");
-
-    const csvFileEl = document.getElementById("csvFile");
-    const csvHeaderRowEl = document.getElementById("csvHeaderRow");
-    const csvBatchLearnBtnEl = document.getElementById("csvBatchLearnBtn");
-    const csvStatusEl = document.getElementById("csvStatus");
-
-    const dbHostEl = document.getElementById("dbHost");
-    const dbPortEl = document.getElementById("dbPort");
-    const dbNameEl = document.getElementById("dbName");
-    const dbUserEl = document.getElementById("dbUser");
-    const dbPassEl = document.getElementById("dbPass");
-    const dbPersistEl = document.getElementById("dbPersist");
-    const dbConnectBtnEl = document.getElementById("dbConnectBtn");
-    const dbStatusEl = document.getElementById("dbStatus");
-
-    const exportHostEl = document.getElementById("exportHost");
-    const exportPortEl = document.getElementById("exportPort");
-    const exportDbEl = document.getElementById("exportDb");
-    const exportUserEl = document.getElementById("exportUser");
-    const exportPassEl = document.getElementById("exportPass");
-    const exportTableEl = document.getElementById("exportTable");
-    const exportCsvBtnEl = document.getElementById("exportCsvBtn");
-    const exportAllCsvBtnEl = document.getElementById("exportAllCsvBtn");
-    const exportStatusEl = document.getElementById("exportStatus");
 
     const expertHostEl = document.getElementById("expertHost");
     const expertPortEl = document.getElementById("expertPort");
@@ -565,41 +301,16 @@
     const expertLearnBtnEl = document.getElementById("expertLearnBtn");
     const expertStatusEl = document.getElementById("expertStatus");
 
-    // Helper functions
-    function setStatus(text, live) {
-        statusTextEl.textContent = text;
-        statusDotEl.className = live ? "dot live" : "dot";
-    }
-
     function escapeHtml(text) {
-        return (text || "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
-    }
-
-    function renderMeta(meta) {
-        const intentMap = {
-            graph: "图谱检索", vector: "语义检索", document: "文档检索",
-            mysql: "数据库检索", sql: "结构化查询", hybrid: "混合检索", unknown: "待补充", learning: "学习"
-        };
-        const items = [
-            (meta.scope === "personal" ? "个人" : "企业") + "知识库",
-            "意图:" + (intentMap[meta.intent] || meta.intent || "-"),
-            meta.canAnswer ? "可回答" : "无法回答",
-            "置信度:" + (meta.confidence == null ? "-" : Number(meta.confidence).toFixed(2))
-        ];
-        metaEl.innerHTML = items.map(x => `<span class="pill">${escapeHtml(x)}</span>`).join("");
+        return (text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     function renderThinking(items) {
         if (!items || !items.length) {
-            thinkingEl.innerHTML = `<div class="thinking-item" style="color:var(--muted);">等待请求...</div>`;
+            thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">等待提问...</div>';
             return;
         }
-        thinkingEl.innerHTML = items.map(item =>
-            `<div class="thinking-item">${escapeHtml(item.message || "")}</div>`
-        ).join("");
+        thinkingEl.innerHTML = items.map(item => '<div class="thinking-item">' + escapeHtml(item.message || "") + '</div>').join("");
     }
 
     function renderAnswer(text) {
@@ -612,85 +323,41 @@
     }
 
     function clearResult() {
-        thinkingEl.innerHTML = `<div class="thinking-item" style="color:var(--muted);">处理中...</div>`;
+        thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">思考中...</div>';
         answerEl.innerHTML = "";
-        metaEl.innerHTML = "";
-        rawJsonEl.textContent = "";
     }
 
-    // Ask question - normal
-    async function askNormal(question, scope) {
-        const resp = await fetch("/qa/ask", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({question, scope})
-        });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        return await resp.json();
+    function setStatus(text) {
+        statusTextEl.textContent = text;
+        statusTextEl.className = text.includes("完成") ? "status ok" : (text.includes("失败") || text.includes("错误") ? "status error" : "status");
     }
 
-    // Ask question - stream
-    function askStream(question, scope) {
-        return new Promise((resolve, reject) => {
-            const url = "/qa/ask/stream?question=" + encodeURIComponent(question)
-                + "&scope=" + encodeURIComponent(scope) + "&t=" + Date.now();
-            const es = new EventSource(url);
-            const result = {answer: "", thinking: []};
-
-            es.addEventListener("thinking", (event) => {
-                const payload = JSON.parse(event.data);
-                result.thinking.push(payload);
-                renderThinking(result.thinking);
-                setStatus("思考中...", true);
-            });
-            es.addEventListener("meta", (event) => {
-                renderMeta(JSON.parse(event.data));
-            });
-            es.addEventListener("delta", (event) => {
-                result.answer += event.data || "";
-                renderAnswer(result.answer);
-                setStatus("生成中...", true);
-            });
-            es.addEventListener("final", (event) => {
-                const payload = JSON.parse(event.data);
-                Object.assign(result, payload);
-                renderMeta(payload);
-                rawJsonEl.textContent = JSON.stringify(result, null, 2);
-            });
-            es.addEventListener("done", () => { es.close(); resolve(); });
-            es.addEventListener("qa_error", (event) => {
-                es.close();
-                try { reject(new Error(JSON.parse(event.data).message || "stream error")); }
-                catch (e) { reject(new Error("stream error")); }
-            });
-            es.addEventListener("error", () => { es.close(); reject(new Error("连接中断")); });
-        });
-    }
-
-    // Ask button
+    // Ask question
     askBtnEl.addEventListener("click", async () => {
         const question = questionEl.value.trim();
         const scope = scopeModeEl.value || "enterprise";
-        if (!question) { alert("请先输入问题"); return; }
+        if (!question) { alert("请输入问题"); return; }
         askBtnEl.disabled = true;
         clearResult();
-        setStatus("连接中...", true);
+        setStatus("思考中...");
         try {
-            if (streamModeEl.checked) {
-                await askStream(question, scope);
-            } else {
-                const data = await askNormal(question, scope);
-                renderMeta(data);
-                renderAnswer(data.answer || "");
-                rawJsonEl.textContent = JSON.stringify(data, null, 2);
-                if (data.evidence && data.evidence.length > 0) {
-                    renderThinking([{message: "检索到 " + data.evidence.length + " 条相关证据"}]);
-                }
+            const resp = await fetch("/qa/ask", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({question, scope})
+            });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const data = await resp.json();
+
+            if (data.thinking && data.thinking.length > 0) {
+                renderThinking(data.thinking);
             }
-            setStatus("完成", false);
+            renderAnswer(data.answer || "无法回答这个问题");
+            setStatus("完成");
         } catch (e) {
-            setStatus("失败:" + e.message, false);
-            renderThinking([{message: "错误：" + e.message}]);
+            thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--error);">错误：' + escapeHtml(e.message) + '</div>';
+            answerEl.innerHTML = "";
+            setStatus("失败");
         } finally {
             askBtnEl.disabled = false;
         }
@@ -701,206 +368,24 @@
         const content = (learnTextBodyEl.value || "").trim();
         const title = (learnTextTitleEl.value || "").trim() || "粘贴文本";
         const scope = scopeModeEl.value || "enterprise";
-        if (!content) { alert("请先粘贴要学习的内容"); return; }
+        if (!content) { alert("请输入内容"); return; }
         learnTextBtnEl.disabled = true;
-        learnTextStatusEl.textContent = "提交中...";
-        learnTextStatusEl.className = "learn-status";
-        setStatus("学习中...", true);
+        learnTextStatusEl.textContent = "保存中...";
         try {
             const resp = await fetch("/qa/learn/text", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({content, title, scope})
             });
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
             const data = await resp.json();
             const ok = !!data.ok;
             learnTextStatusEl.textContent = ok ? "已保存" : "失败";
-            learnTextStatusEl.className = "learn-status " + (ok ? "ok" : "error");
-            setStatus(ok ? "学习完成" : "失败", false);
-            renderThinking([{message: "已保存为知识：" + title}]);
+            learnTextStatusEl.className = ok ? "status ok" : "status error";
         } catch (e) {
             learnTextStatusEl.textContent = e.message;
-            learnTextStatusEl.className = "learn-status error";
-            setStatus("失败", false);
+            learnTextStatusEl.className = "status error";
         } finally {
             learnTextBtnEl.disabled = false;
-        }
-    });
-
-    // CSV batch learn (multi-select, auto plan)
-    csvBatchLearnBtnEl.addEventListener("click", async () => {
-        const files = csvFileEl.files;
-        const scope = scopeModeEl.value || "enterprise";
-        if (!files || files.length === 0) { alert("请选择 CSV 文件"); return; }
-        csvBatchLearnBtnEl.disabled = true;
-        csvStatusEl.textContent = "学习中...";
-        csvStatusEl.className = "learn-status";
-        setStatus("CSV 批量学习中...", true);
-        try {
-            const fd = new FormData();
-            for (const file of files) {
-                fd.append("files", file);
-            }
-            fd.append("scope", scope);
-            const resp = await fetch("/qa/structured/csv-batch-learn-auto", {method: "POST", body: fd});
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            const data = await resp.json();
-            const ok = !!data.ok;
-            if (ok) {
-                csvStatusEl.textContent = "学习完成（" + files.length + " 个文件）";
-                csvStatusEl.className = "learn-status ok";
-                setStatus("完成", false);
-                renderThinking([{message: "CSV 批量学习完成：" + files.length + " 个文件"}]);
-            } else {
-                csvStatusEl.textContent = data.message || "失败";
-                csvStatusEl.className = "learn-status error";
-                setStatus("失败", false);
-            }
-        } catch (e) {
-            csvStatusEl.textContent = e.message;
-            csvStatusEl.className = "learn-status error";
-            setStatus("失败", false);
-        } finally {
-            csvBatchLearnBtnEl.disabled = false;
-        }
-    });
-
-    // MySQL connect and learn
-    dbConnectBtnEl.addEventListener("click", async () => {
-        const host = (dbHostEl.value || "").trim();
-        const port = parseInt(String(dbPortEl.value || "3306"), 10) || 3306;
-        const database = (dbNameEl.value || "").trim();
-        const username = (dbUserEl.value || "").trim();
-        const password = dbPassEl.value || "";
-        const persist = dbPersistEl.checked;
-        const scope = scopeModeEl.value || "enterprise";
-        if (!host || !database || !username) { alert("请填写主机、数据库名、用户名"); return; }
-        dbConnectBtnEl.disabled = true;
-        dbStatusEl.textContent = "连接中...";
-        dbStatusEl.className = "learn-status";
-        setStatus("连接 MySQL...", true);
-        clearResult();
-        try {
-            const resp = await fetch("/qa/mysql/connect", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({host, port, database, username, password, assess: false, persist, scope})
-            });
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            const data = await resp.json();
-            if (data.ok) {
-                dbStatusEl.textContent = persist ? "已学习" : "已导出";
-                dbStatusEl.className = "learn-status ok";
-                setStatus("完成", false);
-                renderThinking([{message: "已学习 " + database + " 的表结构（" + (data.tableCount || 0) + " 张表）"}]);
-                let md = "## " + database + " 表结构\n\n" + (data.markdown || "");
-                renderAnswer(md);
-            } else {
-                dbStatusEl.textContent = "失败";
-                dbStatusEl.className = "learn-status error";
-                setStatus("失败", false);
-                renderThinking([{message: "连接失败：" + data.message}]);
-            }
-            rawJsonEl.textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
-            dbStatusEl.textContent = e.message;
-            dbStatusEl.className = "learn-status error";
-            setStatus("失败", false);
-            renderThinking([{message: "错误：" + e.message}]);
-        } finally {
-            dbConnectBtnEl.disabled = false;
-        }
-    });
-
-    // Export MySQL table to CSV
-    exportCsvBtnEl.addEventListener("click", async () => {
-        const host = (exportHostEl.value || "").trim();
-        const port = parseInt(String(exportPortEl.value || "3306"), 10) || 3306;
-        const database = (exportDbEl.value || "").trim();
-        const username = (exportUserEl.value || "").trim();
-        const password = exportPassEl.value || "";
-        const table = (exportTableEl.value || "").trim();
-
-        if (!host || !database || !username || !table) {
-            alert("请填写主机、数据库名、用户名和表名"); return;
-        }
-        exportCsvBtnEl.disabled = true;
-        exportStatusEl.textContent = "导出中...";
-        exportStatusEl.className = "learn-status";
-        setStatus("导出 CSV...", true);
-        try {
-            const resp = await fetch("/qa/mysql/table/export-csv", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({host, port, database, username, password, table})
-            });
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            const blob = await resp.blob();
-            if (blob.size === 0 || resp.headers.get("content-type")?.includes("text/plain")) {
-                throw new Error("无数据或导出失败");
-            }
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = table + "_all.csv";
-            a.click();
-            URL.revokeObjectURL(url);
-            exportStatusEl.textContent = "已下载";
-            exportStatusEl.className = "learn-status ok";
-            setStatus("完成", false);
-            renderThinking([{message: "已导出 " + table + " 全量数据到 CSV（" + blob.size + " bytes）"}]);
-        } catch (e) {
-            exportStatusEl.textContent = e.message;
-            exportStatusEl.className = "learn-status error";
-            setStatus("失败", false);
-        } finally {
-            exportCsvBtnEl.disabled = false;
-        }
-    });
-
-    // Export all MySQL tables to ZIP
-    exportAllCsvBtnEl.addEventListener("click", async () => {
-        const host = (exportHostEl.value || "").trim();
-        const port = parseInt(String(exportPortEl.value || "3306"), 10) || 3306;
-        const database = (exportDbEl.value || "").trim();
-        const username = (exportUserEl.value || "").trim();
-        const password = exportPassEl.value || "";
-
-        if (!host || !database || !username) {
-            alert("请填写主机、数据库名和用户名"); return;
-        }
-        exportAllCsvBtnEl.disabled = true;
-        exportStatusEl.textContent = "导出中(所有表)...";
-        exportStatusEl.className = "learn-status";
-        setStatus("导出所有表...", true);
-        try {
-            const resp = await fetch("/qa/mysql/tables/export-all-csv", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({host, port, database, username, password})
-            });
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            const blob = await resp.blob();
-            if (blob.size === 0 || resp.headers.get("content-type")?.includes("text/plain")) {
-                throw new Error("导出失败");
-            }
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = database + "_all_tables.zip";
-            a.click();
-            URL.revokeObjectURL(url);
-            exportStatusEl.textContent = "已下载";
-            exportStatusEl.className = "learn-status ok";
-            setStatus("完成", false);
-            renderThinking([{message: "已导出 " + database + " 所有表全量数据到 ZIP（" + blob.size + " bytes）"}]);
-        } catch (e) {
-            exportStatusEl.textContent = e.message;
-            exportStatusEl.className = "learn-status error";
-            setStatus("失败", false);
-        } finally {
-            exportAllCsvBtnEl.disabled = false;
         }
     });
 
@@ -917,9 +402,9 @@
             alert("请填写主机、数据库名和用户名"); return;
         }
         expertLearnBtnEl.disabled = true;
-        expertStatusEl.textContent = "多专家分析中...";
-        expertStatusEl.className = "learn-status";
-        setStatus("多专家学习...", true);
+        expertStatusEl.textContent = "智能学习中...";
+        expertStatusEl.className = "status";
+        setStatus("学习中...");
         clearResult();
         try {
             const resp = await fetch("/qa/learning/multi-expert", {
@@ -927,53 +412,34 @@
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({host, port, database, username, password, scope})
             });
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
             const data = await resp.json();
             if (data.ok) {
-                expertStatusEl.textContent = "完成(" + (data.taskCount || 0) + "任务)";
-                expertStatusEl.className = "learn-status ok";
-                setStatus("完成", false);
+                expertStatusEl.textContent = "完成(" + (data.taskCount || 0) + "个任务)";
+                expertStatusEl.className = "status ok";
+                setStatus("完成");
 
-                let report = "## 多专家学习完成\n\n";
-                report += "### 专家报告摘要\n\n";
-                if (data.expertReports && data.expertReports.length > 0) {
-                    for (const r of data.expertReports) {
-                        report += "**" + r.expertName + "** (置信度:" + r.confidence + ")\n";
-                        report += r.report + "\n\n";
-                    }
-                }
-                report += "### 表分析结果\n\n";
+                let summary = "### 学习完成\n\n";
                 if (data.tableProfiles && data.tableProfiles.length > 0) {
-                    report += "| 表名 | 行数 | 列数 | 业务类型 | 关联表 |\n";
-                    report += "|------|------|------|----------|--------|\n";
+                    summary += "已分析 " + data.tableProfiles.length + " 个数据表\n\n";
                     for (const p of data.tableProfiles) {
-                        report += "| " + p.tableName + " | " + p.rowCount + " | " + p.columnCount + " | " + p.businessType + " | " + (p.relatedTables || []).join(", ") + " |\n";
+                        summary += "- " + p.tableName + " (" + p.businessType + ")\n";
                     }
                 }
-                report += "\n### 学习任务\n\n";
                 if (data.learningTasks && data.learningTasks.length > 0) {
-                    for (const t of data.learningTasks) {
-                        const policy = t.sinkPolicy || {};
-                        const sinks = [];
-                        if (policy.mysql) sinks.push("MySQL");
-                        if (policy.qdrant) sinks.push("Qdrant");
-                        if (policy.neo4j) sinks.push("Neo4j");
-                        report += "- " + t.tableName + ": " + t.businessType + " → " + sinks.join(" + ") + "\n";
-                    }
+                    summary += "\n生成 " + data.learningTasks.length + " 个学习任务\n";
                 }
-                renderThinking([{message: "多专家学习完成：分析" + (data.tableProfiles?.length || 0) + "个表，生成" + (data.taskCount || 0) + "个学习任务"}]);
-                renderAnswer(report);
+                renderThinking([{message: "智能分析完成，准备就绪"}]);
+                renderAnswer(summary || "学习完成");
             } else {
                 expertStatusEl.textContent = "失败";
-                expertStatusEl.className = "learn-status error";
-                setStatus("失败", false);
-                renderThinking([{message: "多专家学习失败：" + data.message}]);
+                expertStatusEl.className = "status error";
+                setStatus("失败");
+                renderThinking([{message: "学习失败：" + data.message}]);
             }
-            rawJsonEl.textContent = JSON.stringify(data, null, 2);
         } catch (e) {
             expertStatusEl.textContent = e.message;
-            expertStatusEl.className = "learn-status error";
-            setStatus("失败", false);
+            expertStatusEl.className = "status error";
+            setStatus("失败");
             renderThinking([{message: "错误：" + e.message}]);
         } finally {
             expertLearnBtnEl.disabled = false;
