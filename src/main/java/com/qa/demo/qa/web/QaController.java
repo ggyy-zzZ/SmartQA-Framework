@@ -7,6 +7,7 @@ import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.learning.BatchCsvAnalysisService;
 import com.qa.demo.qa.learning.BatchLearningOrchestrator;
 import com.qa.demo.qa.learning.LearningResponseBuilder;
+import com.qa.demo.qa.learning.MultiExpertLearningService;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogAssessmentService;
 import com.qa.demo.qa.learning.MysqlSchemaCatalogService;
 import com.qa.demo.qa.learning.SchemaSedimentationPlanService;
@@ -64,6 +65,7 @@ public class QaController {
     private final QaAssistantProperties assistantProperties;
     private final BatchCsvAnalysisService batchCsvAnalysisService;
     private final BatchLearningOrchestrator batchLearningOrchestrator;
+    private final MultiExpertLearningService multiExpertLearningService;
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -80,7 +82,8 @@ public class QaController {
             SchemaSedimentationPlanService schemaSedimentationPlanService,
             QaAssistantProperties assistantProperties,
             BatchCsvAnalysisService batchCsvAnalysisService,
-            BatchLearningOrchestrator batchLearningOrchestrator
+            BatchLearningOrchestrator batchLearningOrchestrator,
+            MultiExpertLearningService multiExpertLearningService
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -97,6 +100,7 @@ public class QaController {
         this.assistantProperties = assistantProperties;
         this.batchCsvAnalysisService = batchCsvAnalysisService;
         this.batchLearningOrchestrator = batchLearningOrchestrator;
+        this.multiExpertLearningService = multiExpertLearningService;
     }
 
     /**
@@ -1319,6 +1323,101 @@ public class QaController {
                 response.setContentType("text/plain;charset=UTF-8");
                 response.getWriter().write("Error: " + e.getMessage());
             } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 多专家协作学习入口
+     * 模拟数据分析专家、系统架构师、学习策略专家共同协作完成数据库学习
+     *
+     * 工作流程：
+     * 1. DataAnalystExpert 分析表结构、业务含义、关联关系
+     * 2. SystemArchitectExpert 评估存储方案（MySQL/Qdrant/Neo4j）
+     * 3. LearningPlannerExpert 综合决策并生成执行方案
+     * 4. 执行实际学习行为
+     */
+    @PostMapping("/learning/multi-expert")
+    public Map<String, Object> multiExpertLearning(@Valid @RequestBody DynamicConnectRequest request) {
+        try {
+            MysqlSchemaCatalogService.DynamicConnection conn =
+                    new MysqlSchemaCatalogService.DynamicConnection(
+                            request.host(),
+                            request.port(),
+                            request.database(),
+                            request.username(),
+                            request.password() != null ? request.password() : ""
+                    );
+
+            String scope = request.scope() != null ? request.scope() : "enterprise";
+            MultiExpertLearningService.MultiExpertLearningResult result =
+                    multiExpertLearningService.learnWithMultiExperts(conn, scope);
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("ok", result.success());
+            body.put("sessionId", result.sessionId());
+            body.put("message", result.message());
+            body.put("timestamp", OffsetDateTime.now().toString());
+
+            if (result.success() && result.dataAnalysis() != null) {
+                // 添加专家报告摘要
+                List<Map<String, Object>> expertReports = new ArrayList<>();
+                for (var opinion : result.allOpinions()) {
+                    Map<String, Object> report = new LinkedHashMap<>();
+                    report.put("expertId", opinion.expertId());
+                    report.put("expertName", opinion.expertName());
+                    report.put("role", opinion.role().name());
+                    report.put("confidence", opinion.confidence());
+                    // 只返回报告的前500字符，避免过长
+                    String reportContent = opinion.report();
+                    report.put("report", reportContent != null && reportContent.length() > 500
+                            ? reportContent.substring(0, 500) + "..." : reportContent);
+                    expertReports.add(report);
+                }
+                body.put("expertReports", expertReports);
+
+                // 添加表分析结果
+                List<Map<String, Object>> tableProfiles = new ArrayList<>();
+                for (var profile : result.dataAnalysis().tableProfiles()) {
+                    Map<String, Object> p = new LinkedHashMap<>();
+                    p.put("tableName", profile.tableName());
+                    p.put("rowCount", profile.rowCount());
+                    p.put("columnCount", profile.columnCount());
+                    p.put("businessType", profile.businessType());
+                    p.put("keyColumns", profile.keyColumns());
+                    p.put("relatedTables", profile.relatedTables());
+                    tableProfiles.add(p);
+                }
+                body.put("tableProfiles", tableProfiles);
+                body.put("relationshipCount", result.dataAnalysis().relationships().size());
+
+                // 添加学习策略
+                if (result.consensus() != null) {
+                    List<Map<String, Object>> tasks = new ArrayList<>();
+                    for (var task : result.consensus().learningTasks()) {
+                        Map<String, Object> t = new LinkedHashMap<>();
+                        t.put("tableName", task.tableName());
+                        t.put("businessType", task.businessType());
+                        t.put("estimatedRows", task.estimatedRows());
+                        t.put("sinkPolicy", Map.of(
+                                "mysql", task.sinkPolicy().mysql(),
+                                "qdrant", task.sinkPolicy().qdrant(),
+                                "neo4j", task.sinkPolicy().neo4j(),
+                                "keywordLimit", task.sinkPolicy().keywordLimit()
+                        ));
+                        tasks.add(t);
+                    }
+                    body.put("learningTasks", tasks);
+                    body.put("taskCount", tasks.size());
+                }
+            }
+
+            return body;
+        } catch (Exception e) {
+            return Map.of(
+                    "ok", false,
+                    "message", e.getMessage() == null ? "multi_expert_learning_failed" : e.getMessage(),
+                    "timestamp", OffsetDateTime.now().toString()
+            );
         }
     }
 }
