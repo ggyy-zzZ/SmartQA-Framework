@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.*;
@@ -35,7 +34,7 @@ public class EmployeeBaseKnowledgeService {
     private final Map<String, Integer> anotherNameToId = new HashMap<>();
 
     /**
-     * employee id → full record (name, another_name, employee_no)
+     * employee id → full record (name, another_name)
      */
     private final Map<Integer, EmployeeRecord> idToRecord = new HashMap<>();
 
