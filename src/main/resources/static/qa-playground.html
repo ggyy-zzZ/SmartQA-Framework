@@ -412,7 +412,28 @@
             </div>
         </div>
 
-        <!-- 1.4 Export MySQL table to CSV -->
+        <!-- 1.4 Multi-expert learning -->
+        <div class="sub-section">
+            <div class="sub-title">多专家协作学习 <span>（模拟数据分析专家、系统架构师、学习策略专家共同协作）</span></div>
+            <div class="grid2">
+                <input id="expertHost" class="inp" type="text" placeholder="主机" value="localhost">
+                <input id="expertPort" class="inp" type="number" placeholder="端口" value="3306">
+            </div>
+            <div class="grid2" style="margin-top:8px;">
+                <input id="expertDb" class="inp" type="text" placeholder="数据库名">
+                <input id="expertUser" class="inp" type="text" placeholder="用户名" value="root">
+            </div>
+            <div style="margin-top:8px;">
+                <input id="expertPass" class="inp" type="password" placeholder="密码" style="max-width:200px;">
+            </div>
+            <div class="toolbar" style="margin-top:10px;">
+                <button id="expertLearnBtn">多专家学习</button>
+                <span id="expertStatus" class="learn-status"></span>
+            </div>
+            <p class="hint">多专家协作：数据分析专家分析表结构 → 系统架构师评估存储方案 → 学习策略专家生成执行方案</p>
+        </div>
+
+        <!-- 1.5 Export MySQL table to CSV -->
         <div class="sub-section">
             <div class="sub-title">导出 MySQL 表数据为 CSV <span>（下载全量数据）</span></div>
             <div class="grid2">
@@ -535,6 +556,14 @@
     const exportCsvBtnEl = document.getElementById("exportCsvBtn");
     const exportAllCsvBtnEl = document.getElementById("exportAllCsvBtn");
     const exportStatusEl = document.getElementById("exportStatus");
+
+    const expertHostEl = document.getElementById("expertHost");
+    const expertPortEl = document.getElementById("expertPort");
+    const expertDbEl = document.getElementById("expertDb");
+    const expertUserEl = document.getElementById("expertUser");
+    const expertPassEl = document.getElementById("expertPass");
+    const expertLearnBtnEl = document.getElementById("expertLearnBtn");
+    const expertStatusEl = document.getElementById("expertStatus");
 
     // Helper functions
     function setStatus(text, live) {
@@ -872,6 +901,82 @@
             setStatus("失败", false);
         } finally {
             exportAllCsvBtnEl.disabled = false;
+        }
+    });
+
+    // Multi-expert learning
+    expertLearnBtnEl.addEventListener("click", async () => {
+        const host = (expertHostEl.value || "").trim();
+        const port = parseInt(String(expertPortEl.value || "3306"), 10) || 3306;
+        const database = (expertDbEl.value || "").trim();
+        const username = (expertUserEl.value || "").trim();
+        const password = expertPassEl.value || "";
+        const scope = scopeModeEl.value || "enterprise";
+
+        if (!host || !database || !username) {
+            alert("请填写主机、数据库名和用户名"); return;
+        }
+        expertLearnBtnEl.disabled = true;
+        expertStatusEl.textContent = "多专家分析中...";
+        expertStatusEl.className = "learn-status";
+        setStatus("多专家学习...", true);
+        clearResult();
+        try {
+            const resp = await fetch("/qa/learning/multi-expert", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({host, port, database, username, password, scope})
+            });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const data = await resp.json();
+            if (data.ok) {
+                expertStatusEl.textContent = "完成(" + (data.taskCount || 0) + "任务)";
+                expertStatusEl.className = "learn-status ok";
+                setStatus("完成", false);
+
+                let report = "## 多专家学习完成\n\n";
+                report += "### 专家报告摘要\n\n";
+                if (data.expertReports && data.expertReports.length > 0) {
+                    for (const r of data.expertReports) {
+                        report += "**" + r.expertName + "** (置信度:" + r.confidence + ")\n";
+                        report += r.report + "\n\n";
+                    }
+                }
+                report += "### 表分析结果\n\n";
+                if (data.tableProfiles && data.tableProfiles.length > 0) {
+                    report += "| 表名 | 行数 | 列数 | 业务类型 | 关联表 |\n";
+                    report += "|------|------|------|----------|--------|\n";
+                    for (const p of data.tableProfiles) {
+                        report += "| " + p.tableName + " | " + p.rowCount + " | " + p.columnCount + " | " + p.businessType + " | " + (p.relatedTables || []).join(", ") + " |\n";
+                    }
+                }
+                report += "\n### 学习任务\n\n";
+                if (data.learningTasks && data.learningTasks.length > 0) {
+                    for (const t of data.learningTasks) {
+                        const policy = t.sinkPolicy || {};
+                        const sinks = [];
+                        if (policy.mysql) sinks.push("MySQL");
+                        if (policy.qdrant) sinks.push("Qdrant");
+                        if (policy.neo4j) sinks.push("Neo4j");
+                        report += "- " + t.tableName + ": " + t.businessType + " → " + sinks.join(" + ") + "\n";
+                    }
+                }
+                renderThinking([{message: "多专家学习完成：分析" + (data.tableProfiles?.length || 0) + "个表，生成" + (data.taskCount || 0) + "个学习任务"}]);
+                renderAnswer(report);
+            } else {
+                expertStatusEl.textContent = "失败";
+                expertStatusEl.className = "learn-status error";
+                setStatus("失败", false);
+                renderThinking([{message: "多专家学习失败：" + data.message}]);
+            }
+            rawJsonEl.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+            expertStatusEl.textContent = e.message;
+            expertStatusEl.className = "learn-status error";
+            setStatus("失败", false);
+            renderThinking([{message: "错误：" + e.message}]);
+        } finally {
+            expertLearnBtnEl.disabled = false;
         }
     });
 </script>
