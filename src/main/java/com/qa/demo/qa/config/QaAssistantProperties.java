@@ -47,6 +47,12 @@ public class QaAssistantProperties {
     private String businessMysqlPassword = "root";
 
     /**
+     * 员工基础知识加载最大条数（0 表示不限制）。
+     * 用于控制 name/another_name → id 索引的构建规模。
+     */
+    private int employeeBaseLimit = 50000;
+
+    /**
      * 在系统提示中展示的助手称谓，勿绑定某一商业产品名。
      */
     private String assistantName = "知识库问答助手";
@@ -490,5 +496,13 @@ public class QaAssistantProperties {
 
     public void setBusinessMysqlPassword(String businessMysqlPassword) {
         this.businessMysqlPassword = businessMysqlPassword;
+    }
+
+    public int getEmployeeBaseLimit() {
+        return employeeBaseLimit;
+    }
+
+    public void setEmployeeBaseLimit(int employeeBaseLimit) {
+        this.employeeBaseLimit = employeeBaseLimit;
     }
 }

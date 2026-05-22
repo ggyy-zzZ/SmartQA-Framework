@@ -25,6 +25,7 @@ public class QaRetrievalPipeline {
     private final ActiveLearningService activeLearningService;
     private final QaAssistantProperties properties;
     private final EntityTableMapper entityTableMapper;
+    private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -34,7 +35,8 @@ public class QaRetrievalPipeline {
             DocumentContextService documentContextService,
             ActiveLearningService activeLearningService,
             QaAssistantProperties properties,
-            EntityTableMapper entityTableMapper
+            EntityTableMapper entityTableMapper,
+            EmployeeBaseKnowledgeService employeeBaseKnowledge
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -44,6 +46,7 @@ public class QaRetrievalPipeline {
         this.activeLearningService = activeLearningService;
         this.properties = properties;
         this.entityTableMapper = entityTableMapper;
+        this.employeeBaseKnowledge = employeeBaseKnowledge;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -61,7 +64,8 @@ public class QaRetrievalPipeline {
             case "unknown" -> new RetrievalResult("unknown", List.of());
             default -> retrieveHybrid(question);
         };
-        return appendSupplementalTables(base, question);
+        RetrievalResult withSupplemental = appendSupplementalTables(base, question);
+        return appendEmployeeBaseInfo(withSupplemental, question);
     }
 
     /**
@@ -92,6 +96,75 @@ public class QaRetrievalPipeline {
             merged = new ArrayList<>(merged.subList(0, cap));
         }
         return new RetrievalResult("supplemental_appended_" + base.retrievalSource(), merged);
+    }
+
+    /**
+     * 检测问题中的人名/花名，追加员工基础信息到检索结果。
+     */
+    private RetrievalResult appendEmployeeBaseInfo(RetrievalResult base, String question) {
+        if (employeeBaseKnowledge.size() == 0) {
+            return base;
+        }
+        // 简单提取问题中的中文词（假设人名是2-4个汉字）
+        List<String> potentialNames = extractPotentialNames(question);
+        if (potentialNames.isEmpty()) {
+            return base;
+        }
+        List<ContextChunk> merged = new ArrayList<>(base.evidence());
+        Set<String> seen = new HashSet<>();
+        for (ContextChunk c : base.evidence()) {
+            seen.add(c.source() + "|" + c.companyId());
+        }
+        for (String name : potentialNames) {
+            Integer employeeId = employeeBaseKnowledge.resolveToEmployeeId(name);
+            if (employeeId == null) {
+                continue;
+            }
+            EmployeeBaseKnowledgeService.EmployeeRecord record = employeeBaseKnowledge.getEmployeeById(employeeId);
+            if (record == null) {
+                continue;
+            }
+            String snippet = String.format("员工ID=%d, 姓名=%s, 花名=%s",
+                    record.id(),
+                    record.name() != null ? record.name() : "",
+                    record.anotherName() != null ? record.anotherName() : "");
+            ContextChunk chunk = new ContextChunk(
+                    String.valueOf(employeeId),
+                    record.name() != null ? record.name() : "",
+                    "employee_base",
+                    snippet,
+                    10.0,
+                    "employee_base"
+            );
+            String key = chunk.source() + "|" + chunk.companyId();
+            if (seen.add(key)) {
+                merged.add(chunk);
+            }
+        }
+        int cap = Math.max(properties.getRetrievalTopK(), 12);
+        if (merged.size() > cap) {
+            merged = new ArrayList<>(merged.subList(0, cap));
+        }
+        return new RetrievalResult("employee_base_appended_" + base.retrievalSource(), merged);
+    }
+
+    private List<String> extractPotentialNames(String question) {
+        List<String> names = new ArrayList<>();
+        // 匹配2-4个连续汉字
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("[\u4e00-\u9fa5]{2,4}");
+        java.util.regex.Matcher matcher = pattern.matcher(question);
+        while (matcher.find()) {
+            String name = matcher.group();
+            // 排除常见通用词
+            if (!isCommonWord(name)) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    private boolean isCommonWord(String word) {
+        return Set.of("公司", "员工", "部门", "岗位", "制度", "流程", "规定", "管理", "请问", "我想", "帮我", "查询", "一下").contains(word);
     }
 
     public List<ContextChunk> safeActiveLearningRetrieve(String question, String scope) {
