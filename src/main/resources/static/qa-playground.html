@@ -3,126 +3,210 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>知识库助手</title>
+    <title>企业智能助手</title>
     <style>
         :root {
-            --bg: #070a14;
-            --card: #0f172a;
-            --card-2: #111b35;
-            --primary: #00e5ff;
-            --primary-2: #7c3aed;
-            --primary-soft: rgba(0, 229, 255, 0.16);
-            --text: #e2e8f0;
+            --bg: #0c0f1a;
+            --bg-accent: #12182b;
+            --surface: rgba(22, 28, 48, 0.92);
+            --surface-2: rgba(15, 20, 38, 0.85);
+            --border: rgba(148, 163, 184, 0.12);
+            --border-focus: rgba(129, 140, 248, 0.55);
+            --primary: #818cf8;
+            --primary-dark: #6366f1;
+            --accent: #38bdf8;
+            --text: #f1f5f9;
             --muted: #94a3b8;
-            --line: rgba(148, 163, 184, 0.24);
-            --glow: 0 0 18px rgba(0, 229, 255, 0.25);
-            --success: #34d399;
-            --error: #fda4af;
+            --success: #4ade80;
+            --error: #fb7185;
+            --radius: 14px;
+            --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
         }
+        * { box-sizing: border-box; }
         body {
             margin: 0;
-            background: linear-gradient(180deg, #06080f 0%, var(--bg) 100%);
-            font-family: "Microsoft YaHei", Arial, sans-serif;
-            color: var(--text);
             min-height: 100vh;
+            font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.22), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 50%, rgba(56, 189, 248, 0.08), transparent),
+                var(--bg);
         }
-        .wrap { max-width: 800px; margin: 0 auto; padding: 20px 16px 60px; }
+        .wrap {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 28px 20px 48px;
+        }
 
-        .header {
+        .hero {
             text-align: center;
-            padding: 30px 0 24px;
+            padding: 8px 0 28px;
         }
-        .header h1 {
-            margin: 0 0 8px;
-            font-size: 28px;
-            color: #c4f8ff;
-            text-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
-        }
-        .header p { margin: 0; color: var(--muted); font-size: 14px; }
-
-        .card {
-            background: var(--card);
-            border-radius: 16px;
-            box-shadow: 0 10px 28px rgba(2, 6, 23, 0.6), inset 0 0 0 1px rgba(56, 189, 248, 0.08);
-            padding: 20px 24px;
-            margin-bottom: 16px;
-            border: 1px solid rgba(56, 189, 248, 0.16);
-        }
-        .card-title {
-            font-size: 18px;
-            color: #b7f6ff;
-            font-weight: 600;
-            margin: 0 0 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .card-title .icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-2));
+        .hero-orb {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+            box-shadow: 0 0 40px rgba(129, 140, 248, 0.45);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
+            font-size: 26px;
+        }
+        .hero h1 {
+            margin: 0 0 8px;
+            font-size: 26px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        .hero p {
+            margin: 0;
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+        .hero-tags {
+            margin-top: 14px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .tag {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(129, 140, 248, 0.12);
+            border: 1px solid rgba(129, 140, 248, 0.25);
+            color: #c7d2fe;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 22px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+        }
+        .card-highlight {
+            border-color: rgba(129, 140, 248, 0.28);
+            box-shadow: var(--shadow), 0 0 0 1px rgba(129, 140, 248, 0.08);
+        }
+        .card-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(145deg, rgba(129, 140, 248, 0.25), rgba(56, 189, 248, 0.15));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .card-head-text h2 {
+            margin: 0;
+            font-size: 17px;
+            font-weight: 600;
+        }
+        .card-head-text p {
+            margin: 4px 0 0;
+            font-size: 12px;
+            color: var(--muted);
         }
 
         textarea, input[type="text"], input[type="password"], input[type="number"] {
             width: 100%;
-            box-sizing: border-box;
-            border-radius: 10px;
-            border: 1px solid rgba(0, 229, 255, 0.22);
-            padding: 12px 14px;
-            font-size: 14px;
-            background: #091125;
-            color: #dbeafe;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 14px 16px;
+            font-size: 15px;
+            background: var(--surface-2);
+            color: var(--text);
             font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        textarea { min-height: 100px; resize: vertical; }
+        #question {
+            min-height: 88px;
+            resize: vertical;
+            line-height: 1.55;
+        }
         textarea:focus, input:focus {
             outline: none;
-            border-color: rgba(0, 229, 255, 0.55);
-            box-shadow: var(--glow);
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
         }
-        textarea::placeholder, input::placeholder { color: #475569; }
+        textarea::placeholder, input::placeholder { color: #64748b; }
 
-        .toolbar {
-            margin-top: 12px;
+        .ask-bar {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             flex-wrap: wrap;
+            margin-top: 14px;
+        }
+        .scope-pills {
+            display: flex;
+            background: var(--surface-2);
+            border-radius: 10px;
+            padding: 4px;
+            border: 1px solid var(--border);
+        }
+        .scope-pills label {
+            font-size: 13px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--muted);
+            transition: background 0.2s, color 0.2s;
+        }
+        .scope-pills input { display: none; }
+        .scope-pills label:has(input:checked) {
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            color: #fff;
         }
         button {
             border: none;
-            border-radius: 10px;
-            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-2) 100%);
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
             color: #fff;
-            padding: 12px 24px;
+            padding: 12px 28px;
             font-size: 15px;
-            cursor: pointer;
-            box-shadow: 0 0 14px rgba(124, 58, 237, 0.42);
-            font-family: inherit;
             font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+            transition: transform 0.15s, filter 0.15s;
         }
-        button:hover { filter: brightness(1.06); }
-        button:disabled { background: #475569; cursor: not-allowed; filter: none; box-shadow: none; }
+        button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+        button:disabled {
+            background: #334155;
+            cursor: not-allowed;
+            transform: none;
+            filter: none;
+        }
         button.secondary {
-            background: #1e293b;
-            border: 1px solid rgba(148, 163, 184, 0.35);
-            box-shadow: none;
-            padding: 10px 16px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 18px;
+            font-size: 14px;
         }
-        button.secondary:hover { border-color: rgba(0, 229, 255, 0.45); }
-
-        select {
-            border-radius: 8px;
-            border: 1px solid rgba(0, 229, 255, 0.28);
-            background: #0b1228;
-            color: #cbd5e1;
-            padding: 8px 12px;
-            font-size: 13px;
+        button.secondary:hover:not(:disabled) {
+            border-color: var(--border-focus);
+            background: rgba(129, 140, 248, 0.08);
+        }
+        button.primary-lg {
+            padding: 12px 32px;
+            font-size: 15px;
         }
 
         .status {
@@ -132,106 +216,233 @@
         .status.ok { color: var(--success); }
         .status.error { color: var(--error); }
 
-        .thinking-box {
-            background: var(--card-2);
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            padding: 14px 16px;
-            min-height: 60px;
-            font-size: 14px;
-            color: #cbd5e1;
-            line-height: 1.6;
-        }
-        .thinking-item { padding: 2px 0; }
-        .thinking-item::before { content: "• "; color: var(--primary); }
-
-        .answer-box {
-            background: var(--card-2);
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            padding: 16px;
-            min-height: 120px;
-            line-height: 1.8;
-            font-size: 15px;
-            color: #e2e8f0;
-        }
-        .answer-box h1, .answer-box h2, .answer-box h3 { margin: 12px 0 8px; color: #b7f6ff; }
-        .answer-box table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-        .answer-box td, .answer-box th {
-            border: 1px solid var(--line);
-            padding: 8px 12px;
-            text-align: left;
-        }
-
-        .result-section { margin-top: 16px; }
-        .result-label {
-            font-size: 13px;
+        .panel-label {
+            font-size: 12px;
+            font-weight: 500;
             color: var(--muted);
             margin-bottom: 8px;
-            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
         }
-
-        .links {
-            text-align: center;
-            margin-top: 24px;
+        .thinking-box, .answer-box {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            line-height: 1.65;
+            font-size: 14px;
         }
-        .links a {
-            font-size: 12px;
-            color: #7dd3fc;
-            text-decoration: none;
-            margin: 0 12px;
+        .thinking-box { min-height: 52px; color: #cbd5e1; }
+        .thinking-item { padding: 3px 0; }
+        .thinking-item::before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            margin-right: 8px;
+            vertical-align: middle;
         }
-        .links a:hover { text-decoration: underline; }
+        .answer-box {
+            min-height: 100px;
+            color: var(--text);
+        }
+        .answer-box:empty::before {
+            content: "回答将显示在这里…";
+            color: #64748b;
+        }
+        .answer-box h1, .answer-box h2, .answer-box h3 { margin: 12px 0 8px; color: #e0e7ff; }
+        .answer-box table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
+        .answer-box td, .answer-box th {
+            border: 1px solid var(--border);
+            padding: 8px 10px;
+        }
+        .result-block { margin-top: 14px; }
 
-        .simple-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
-
-        .learn-section {
-            background: var(--card-2);
+        .learn-primary {
+            background: rgba(129, 140, 248, 0.06);
+            border: 1px solid rgba(129, 140, 248, 0.2);
             border-radius: 12px;
             padding: 16px;
-            margin-bottom: 12px;
         }
-        .learn-section-title {
-            font-size: 15px;
-            color: #a5f3fc;
-            margin-bottom: 10px;
+        .learn-primary .badge {
+            display: inline-block;
+            font-size: 11px;
             font-weight: 600;
+            color: #a5b4fc;
+            background: rgba(99, 102, 241, 0.2);
+            padding: 3px 8px;
+            border-radius: 6px;
+            margin-bottom: 10px;
         }
-
+        .simple-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin: 8px 0 0;
+            line-height: 1.5;
+        }
+        .hint code {
+            font-size: 11px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .toolbar {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        label.check {
+            font-size: 13px;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
         .ops-log {
-            background: #050a16;
-            border: 1px solid var(--line);
+            background: #080c18;
+            border: 1px solid var(--border);
             border-radius: 10px;
             padding: 12px;
-            max-height: 220px;
+            max-height: 200px;
             overflow-y: auto;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 12px;
+            font-family: ui-monospace, Consolas, monospace;
+            font-size: 11px;
             line-height: 1.5;
             color: #94a3b8;
             white-space: pre-wrap;
-            word-break: break-all;
         }
-        label.check { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+
+        details.advanced {
+            margin-top: 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface-2);
+            overflow: hidden;
+        }
+        details.advanced summary {
+            padding: 12px 16px;
+            font-size: 13px;
+            color: var(--muted);
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+        }
+        details.advanced summary::-webkit-details-marker { display: none; }
+        details.advanced summary::before {
+            content: "▸ ";
+            display: inline-block;
+            transition: transform 0.2s;
+        }
+        details.advanced[open] summary::before { transform: rotate(90deg); }
+        details.advanced .advanced-body {
+            padding: 0 16px 16px;
+            border-top: 1px solid var(--border);
+        }
+        details.advanced .advanced-item {
+            padding-top: 14px;
+        }
+        details.advanced .advanced-item + .advanced-item {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px dashed var(--border);
+        }
+
+        .hidden { display: none !important; }
+
+        .footer-links {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 12px;
+        }
+        .footer-links a {
+            color: var(--muted);
+            text-decoration: none;
+            margin: 0 10px;
+        }
+        .footer-links a:hover { color: var(--accent); }
+
+        @media (max-width: 520px) {
+            .simple-grid { grid-template-columns: 1fr; }
+            .ask-bar { flex-direction: column; align-items: stretch; }
+            .scope-pills { width: 100%; justify-content: center; }
+            button.primary-lg { width: 100%; }
+        }
     </style>
 </head>
 <body>
 <div class="wrap">
 
-    <div class="header">
-        <h1>知识库助手</h1>
-        <p>先学习，后提问，答案即刻呈现</p>
-    </div>
+    <header class="hero">
+        <div class="hero-orb" aria-hidden="true">✦</div>
+        <h1>企业智能助手</h1>
+        <p>基于企业知识图谱与向量库，为你检索证据并生成有据回答</p>
+        <div class="hero-tags">
+            <span class="tag">统一召回</span>
+            <span class="tag">证据重排</span>
+            <span class="tag">图谱 + 向量</span>
+        </div>
+    </header>
 
-    <!-- Section 1: Learn -->
-    <div class="card">
-        <div class="card-title"><span class="icon">📚</span>学习知识</div>
+    <!-- 对话 -->
+    <section class="card card-highlight">
+        <div class="card-head">
+            <div class="card-icon">💬</div>
+            <div class="card-head-text">
+                <h2>向我提问</h2>
+                <p>例如：某公司注册地址、某人担任哪些公司的法定代表人</p>
+            </div>
+        </div>
+        <textarea id="question" placeholder="输入你的问题，我会从已同步的企业知识中查找依据…"></textarea>
+        <div class="ask-bar">
+            <div class="scope-pills" role="group" aria-label="知识库范围">
+                <label><input type="radio" name="scope" value="enterprise" checked> 企业知识库</label>
+                <label><input type="radio" name="scope" value="personal"> 个人记忆</label>
+            </div>
+            <button type="button" id="askBtn" class="primary-lg">发送</button>
+            <span id="statusText" class="status">就绪</span>
+        </div>
+    </section>
 
-        <div class="learn-section">
-            <div class="learn-section-title">从业务库全量学习（推荐）</div>
-            <p class="hint" id="syncPreflight">正在检查 Python 环境…</p>
-            <p class="hint">流程：<strong>先清空</strong> Qdrant、Neo4j、MySQL(assistant) → 从下方 MySQL <strong>全量导出</strong> 企业知识 → 写入图谱与向量（百炼 embedding）。默认连接来自 <code>qa.assistant.business-mysql-url</code>（如 tdcomp）。</p>
+    <!-- 回答 -->
+    <section class="card">
+        <div class="card-head">
+            <div class="card-icon">✨</div>
+            <div class="card-head-text">
+                <h2>助手回复</h2>
+                <p>思考过程与最终回答</p>
+            </div>
+        </div>
+        <div class="result-block">
+            <div class="panel-label">思考过程</div>
+            <div id="thinking" class="thinking-box">
+                <div class="thinking-item" style="color:var(--muted);">等待你的提问…</div>
+            </div>
+        </div>
+        <div class="result-block">
+            <div class="panel-label">回答</div>
+            <div id="answer" class="answer-box"></div>
+        </div>
+    </section>
+
+    <!-- 知识同步 -->
+    <section class="card">
+        <div class="card-head">
+            <div class="card-icon">📚</div>
+            <div class="card-head-text">
+                <h2>同步企业知识</h2>
+                <p>从业务数据库全量导入后再提问，效果更佳</p>
+            </div>
+        </div>
+
+        <div class="learn-primary">
+            <span class="badge">推荐 · 首次或数据更新后执行</span>
+            <p class="hint" id="syncPreflight">正在检查环境…</p>
+            <p class="hint">将清空并重建图谱与向量库，从业务库（如 <code>tdcomp</code>）导出公司、法人、股东等信息。</p>
             <div class="simple-grid">
                 <input id="syncMysqlHost" type="text" placeholder="主机" value="localhost">
                 <input id="syncMysqlPort" type="number" placeholder="端口" value="3306">
@@ -241,103 +452,55 @@
                 <input id="syncMysqlUser" type="text" placeholder="用户名" value="root">
             </div>
             <div style="margin-top:10px;">
-                <input id="syncMysqlPass" type="password" placeholder="密码（可留空则用应用配置）" style="max-width:280px;">
-            </div>
-            <div class="toolbar" style="margin-top:10px;">
-                <label class="check"><input type="checkbox" id="syncClearLogs"> 同时清空问答日志</label>
-                <label class="check">限流条数 <input type="number" id="syncLimit" min="0" value="0" style="width:72px;margin-left:4px;" title="0=全量"></label>
+                <input id="syncMysqlPass" type="password" placeholder="密码（可留空，使用应用配置）">
             </div>
             <div class="toolbar">
-                <button type="button" id="syncFromMysqlBtn">清空并从业务库全量学习</button>
-                <button type="button" class="secondary" id="syncResetBtn">仅清空三库</button>
+                <label class="check"><input type="checkbox" id="syncClearLogs"> 清空问答日志</label>
+                <label class="check">限流 <input type="number" id="syncLimit" min="0" value="0" style="width:64px;margin-left:4px;" title="0=全量"></label>
+            </div>
+            <div class="toolbar">
+                <button type="button" id="syncFromMysqlBtn" class="primary-lg">开始全量同步</button>
+                <button type="button" class="secondary" id="syncResetBtn">仅清空</button>
                 <span id="syncStatus" class="status">就绪</span>
             </div>
-            <div class="result-section" style="margin-top:12px;">
-                <div class="result-label">同步日志</div>
+            <div class="result-block">
+                <div class="panel-label">同步日志</div>
                 <div id="syncLog" class="ops-log">尚未执行。</div>
             </div>
         </div>
 
-        <div class="learn-section">
-            <div class="learn-section-title">从已有 JSONL 重建（备用）</div>
-            <p class="hint">不连业务库，仅用已有 <code>data/knowledge/enterprise_mysql_clean.jsonl</code> 灌库。</p>
-            <div class="toolbar">
-                <button type="button" class="secondary" id="syncRebuildBtn">清空并从 JSONL 重建</button>
+        <details class="advanced">
+            <summary>更多学习方式（备用）</summary>
+            <div class="advanced-body">
+                <div class="advanced-item">
+                    <div class="panel-label" style="text-transform:none;letter-spacing:0;">从已有 JSONL 重建</div>
+                    <p class="hint">不连业务库，仅用本地 <code>enterprise_mysql_clean.jsonl</code> 灌入图与向量。</p>
+                    <button type="button" class="secondary" id="syncRebuildBtn">从 JSONL 重建</button>
+                </div>
+                <div class="advanced-item">
+                    <div class="panel-label" style="text-transform:none;letter-spacing:0;">补充文本记忆</div>
+                    <input id="learnTextTitle" type="text" placeholder="标题（可选）">
+                    <textarea id="learnTextBody" style="margin-top:8px;min-height:72px;" placeholder="粘贴制度说明、别名对照等补充知识…"></textarea>
+                    <div class="toolbar">
+                        <button type="button" class="secondary" id="learnTextBtn">保存到记忆</button>
+                        <span id="learnTextStatus" class="status"></span>
+                    </div>
+                    <p class="hint">补充内容进入主动学习通道，问答时会与主库一并检索。</p>
+                </div>
             </div>
-        </div>
+        </details>
+    </section>
 
-        <div class="learn-section">
-            <div class="learn-section-title">粘贴文本学习</div>
-            <input id="learnTextTitle" type="text" placeholder="标题（可选）">
-            <textarea id="learnTextBody" style="margin-top:8px;" placeholder="粘贴要学习的内容..."></textarea>
-            <div class="toolbar">
-                <button id="learnTextBtn">保存</button>
-                <span id="learnTextStatus" class="status"></span>
-            </div>
-        </div>
-
-        <div class="learn-section">
-            <div class="learn-section-title">多专家智能学习</div>
-            <div class="simple-grid">
-                <input id="expertHost" type="text" placeholder="主机" value="localhost">
-                <input id="expertPort" type="number" placeholder="端口" value="3306">
-            </div>
-            <div class="simple-grid" style="margin-top:10px;">
-                <input id="expertDb" type="text" placeholder="数据库名">
-                <input id="expertUser" type="text" placeholder="用户名" value="root">
-            </div>
-            <div style="margin-top:10px;">
-                <input id="expertPass" type="password" placeholder="密码" style="max-width:200px;">
-            </div>
-            <div class="toolbar">
-                <button id="expertLearnBtn">一键智能学习</button>
-                <span id="expertStatus" class="status"></span>
-            </div>
-            <p class="hint">系统自动分析表结构、检测关联、生成学习方案</p>
-        </div>
-    </div>
-
-    <!-- Section 2: Ask -->
-    <div class="card">
-        <div class="card-title"><span class="icon">💬</span>提问</div>
-        <textarea id="question" placeholder="输入你的问题..."></textarea>
-        <div class="toolbar">
-            <select id="scopeMode">
-                <option value="enterprise" selected>企业知识库</option>
-                <option value="personal">个人知识库</option>
-            </select>
-            <button id="askBtn">发送</button>
-            <span id="statusText" class="status">就绪</span>
-        </div>
-    </div>
-
-    <!-- Section 3: Result -->
-    <div class="card">
-        <div class="card-title"><span class="icon">✨</span>回答</div>
-
-        <div class="result-section">
-            <div class="result-label">思考过程</div>
-            <div id="thinking" class="thinking-box">
-                <div class="thinking-item" style="color:var(--muted);">等待提问...</div>
-            </div>
-        </div>
-
-        <div class="result-section">
-            <div class="result-label">回答</div>
-            <div id="answer" class="answer-box"></div>
-        </div>
-    </div>
-
-    <div class="links">
-        <a href="/qa/assistant/runtime-summary" target="_blank">配置检查</a>
-        <a href="/qa/learn/knowledge-sync/status" target="_blank">三库同步状态 JSON</a>
-    </div>
+    <footer class="footer-links">
+        <a href="/qa/assistant/runtime-summary" target="_blank">运行配置</a>
+        <a href="/qa/learn/knowledge-sync/status" target="_blank">同步状态</a>
+    </footer>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
     const questionEl = document.getElementById("question");
-    const scopeModeEl = document.getElementById("scopeMode");
+    const scopeModeEl = () => document.querySelector('input[name="scope"]:checked')?.value || "enterprise";
     const askBtnEl = document.getElementById("askBtn");
     const statusTextEl = document.getElementById("statusText");
     const thinkingEl = document.getElementById("thinking");
@@ -348,24 +511,18 @@
     const learnTextBtnEl = document.getElementById("learnTextBtn");
     const learnTextStatusEl = document.getElementById("learnTextStatus");
 
-    const expertHostEl = document.getElementById("expertHost");
-    const expertPortEl = document.getElementById("expertPort");
-    const expertDbEl = document.getElementById("expertDb");
-    const expertUserEl = document.getElementById("expertUser");
-    const expertPassEl = document.getElementById("expertPass");
-    const expertLearnBtnEl = document.getElementById("expertLearnBtn");
-    const expertStatusEl = document.getElementById("expertStatus");
-
     function escapeHtml(text) {
         return (text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     function renderThinking(items) {
         if (!items || !items.length) {
-            thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">等待提问...</div>';
+            thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">等待你的提问…</div>';
             return;
         }
-        thinkingEl.innerHTML = items.map(item => '<div class="thinking-item">' + escapeHtml(item.message || "") + '</div>').join("");
+        thinkingEl.innerHTML = items.map(item =>
+            '<div class="thinking-item">' + escapeHtml(item.message || "") + '</div>'
+        ).join("");
     }
 
     function renderAnswer(text) {
@@ -378,23 +535,25 @@
     }
 
     function clearResult() {
-        thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">思考中...</div>';
+        thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">正在检索与组织回答…</div>';
         answerEl.innerHTML = "";
     }
 
-    function setStatus(text) {
+    function setStatus(text, isError) {
         statusTextEl.textContent = text;
-        statusTextEl.className = text.includes("完成") ? "status ok" : (text.includes("失败") || text.includes("错误") ? "status error" : "status");
+        statusTextEl.className = "status" + (text.includes("完成") ? " ok" : (isError || text.includes("失败") || text.includes("错误") ? " error" : ""));
     }
 
-    // Ask question
     askBtnEl.addEventListener("click", async () => {
         const question = questionEl.value.trim();
-        const scope = scopeModeEl.value || "enterprise";
-        if (!question) { alert("请输入问题"); return; }
+        const scope = scopeModeEl();
+        if (!question) {
+            alert("请输入问题");
+            return;
+        }
         askBtnEl.disabled = true;
         clearResult();
-        setStatus("思考中...");
+        setStatus("思考中…");
         try {
             const resp = await fetch("/qa/ask", {
                 method: "POST",
@@ -403,29 +562,37 @@
             });
             if (!resp.ok) throw new Error("HTTP " + resp.status);
             const data = await resp.json();
-
             if (data.thinking && data.thinking.length > 0) {
                 renderThinking(data.thinking);
             }
-            renderAnswer(data.answer || "无法回答这个问题");
+            renderAnswer(data.answer || "暂时无法根据现有知识回答该问题。");
             setStatus("完成");
         } catch (e) {
             thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--error);">错误：' + escapeHtml(e.message) + '</div>';
             answerEl.innerHTML = "";
-            setStatus("失败");
+            setStatus("失败", true);
         } finally {
             askBtnEl.disabled = false;
         }
     });
 
-    // Learn text
+    questionEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            askBtnEl.click();
+        }
+    });
+
     learnTextBtnEl.addEventListener("click", async () => {
         const content = (learnTextBodyEl.value || "").trim();
         const title = (learnTextTitleEl.value || "").trim() || "粘贴文本";
-        const scope = scopeModeEl.value || "enterprise";
-        if (!content) { alert("请输入内容"); return; }
+        const scope = scopeModeEl();
+        if (!content) {
+            alert("请输入内容");
+            return;
+        }
         learnTextBtnEl.disabled = true;
-        learnTextStatusEl.textContent = "保存中...";
+        learnTextStatusEl.textContent = "保存中…";
         try {
             const resp = await fetch("/qa/learn/text", {
                 method: "POST",
@@ -444,64 +611,6 @@
         }
     });
 
-    // Multi-expert learning
-    expertLearnBtnEl.addEventListener("click", async () => {
-        const host = (expertHostEl.value || "").trim();
-        const port = parseInt(String(expertPortEl.value || "3306"), 10) || 3306;
-        const database = (expertDbEl.value || "").trim();
-        const username = (expertUserEl.value || "").trim();
-        const password = expertPassEl.value || "";
-        const scope = scopeModeEl.value || "enterprise";
-
-        if (!host || !database || !username) {
-            alert("请填写主机、数据库名和用户名"); return;
-        }
-        expertLearnBtnEl.disabled = true;
-        expertStatusEl.textContent = "智能学习中...";
-        expertStatusEl.className = "status";
-        setStatus("学习中...");
-        clearResult();
-        try {
-            const resp = await fetch("/qa/learning/multi-expert", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({host, port, database, username, password, scope})
-            });
-            const data = await resp.json();
-            if (data.ok) {
-                expertStatusEl.textContent = "完成(" + (data.taskCount || 0) + "个任务)";
-                expertStatusEl.className = "status ok";
-                setStatus("完成");
-
-                let summary = "### 学习完成\n\n";
-                if (data.tableProfiles && data.tableProfiles.length > 0) {
-                    summary += "已分析 " + data.tableProfiles.length + " 个数据表\n\n";
-                    for (const p of data.tableProfiles) {
-                        summary += "- " + p.tableName + " (" + p.businessType + ")\n";
-                    }
-                }
-                if (data.learningTasks && data.learningTasks.length > 0) {
-                    summary += "\n生成 " + data.learningTasks.length + " 个学习任务\n";
-                }
-                renderThinking([{message: "智能分析完成，准备就绪"}]);
-                renderAnswer(summary || "学习完成");
-            } else {
-                expertStatusEl.textContent = "失败";
-                expertStatusEl.className = "status error";
-                setStatus("失败");
-                renderThinking([{message: "学习失败：" + data.message}]);
-            }
-        } catch (e) {
-            expertStatusEl.textContent = e.message;
-            expertStatusEl.className = "status error";
-            setStatus("失败");
-            renderThinking([{message: "错误：" + e.message}]);
-        } finally {
-            expertLearnBtnEl.disabled = false;
-        }
-    });
-
-    // --- 学习：企业三库同步 ---
     const syncPreflightEl = document.getElementById("syncPreflight");
     const syncClearLogsEl = document.getElementById("syncClearLogs");
     const syncLimitEl = document.getElementById("syncLimit");
@@ -543,18 +652,17 @@
                 if (syncMysqlHostEl.value === "localhost" && bm.host) syncMysqlHostEl.value = bm.host;
                 if (syncMysqlPortEl.value === "3306" && bm.port) syncMysqlPortEl.value = String(bm.port);
                 if (syncMysqlUserEl.value === "root" && bm.username) syncMysqlUserEl.value = bm.username;
-                if (!expertDbEl.value && bm.database) expertDbEl.value = bm.database;
             }
             syncPreflightEl.textContent = data.jsonlExists
-                ? "Python：" + py + "；当前 JSONL 约 " + lines + " 条（全量学习后会更新）。"
-                : "Python：" + py + "；尚无 JSONL，请使用「从业务库全量学习」。";
+                ? "环境就绪（" + py + "），当前约 " + lines + " 条企业知识。"
+                : "环境就绪（" + py + "），尚未同步，请先执行全量同步。";
             if (data.job) {
                 renderSyncLog(data.job.logs);
                 const running = data.job.status === "running";
                 setSyncButtonsDisabled(running);
                 if (running) setSyncStatus("同步中…", null);
-                else if (data.job.status === "success") setSyncStatus("上次同步成功", true);
-                else if (data.job.status === "failed") setSyncStatus("上次同步失败", false);
+                else if (data.job.status === "success") setSyncStatus("同步完成", true);
+                else if (data.job.status === "failed") setSyncStatus("同步失败", false);
                 else setSyncStatus("就绪", null);
             }
         } catch (e) {
@@ -572,7 +680,7 @@
         syncResetBtnEl.disabled = disabled;
         syncRebuildBtnEl.disabled = disabled;
         learnTextBtnEl.disabled = disabled;
-        expertLearnBtnEl.disabled = disabled;
+        askBtnEl.disabled = disabled;
     }
 
     async function postKnowledgeSync(url, body) {
@@ -601,7 +709,7 @@
     }
 
     syncResetBtnEl.addEventListener("click", () => {
-        if (!confirm("将清空 Qdrant、Neo4j、MySQL(assistant) 与主动学习相关表，不灌库。是否继续？")) return;
+        if (!confirm("将清空图谱、向量库与 assistant 系统表，不会重新灌库。是否继续？")) return;
         postKnowledgeSync("/qa/learn/knowledge-sync/reset", {clearLogs: syncClearLogsEl.checked});
     });
 
@@ -611,7 +719,7 @@
             alert("请填写数据库名（如 tdcomp）");
             return;
         }
-        if (!confirm("将先清空三库，再从 MySQL「" + db + "」全量导出并灌入 Neo4j/Qdrant，可能需较长时间。是否继续？")) return;
+        if (!confirm("将清空并全量同步「" + db + "」到知识库，可能需要数分钟。是否继续？")) return;
         postKnowledgeSync("/qa/learn/knowledge-sync/from-mysql", {
             host: (syncMysqlHostEl.value || "localhost").trim(),
             port: parseInt(String(syncMysqlPortEl.value || "3306"), 10) || 3306,
@@ -624,7 +732,7 @@
     });
 
     syncRebuildBtnEl.addEventListener("click", () => {
-        if (!confirm("将先清空三库，再从已有 JSONL 重建 Neo4j 与 Qdrant，可能需数分钟。是否继续？")) return;
+        if (!confirm("将从已有 JSONL 重建图谱与向量，是否继续？")) return;
         postKnowledgeSync("/qa/learn/knowledge-sync/rebuild", {
             clearLogs: syncClearLogsEl.checked,
             limit: parseInt(String(syncLimitEl.value || "0"), 10) || 0
