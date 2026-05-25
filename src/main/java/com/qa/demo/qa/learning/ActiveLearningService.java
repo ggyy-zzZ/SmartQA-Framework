@@ -2,14 +2,13 @@ package com.qa.demo.qa.learning;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.embedding.TextEmbeddingService;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -33,7 +32,6 @@ import java.util.regex.Pattern;
 public class ActiveLearningService {
 
     private static final String MYSQL_TABLE = "qa_active_knowledge";
-    private static final String QDRANT_COLLECTION = "enterprise_active_learning_v1";
     private static final String SCOPE_ENTERPRISE = "enterprise";
     private static final String SCOPE_PERSONAL = "personal";
     private static final Pattern CJK_TOKEN = Pattern.compile("[\\u4e00-\\u9fa5]{2,8}");
@@ -46,6 +44,7 @@ public class ActiveLearningService {
     private final QaAssistantProperties properties;
     private final Driver neo4jDriver;
     private final RestClient restClient;
+    private final TextEmbeddingService textEmbeddingService;
 
     /**
      * Cached result of whether {@code qa_active_knowledge} has a {@code scope} column.
@@ -53,9 +52,14 @@ public class ActiveLearningService {
      */
     private volatile Boolean scopeColumnPresent;
 
-    public ActiveLearningService(QaAssistantProperties properties, Driver neo4jDriver) {
+    public ActiveLearningService(
+            QaAssistantProperties properties,
+            Driver neo4jDriver,
+            TextEmbeddingService textEmbeddingService
+    ) {
         this.properties = properties;
         this.neo4jDriver = neo4jDriver;
+        this.textEmbeddingService = textEmbeddingService;
         this.restClient = RestClient.builder().build();
     }
 
@@ -371,6 +375,7 @@ public class ActiveLearningService {
             String sourceName,
             String scope
     ) {
+        String collection = properties.getQdrantActiveLearningCollection();
         try {
             Map<String, Object> createBody = Map.of(
                     "vectors", Map.of(
@@ -380,7 +385,7 @@ public class ActiveLearningService {
             );
             try {
                 restClient.put()
-                        .uri(properties.getQdrantUrl() + "/collections/" + QDRANT_COLLECTION)
+                        .uri(properties.getQdrantUrl() + "/collections/" + collection)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(createBody)
                         .retrieve()
@@ -389,7 +394,7 @@ public class ActiveLearningService {
                 // Collection already exists or server returns conflict; continue upsert.
             }
 
-            List<Double> vector = hashEmbed(title + "\n" + content, Math.max(64, properties.getVectorEmbeddingDim()));
+            List<Double> vector = textEmbeddingService.embed(title + "\n" + content);
             long pointId = toPositiveLong(knowledgeId);
             Map<String, Object> payload = Map.of(
                     "knowledge_id", knowledgeId,
@@ -408,7 +413,7 @@ public class ActiveLearningService {
                     ))
             );
             restClient.put()
-                    .uri(properties.getQdrantUrl() + "/collections/" + QDRANT_COLLECTION + "/points?wait=true")
+                    .uri(properties.getQdrantUrl() + "/collections/" + collection + "/points?wait=true")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(upsertBody)
                     .retrieve()
@@ -556,6 +561,10 @@ public class ActiveLearningService {
         }
     }
 
+    private static boolean isCjk(char ch) {
+        return ch >= '\u4e00' && ch <= '\u9fff';
+    }
+
     private static String nullToEmpty(String s) {
         return s == null ? "" : s.trim();
     }
@@ -645,69 +654,6 @@ public class ActiveLearningService {
         }
         int end = Math.min(normalized.length(), start + 240);
         return normalized.substring(start, end);
-    }
-
-    private List<Double> hashEmbed(String text, int dim) throws Exception {
-        double[] vec = new double[dim];
-        for (String token : tokenize(text)) {
-            byte[] digest = sha256(token);
-            int idx = toInt(digest[0], digest[1], digest[2], digest[3]) % dim;
-            if (idx < 0) {
-                idx += dim;
-            }
-            double sign = (digest[4] & 0x01) == 0 ? 1.0 : -1.0;
-            double weight = 1.0 + ((digest[5] & 0xff) / 255.0);
-            vec[idx] += sign * weight;
-        }
-        double norm = 0.0;
-        for (double v : vec) {
-            norm += v * v;
-        }
-        norm = Math.sqrt(norm);
-        List<Double> out = new ArrayList<>(dim);
-        for (double v : vec) {
-            out.add(norm > 0 ? v / norm : 0.0);
-        }
-        return out;
-    }
-
-    private List<String> tokenize(String text) {
-        List<String> tokens = new ArrayList<>();
-        StringBuilder buffer = new StringBuilder();
-        for (char ch : text.toLowerCase(Locale.ROOT).toCharArray()) {
-            if (Character.isWhitespace(ch) || ",.;:|()[]{}<>!?\"'，。；：、（）".indexOf(ch) >= 0) {
-                flushBuffer(tokens, buffer);
-                continue;
-            }
-            if (isCjk(ch)) {
-                flushBuffer(tokens, buffer);
-                tokens.add(String.valueOf(ch));
-            } else {
-                buffer.append(ch);
-            }
-        }
-        flushBuffer(tokens, buffer);
-        return tokens;
-    }
-
-    private void flushBuffer(List<String> tokens, StringBuilder buffer) {
-        if (buffer.length() > 0) {
-            tokens.add(buffer.toString());
-            buffer.setLength(0);
-        }
-    }
-
-    private boolean isCjk(char ch) {
-        return ch >= '\u4e00' && ch <= '\u9fff';
-    }
-
-    private byte[] sha256(String text) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        return md.digest(text.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private int toInt(byte b0, byte b1, byte b2, byte b3) {
-        return (b0 & 0xff) | ((b1 & 0xff) << 8) | ((b2 & 0xff) << 16) | ((b3 & 0xff) << 24);
     }
 
     private long toPositiveLong(String value) {

@@ -3,6 +3,7 @@ package com.qa.demo.qa.web;
 import java.util.ArrayList;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.QaScopes;
+import com.qa.demo.qa.embedding.TextEmbeddingService;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.learning.BatchCsvAnalysisService;
 import com.qa.demo.qa.learning.BatchLearningOrchestrator;
@@ -14,6 +15,8 @@ import com.qa.demo.qa.learning.SchemaSedimentationPlanService;
 import com.qa.demo.qa.learning.StructuredIngestJobService;
 import com.qa.demo.qa.learning.StructuredCsvIngestService;
 import com.qa.demo.qa.learning.StructuredTableRowAuditService;
+import com.qa.demo.qa.ops.LocalKnowledgeOpsService;
+import com.qa.demo.qa.retrieval.EvidenceRerankService;
 import com.qa.demo.qa.orchestration.QaAskOrchestrator;
 import com.qa.demo.qa.response.QaLogService;
 import com.qa.demo.qa.sedimentation.FeedbackPersistenceService;
@@ -66,6 +69,9 @@ public class QaController {
     private final BatchCsvAnalysisService batchCsvAnalysisService;
     private final BatchLearningOrchestrator batchLearningOrchestrator;
     private final MultiExpertLearningService multiExpertLearningService;
+    private final TextEmbeddingService textEmbeddingService;
+    private final LocalKnowledgeOpsService localKnowledgeOpsService;
+    private final EvidenceRerankService evidenceRerankService;
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -83,7 +89,10 @@ public class QaController {
             QaAssistantProperties assistantProperties,
             BatchCsvAnalysisService batchCsvAnalysisService,
             BatchLearningOrchestrator batchLearningOrchestrator,
-            MultiExpertLearningService multiExpertLearningService
+            MultiExpertLearningService multiExpertLearningService,
+            TextEmbeddingService textEmbeddingService,
+            LocalKnowledgeOpsService localKnowledgeOpsService,
+            EvidenceRerankService evidenceRerankService
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -101,6 +110,55 @@ public class QaController {
         this.batchCsvAnalysisService = batchCsvAnalysisService;
         this.batchLearningOrchestrator = batchLearningOrchestrator;
         this.multiExpertLearningService = multiExpertLearningService;
+        this.textEmbeddingService = textEmbeddingService;
+        this.localKnowledgeOpsService = localKnowledgeOpsService;
+        this.evidenceRerankService = evidenceRerankService;
+    }
+
+    /**
+     * 学习模块：企业知识三库（Qdrant / Neo4j / MySQL assistant）同步状态。
+     */
+    @GetMapping("/learn/knowledge-sync/status")
+    public Map<String, Object> learnKnowledgeSyncStatus() {
+        return localKnowledgeOpsService.statusSnapshot();
+    }
+
+    /**
+     * 学习模块：仅清空三库（不灌库）。
+     */
+    @PostMapping("/learn/knowledge-sync/reset")
+    public Map<String, Object> learnKnowledgeSyncReset(@RequestBody(required = false) KnowledgeSyncRequest request) {
+        boolean clearLogs = request != null && request.clearLogs();
+        return localKnowledgeOpsService.startFullReset(clearLogs);
+    }
+
+    /**
+     * 学习模块：先清空三库，再从 {@code enterprise_mysql_clean.jsonl} 重建 Neo4j + Qdrant（百炼向量）。
+     */
+    @PostMapping("/learn/knowledge-sync/rebuild")
+    public Map<String, Object> learnKnowledgeSyncRebuild(@RequestBody(required = false) KnowledgeSyncRequest request) {
+        boolean clearLogs = request != null && request.clearLogs();
+        int limit = request != null ? request.limit() : 0;
+        return localKnowledgeOpsService.startRebuild(clearLogs, false, limit);
+    }
+
+    /**
+     * 学习模块：清空三库后，从业务 MySQL（如 tdcomp）全量导出并灌入 Neo4j + Qdrant。
+     */
+    @PostMapping("/learn/knowledge-sync/from-mysql")
+    public Map<String, Object> learnKnowledgeSyncFromMysql(
+            @Valid @RequestBody(required = false) KnowledgeSyncFromMysqlRequest request) {
+        if (request == null) {
+            return Map.of("ok", false, "message", "请提供 MySQL 连接信息。");
+        }
+        return localKnowledgeOpsService.startClearAndLearnFromMysql(
+                request.host(),
+                request.port() > 0 ? request.port() : 3306,
+                request.database(),
+                request.username(),
+                request.password(),
+                request.clearLogs(),
+                request.limit());
     }
 
     /**
@@ -118,6 +176,19 @@ public class QaController {
         body.put("minimaxModel", assistantProperties.getModel());
         body.put("mysqlEnabled", assistantProperties.isMysqlEnabled());
         body.put("vectorEnabled", assistantProperties.isVectorEnabled());
+        String dashKey = assistantProperties.getDashscopeApiKey();
+        boolean dashPresent = dashKey != null && !dashKey.isBlank();
+        body.put("dashscopeApiKeyPresent", dashPresent);
+        body.put("embeddingProviderConfigured", assistantProperties.getEmbeddingProvider());
+        body.put("embeddingProviderActive", textEmbeddingService.activeProvider());
+        body.put("embeddingModel", assistantProperties.getEmbeddingModel());
+        body.put("vectorEmbeddingDim", assistantProperties.getVectorEmbeddingDim());
+        body.put("qdrantCollection", assistantProperties.getQdrantCollection());
+        body.put("qdrantActiveLearningCollection", assistantProperties.getQdrantActiveLearningCollection());
+        body.put("unifiedRetrievalEnabled", assistantProperties.isUnifiedRetrievalEnabled());
+        body.put("rerankEnabled", assistantProperties.isRerankEnabled());
+        body.put("rerankProviderActive", evidenceRerankService.activeProvider());
+        body.put("rerankModel", assistantProperties.getRerankModel());
         body.put("hint", present
                 ? "密钥非空；若仍报 login fail，请核对是否为有效 MiniMax Chat API Key 并已重启进程。"
                 : "未读到 qa.assistant.api-key（通常应来自环境变量 MINIMAX_API_KEY 或 application-local.properties）；与 curl 成功的终端不是同一环境。");
@@ -816,6 +887,28 @@ public class QaController {
             String title,
             String scope
     ) {
+    }
+
+    /** 企业三库同步：清空 Qdrant / Neo4j / assistant，并从 JSONL 重建图谱与向量。 */
+    public record KnowledgeSyncRequest(boolean clearLogs, int limit) {
+        public KnowledgeSyncRequest() {
+            this(false, 0);
+        }
+    }
+
+    /** 从业务库全量学习：先清空三库，再 build_knowledge_from_mysql + 同步 Neo4j/Qdrant。 */
+    public record KnowledgeSyncFromMysqlRequest(
+            @NotBlank String host,
+            int port,
+            @NotBlank String database,
+            @NotBlank String username,
+            String password,
+            boolean clearLogs,
+            int limit
+    ) {
+        public KnowledgeSyncFromMysqlRequest() {
+            this("localhost", 3306, "tdcomp", "root", null, false, 0);
+        }
     }
 
     public record FeedbackRequest(

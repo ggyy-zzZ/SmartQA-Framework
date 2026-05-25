@@ -28,9 +28,63 @@ public class QaAssistantProperties {
     private int retrievalTopK = 6;
     private boolean vectorEnabled = true;
     private String qdrantUrl = "http://localhost:6333";
-    private String qdrantCollection = "enterprise_knowledge_v1";
+    private String qdrantCollection = "enterprise_knowledge_v2";
+    private String qdrantActiveLearningCollection = "enterprise_active_learning_v2";
     private int vectorTopK = 6;
-    private int vectorEmbeddingDim = 768;
+    private int vectorEmbeddingDim = 1024;
+
+    /**
+     * 向量化实现：{@code dashscope}（百炼 text-embedding-v4）或 {@code hash}（本地伪向量）。
+     * dashscope 在未配置 {@link #dashscopeApiKey} 时自动降级为 hash。
+     */
+    private String embeddingProvider = "dashscope";
+
+    private String dashscopeApiKey = "";
+
+    private String embeddingModel = "text-embedding-v4";
+
+    private String embeddingApiUrl =
+            "https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding";
+
+    /** 百炼单批最多 10 条 */
+    private int embeddingBatchSize = 10;
+
+    private int embeddingTimeoutMs = 30_000;
+
+    /** 企业 scope：并行召回图/向量/MySQL/SQL 并合并主动学习，再重排 */
+    private boolean unifiedRetrievalEnabled = true;
+
+    /** 是否对合并候选调用百炼 gte-rerank（无 Key 时按原始 score 排序截断） */
+    private boolean rerankEnabled = true;
+
+    private String rerankModel = "gte-rerank-v2";
+
+    private String rerankApiUrl =
+            "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank";
+
+    /** 送入重排前的最大候选条数 */
+    private int rerankCandidateMax = 32;
+
+    /** 统一召回阶段向量路 TopK（可大于 retrieval-top-k） */
+    private int recallVectorTopK = 12;
+
+    /** 统一召回阶段图谱路 TopK */
+    private int recallGraphTopK = 10;
+
+    /** 证据不足时是否拦截 LLM 生成（本地验证建议开启） */
+    private boolean answerGateEnabled = true;
+
+    private int answerGateMinEvidenceCount = 1;
+
+    private double answerGateMinTopScore = 3.0;
+
+    private boolean answerGateBlockOnUnknownIntent = true;
+
+    /** 为 true 时，evidenceAlignment.lowOverlap 则不走 LLM，改模板答复 */
+    private boolean alignmentStrict = false;
+
+    private double alignmentLowOverlapThreshold = 0.08;
+
     private boolean mysqlEnabled = true;
     private String mysqlUrl = "jdbc:mysql://localhost:3306/assistant?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false";
     private String mysqlUsername = "root";
@@ -343,6 +397,166 @@ public class QaAssistantProperties {
 
     public void setVectorEmbeddingDim(int vectorEmbeddingDim) {
         this.vectorEmbeddingDim = vectorEmbeddingDim;
+    }
+
+    public String getQdrantActiveLearningCollection() {
+        return qdrantActiveLearningCollection;
+    }
+
+    public void setQdrantActiveLearningCollection(String qdrantActiveLearningCollection) {
+        this.qdrantActiveLearningCollection = qdrantActiveLearningCollection;
+    }
+
+    public String getEmbeddingProvider() {
+        return embeddingProvider;
+    }
+
+    public void setEmbeddingProvider(String embeddingProvider) {
+        this.embeddingProvider = embeddingProvider;
+    }
+
+    public String getDashscopeApiKey() {
+        return dashscopeApiKey;
+    }
+
+    public void setDashscopeApiKey(String dashscopeApiKey) {
+        this.dashscopeApiKey = dashscopeApiKey == null ? "" : dashscopeApiKey.trim();
+    }
+
+    public String getEmbeddingModel() {
+        return embeddingModel;
+    }
+
+    public void setEmbeddingModel(String embeddingModel) {
+        this.embeddingModel = embeddingModel;
+    }
+
+    public String getEmbeddingApiUrl() {
+        return embeddingApiUrl;
+    }
+
+    public void setEmbeddingApiUrl(String embeddingApiUrl) {
+        this.embeddingApiUrl = embeddingApiUrl;
+    }
+
+    public int getEmbeddingBatchSize() {
+        return embeddingBatchSize;
+    }
+
+    public void setEmbeddingBatchSize(int embeddingBatchSize) {
+        this.embeddingBatchSize = embeddingBatchSize;
+    }
+
+    public int getEmbeddingTimeoutMs() {
+        return embeddingTimeoutMs;
+    }
+
+    public void setEmbeddingTimeoutMs(int embeddingTimeoutMs) {
+        this.embeddingTimeoutMs = embeddingTimeoutMs;
+    }
+
+    public boolean isUnifiedRetrievalEnabled() {
+        return unifiedRetrievalEnabled;
+    }
+
+    public void setUnifiedRetrievalEnabled(boolean unifiedRetrievalEnabled) {
+        this.unifiedRetrievalEnabled = unifiedRetrievalEnabled;
+    }
+
+    public boolean isRerankEnabled() {
+        return rerankEnabled;
+    }
+
+    public void setRerankEnabled(boolean rerankEnabled) {
+        this.rerankEnabled = rerankEnabled;
+    }
+
+    public String getRerankModel() {
+        return rerankModel;
+    }
+
+    public void setRerankModel(String rerankModel) {
+        this.rerankModel = rerankModel;
+    }
+
+    public String getRerankApiUrl() {
+        return rerankApiUrl;
+    }
+
+    public void setRerankApiUrl(String rerankApiUrl) {
+        this.rerankApiUrl = rerankApiUrl;
+    }
+
+    public int getRerankCandidateMax() {
+        return rerankCandidateMax;
+    }
+
+    public void setRerankCandidateMax(int rerankCandidateMax) {
+        this.rerankCandidateMax = rerankCandidateMax;
+    }
+
+    public int getRecallVectorTopK() {
+        return recallVectorTopK;
+    }
+
+    public void setRecallVectorTopK(int recallVectorTopK) {
+        this.recallVectorTopK = recallVectorTopK;
+    }
+
+    public int getRecallGraphTopK() {
+        return recallGraphTopK;
+    }
+
+    public void setRecallGraphTopK(int recallGraphTopK) {
+        this.recallGraphTopK = recallGraphTopK;
+    }
+
+    public boolean isAnswerGateEnabled() {
+        return answerGateEnabled;
+    }
+
+    public void setAnswerGateEnabled(boolean answerGateEnabled) {
+        this.answerGateEnabled = answerGateEnabled;
+    }
+
+    public int getAnswerGateMinEvidenceCount() {
+        return answerGateMinEvidenceCount;
+    }
+
+    public void setAnswerGateMinEvidenceCount(int answerGateMinEvidenceCount) {
+        this.answerGateMinEvidenceCount = answerGateMinEvidenceCount;
+    }
+
+    public double getAnswerGateMinTopScore() {
+        return answerGateMinTopScore;
+    }
+
+    public void setAnswerGateMinTopScore(double answerGateMinTopScore) {
+        this.answerGateMinTopScore = answerGateMinTopScore;
+    }
+
+    public boolean isAnswerGateBlockOnUnknownIntent() {
+        return answerGateBlockOnUnknownIntent;
+    }
+
+    public void setAnswerGateBlockOnUnknownIntent(boolean answerGateBlockOnUnknownIntent) {
+        this.answerGateBlockOnUnknownIntent = answerGateBlockOnUnknownIntent;
+    }
+
+    public boolean isAlignmentStrict() {
+        return alignmentStrict;
+    }
+
+    public void setAlignmentStrict(boolean alignmentStrict) {
+        this.alignmentStrict = alignmentStrict;
+    }
+
+    public double getAlignmentLowOverlapThreshold() {
+        return alignmentLowOverlapThreshold;
+    }
+
+    public void setAlignmentLowOverlapThreshold(double alignmentLowOverlapThreshold) {
+        this.alignmentLowOverlapThreshold = alignmentLowOverlapThreshold;
     }
 
     public boolean isMysqlEnabled() {

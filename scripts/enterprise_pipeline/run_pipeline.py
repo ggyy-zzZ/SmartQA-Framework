@@ -30,11 +30,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--with-vector", action="store_true")
     parser.add_argument("--qdrant-host", default="localhost")
     parser.add_argument("--qdrant-port", type=int, default=6333)
-    parser.add_argument("--qdrant-collection", default="enterprise_knowledge_v1")
-    parser.add_argument("--embedding-provider", default="hash", choices=["hash", "minimax"])
-    parser.add_argument("--embedding-model", default="MiniMax-Embedding-1")
-    parser.add_argument("--embedding-dim", type=int, default=768)
-    parser.add_argument("--embedding-api-url", default="https://api.minimaxi.com/v1/embeddings")
+    parser.add_argument("--qdrant-collection", default="enterprise_knowledge_v2")
+    parser.add_argument("--embedding-provider", default="dashscope", choices=["hash", "minimax", "dashscope"])
+    parser.add_argument("--embedding-model", default="text-embedding-v4")
+    parser.add_argument("--embedding-dim", type=int, default=1024)
+    parser.add_argument(
+        "--embedding-api-url",
+        default="https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding",
+    )
     parser.add_argument("--embedding-api-key", default="")
     parser.add_argument("--vector-batch-size", type=int, default=128)
     parser.add_argument("--recreate-vector", action="store_true")

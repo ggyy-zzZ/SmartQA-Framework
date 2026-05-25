@@ -198,6 +198,22 @@
             margin-bottom: 10px;
             font-weight: 600;
         }
+
+        .ops-log {
+            background: #050a16;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 12px;
+            max-height: 220px;
+            overflow-y: auto;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #94a3b8;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        label.check { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
     </style>
 </head>
 <body>
@@ -211,6 +227,44 @@
     <!-- Section 1: Learn -->
     <div class="card">
         <div class="card-title"><span class="icon">📚</span>学习知识</div>
+
+        <div class="learn-section">
+            <div class="learn-section-title">从业务库全量学习（推荐）</div>
+            <p class="hint" id="syncPreflight">正在检查 Python 环境…</p>
+            <p class="hint">流程：<strong>先清空</strong> Qdrant、Neo4j、MySQL(assistant) → 从下方 MySQL <strong>全量导出</strong> 企业知识 → 写入图谱与向量（百炼 embedding）。默认连接来自 <code>qa.assistant.business-mysql-url</code>（如 tdcomp）。</p>
+            <div class="simple-grid">
+                <input id="syncMysqlHost" type="text" placeholder="主机" value="localhost">
+                <input id="syncMysqlPort" type="number" placeholder="端口" value="3306">
+            </div>
+            <div class="simple-grid" style="margin-top:10px;">
+                <input id="syncMysqlDb" type="text" placeholder="数据库名（如 tdcomp）">
+                <input id="syncMysqlUser" type="text" placeholder="用户名" value="root">
+            </div>
+            <div style="margin-top:10px;">
+                <input id="syncMysqlPass" type="password" placeholder="密码（可留空则用应用配置）" style="max-width:280px;">
+            </div>
+            <div class="toolbar" style="margin-top:10px;">
+                <label class="check"><input type="checkbox" id="syncClearLogs"> 同时清空问答日志</label>
+                <label class="check">限流条数 <input type="number" id="syncLimit" min="0" value="0" style="width:72px;margin-left:4px;" title="0=全量"></label>
+            </div>
+            <div class="toolbar">
+                <button type="button" id="syncFromMysqlBtn">清空并从业务库全量学习</button>
+                <button type="button" class="secondary" id="syncResetBtn">仅清空三库</button>
+                <span id="syncStatus" class="status">就绪</span>
+            </div>
+            <div class="result-section" style="margin-top:12px;">
+                <div class="result-label">同步日志</div>
+                <div id="syncLog" class="ops-log">尚未执行。</div>
+            </div>
+        </div>
+
+        <div class="learn-section">
+            <div class="learn-section-title">从已有 JSONL 重建（备用）</div>
+            <p class="hint">不连业务库，仅用已有 <code>data/knowledge/enterprise_mysql_clean.jsonl</code> 灌库。</p>
+            <div class="toolbar">
+                <button type="button" class="secondary" id="syncRebuildBtn">清空并从 JSONL 重建</button>
+            </div>
+        </div>
 
         <div class="learn-section">
             <div class="learn-section-title">粘贴文本学习</div>
@@ -276,6 +330,7 @@
 
     <div class="links">
         <a href="/qa/assistant/runtime-summary" target="_blank">配置检查</a>
+        <a href="/qa/learn/knowledge-sync/status" target="_blank">三库同步状态 JSON</a>
     </div>
 </div>
 
@@ -445,6 +500,138 @@
             expertLearnBtnEl.disabled = false;
         }
     });
+
+    // --- 学习：企业三库同步 ---
+    const syncPreflightEl = document.getElementById("syncPreflight");
+    const syncClearLogsEl = document.getElementById("syncClearLogs");
+    const syncLimitEl = document.getElementById("syncLimit");
+    const syncMysqlHostEl = document.getElementById("syncMysqlHost");
+    const syncMysqlPortEl = document.getElementById("syncMysqlPort");
+    const syncMysqlDbEl = document.getElementById("syncMysqlDb");
+    const syncMysqlUserEl = document.getElementById("syncMysqlUser");
+    const syncMysqlPassEl = document.getElementById("syncMysqlPass");
+    const syncFromMysqlBtnEl = document.getElementById("syncFromMysqlBtn");
+    const syncResetBtnEl = document.getElementById("syncResetBtn");
+    const syncRebuildBtnEl = document.getElementById("syncRebuildBtn");
+    const syncStatusEl = document.getElementById("syncStatus");
+    const syncLogEl = document.getElementById("syncLog");
+    let syncPollTimer = null;
+
+    function renderSyncLog(lines) {
+        if (!lines || !lines.length) {
+            syncLogEl.textContent = "（暂无日志）";
+            return;
+        }
+        syncLogEl.textContent = lines.join("\n");
+        syncLogEl.scrollTop = syncLogEl.scrollHeight;
+    }
+
+    function setSyncStatus(text, ok) {
+        syncStatusEl.textContent = text;
+        syncStatusEl.className = ok === true ? "status ok" : (ok === false ? "status error" : "status");
+    }
+
+    async function refreshSyncPreflight() {
+        try {
+            const resp = await fetch("/qa/learn/knowledge-sync/status");
+            const data = await resp.json();
+            const lines = data.jsonlLineCount >= 0 ? data.jsonlLineCount : "?";
+            const py = data.pythonCommand || "未检测到";
+            const bm = data.businessMysql;
+            if (bm) {
+                if (!syncMysqlDbEl.value && bm.database) syncMysqlDbEl.value = bm.database;
+                if (syncMysqlHostEl.value === "localhost" && bm.host) syncMysqlHostEl.value = bm.host;
+                if (syncMysqlPortEl.value === "3306" && bm.port) syncMysqlPortEl.value = String(bm.port);
+                if (syncMysqlUserEl.value === "root" && bm.username) syncMysqlUserEl.value = bm.username;
+                if (!expertDbEl.value && bm.database) expertDbEl.value = bm.database;
+            }
+            syncPreflightEl.textContent = data.jsonlExists
+                ? "Python：" + py + "；当前 JSONL 约 " + lines + " 条（全量学习后会更新）。"
+                : "Python：" + py + "；尚无 JSONL，请使用「从业务库全量学习」。";
+            if (data.job) {
+                renderSyncLog(data.job.logs);
+                const running = data.job.status === "running";
+                setSyncButtonsDisabled(running);
+                if (running) setSyncStatus("同步中…", null);
+                else if (data.job.status === "success") setSyncStatus("上次同步成功", true);
+                else if (data.job.status === "failed") setSyncStatus("上次同步失败", false);
+                else setSyncStatus("就绪", null);
+            }
+        } catch (e) {
+            syncPreflightEl.textContent = "无法获取同步状态：" + e.message;
+        }
+    }
+
+    function startSyncPoll() {
+        if (syncPollTimer) clearInterval(syncPollTimer);
+        syncPollTimer = setInterval(refreshSyncPreflight, 2000);
+    }
+
+    function setSyncButtonsDisabled(disabled) {
+        syncFromMysqlBtnEl.disabled = disabled;
+        syncResetBtnEl.disabled = disabled;
+        syncRebuildBtnEl.disabled = disabled;
+        learnTextBtnEl.disabled = disabled;
+        expertLearnBtnEl.disabled = disabled;
+    }
+
+    async function postKnowledgeSync(url, body) {
+        setSyncButtonsDisabled(true);
+        setSyncStatus("启动中…", null);
+        try {
+            const resp = await fetch(url, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(body || {})
+            });
+            const data = await resp.json();
+            if (!data.ok) {
+                setSyncStatus(data.message || "启动失败", false);
+                alert(data.message || "无法启动");
+                setSyncButtonsDisabled(false);
+                return;
+            }
+            setSyncStatus("同步中…", null);
+            renderSyncLog(data.job && data.job.logs ? data.job.logs : ["任务已提交…"]);
+            startSyncPoll();
+        } catch (e) {
+            setSyncStatus(e.message, false);
+            setSyncButtonsDisabled(false);
+        }
+    }
+
+    syncResetBtnEl.addEventListener("click", () => {
+        if (!confirm("将清空 Qdrant、Neo4j、MySQL(assistant) 与主动学习相关表，不灌库。是否继续？")) return;
+        postKnowledgeSync("/qa/learn/knowledge-sync/reset", {clearLogs: syncClearLogsEl.checked});
+    });
+
+    syncFromMysqlBtnEl.addEventListener("click", () => {
+        const db = (syncMysqlDbEl.value || "").trim();
+        if (!db) {
+            alert("请填写数据库名（如 tdcomp）");
+            return;
+        }
+        if (!confirm("将先清空三库，再从 MySQL「" + db + "」全量导出并灌入 Neo4j/Qdrant，可能需较长时间。是否继续？")) return;
+        postKnowledgeSync("/qa/learn/knowledge-sync/from-mysql", {
+            host: (syncMysqlHostEl.value || "localhost").trim(),
+            port: parseInt(String(syncMysqlPortEl.value || "3306"), 10) || 3306,
+            database: db,
+            username: (syncMysqlUserEl.value || "root").trim(),
+            password: syncMysqlPassEl.value || "",
+            clearLogs: syncClearLogsEl.checked,
+            limit: parseInt(String(syncLimitEl.value || "0"), 10) || 0
+        });
+    });
+
+    syncRebuildBtnEl.addEventListener("click", () => {
+        if (!confirm("将先清空三库，再从已有 JSONL 重建 Neo4j 与 Qdrant，可能需数分钟。是否继续？")) return;
+        postKnowledgeSync("/qa/learn/knowledge-sync/rebuild", {
+            clearLogs: syncClearLogsEl.checked,
+            limit: parseInt(String(syncLimitEl.value || "0"), 10) || 0
+        });
+    });
+
+    refreshSyncPreflight();
 </script>
 </body>
 </html>

@@ -54,28 +54,8 @@ CREATE TABLE IF NOT EXISTS `company` (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 可重复执行：固定主键示例数据
-INSERT IGNORE INTO `employee` (`id`, `name`, `department`, `email`) VALUES
-  (1, '张三', '管理部', 'zhangsan@example.local'),
-  (2, '李四', '财务部', 'lisi@example.local');
-
-INSERT IGNORE INTO `company` (
-  `id`, `company_name`, `status`, `entity_type`, `entity_category`,
-  `registered_address`, `business_scope`, `deleteflag`,
-  `legal_rep_id`, `manager_id`, `financial_manager_id`
-) VALUES (
-  1,
-  '示例科技有限公司',
-  '存续',
-  '有限责任公司',
-  '科学研究与技术服务',
-  '上海市浦东新区示例路1号',
-  '技术开发、技术咨询、技术服务；软件销售。',
-  0,
-  1,
-  2,
-  2
-);
+-- company / employee 仅保留空表结构；真实企业数据由 enterprise_mysql_clean.jsonl → Neo4j/Qdrant 灌库，
+-- 或连接 tdcomp 等业务库（qa.assistant.business-mysql-url）。不再插入「示例科技」等 demo 行。
 
 -- 待沉淀队列：未知意图 / 证据不足时写入，供后续人工或离线消费（与 jsonl 并行）
 CREATE TABLE IF NOT EXISTS `qa_pending_knowledge` (

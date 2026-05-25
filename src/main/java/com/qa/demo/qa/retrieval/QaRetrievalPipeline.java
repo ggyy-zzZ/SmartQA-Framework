@@ -26,6 +26,7 @@ public class QaRetrievalPipeline {
     private final QaAssistantProperties properties;
     private final EntityTableMapper entityTableMapper;
     private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
+    private final EvidenceRerankService evidenceRerankService;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -36,7 +37,8 @@ public class QaRetrievalPipeline {
             ActiveLearningService activeLearningService,
             QaAssistantProperties properties,
             EntityTableMapper entityTableMapper,
-            EmployeeBaseKnowledgeService employeeBaseKnowledge
+            EmployeeBaseKnowledgeService employeeBaseKnowledge,
+            EvidenceRerankService evidenceRerankService
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -47,9 +49,28 @@ public class QaRetrievalPipeline {
         this.properties = properties;
         this.entityTableMapper = entityTableMapper;
         this.employeeBaseKnowledge = employeeBaseKnowledge;
+        this.evidenceRerankService = evidenceRerankService;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
+    }
+
+    /**
+     * P0：企业问答统一召回（图 + 向量 + MySQL + SQL + 主动学习）后重排截断。
+     */
+    public RetrievalResult retrieveUnifiedEnterprise(
+            String question,
+            List<ContextChunk> learned,
+            String intentHint
+    ) throws IOException {
+        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, intentHint);
+        merged = mergeLearnedUnconditionally(learned, merged);
+        RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
+        base = appendSupplementalTables(base, question);
+        base = appendEmployeeBaseInfo(base, question);
+        List<ContextChunk> reranked = evidenceRerankService.rerank(question, base.evidence());
+        String source = "unified_rerank_" + evidenceRerankService.activeProvider();
+        return new RetrievalResult(source, reranked);
     }
 
     public RetrievalResult retrieveByIntent(String intent, String question) throws IOException {
@@ -385,6 +406,62 @@ public class QaRetrievalPipeline {
                 documentContextService.retrieveTopChunks(question, properties.getDocsDir(), properties.getRetrievalTopK()));
     }
 
+    private List<ContextChunk> mergeLearnedUnconditionally(List<ContextChunk> learned, List<ContextChunk> candidates) {
+        List<ContextChunk> safeLearned = learned == null ? List.of() : learned;
+        Set<String> seen = new HashSet<>();
+        List<ContextChunk> merged = new ArrayList<>();
+        for (ContextChunk c : safeLearned) {
+            if (seen.add(dedupeKey(c))) {
+                merged.add(c);
+            }
+        }
+        for (ContextChunk c : candidates) {
+            if (seen.add(dedupeKey(c))) {
+                merged.add(c);
+            }
+        }
+        int cap = Math.max(properties.getRerankCandidateMax(), properties.getRetrievalTopK());
+        if (merged.size() > cap) {
+            return new ArrayList<>(merged.subList(0, cap));
+        }
+        return merged;
+    }
+
+    private static String dedupeKey(ContextChunk c) {
+        return c.source() + "|" + c.companyId() + "|" + c.companyName() + "|" + c.field();
+    }
+
+    private List<ContextChunk> collectHybridCandidatesExpanded(String question, String intentHint) throws IOException {
+        List<ContextChunk> merged = new ArrayList<>();
+        appendUnique(merged, safeGraphRetrieve(question, properties.getRecallGraphTopK()));
+        appendUnique(merged, vectorContextService.retrieveTopChunks(question, properties.getRecallVectorTopK()));
+        appendUnique(merged, safeMysqlRetrieve(question));
+        appendUnique(merged, safeSqlRetrieve(question));
+        if (merged.isEmpty()) {
+            return documentContextService.retrieveTopChunks(
+                    question,
+                    properties.getDocsDir(),
+                    properties.getRetrievalTopK()
+            );
+        }
+        return merged;
+    }
+
+    private static void appendUnique(List<ContextChunk> merged, List<ContextChunk> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        Set<String> seen = new HashSet<>();
+        for (ContextChunk c : merged) {
+            seen.add(dedupeKey(c));
+        }
+        for (ContextChunk item : items) {
+            if (seen.add(dedupeKey(item))) {
+                merged.add(item);
+            }
+        }
+    }
+
     private RetrievalResult retrieveHybrid(String question) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
         List<ContextChunk> graph = safeGraphRetrieve(question);
@@ -437,8 +514,12 @@ public class QaRetrievalPipeline {
     }
 
     private List<ContextChunk> safeGraphRetrieve(String question) {
+        return safeGraphRetrieve(question, properties.getRetrievalTopK());
+    }
+
+    private List<ContextChunk> safeGraphRetrieve(String question, int topK) {
         try {
-            return graphContextService.retrieveTopChunks(question, properties.getRetrievalTopK());
+            return graphContextService.retrieveTopChunks(question, topK);
         } catch (Exception ignored) {
             return List.of();
         }

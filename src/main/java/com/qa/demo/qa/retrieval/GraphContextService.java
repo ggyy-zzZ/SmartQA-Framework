@@ -28,6 +28,13 @@ public class GraphContextService {
         List<String> companyHints = extractCompanyHints(question);
         List<ContextChunk> chunks = new ArrayList<>();
         try (Session session = neo4jDriver.session()) {
+            String personHint = extractPersonHintForRoleQuery(question);
+            if (personHint != null && isRoleRelationQuery(question)) {
+                chunks.addAll(queryByPersonAndRole(session, question, personHint, limitedTopK));
+                if (!chunks.isEmpty()) {
+                    return chunks;
+                }
+            }
             if (!companyHints.isEmpty()) {
                 chunks.addAll(queryByCompanyHints(session, question, companyHints, limitedTopK));
                 // If question carries explicit company hints but graph has no hit,
@@ -84,6 +91,88 @@ public class GraphContextService {
             }
             return candidates;
         }
+    }
+
+    private List<ContextChunk> queryByPersonAndRole(
+            Session session,
+            String question,
+            String personHint,
+            int topK
+    ) {
+        boolean legalRepOnly = question.contains("法人") || question.contains("法定代表人");
+        Result result = session.run(
+                """
+                MATCH (p:Person)-[r:HAS_ROLE_IN]->(c:Company)
+                WHERE p.name CONTAINS $personHint
+                  AND (
+                    $legalRepOnly = false
+                    OR r.role CONTAINS '法定代表'
+                    OR r.role CONTAINS '法人'
+                  )
+                RETURN c.companyId AS companyId,
+                       c.name AS companyName,
+                       c.status AS status,
+                       p.name AS personName,
+                       r.role AS role
+                ORDER BY c.name
+                LIMIT $topK
+                """,
+                org.neo4j.driver.Values.parameters(
+                        "personHint", personHint,
+                        "legalRepOnly", legalRepOnly,
+                        "topK", topK
+                )
+        );
+        List<ContextChunk> chunks = new ArrayList<>();
+        while (result.hasNext()) {
+            Record record = result.next();
+            String companyId = safeString(record, "companyId");
+            String companyName = safeString(record, "companyName");
+            String personName = safeString(record, "personName");
+            String role = safeString(record, "role");
+            String field = detectField(question);
+            String snippet = "状态=" + safeString(record, "status")
+                    + "; 关键人=" + personName + "(" + role + ")";
+            double score = 22.0;
+            chunks.add(new ContextChunk(companyId, companyName, field, snippet, score, "neo4j-person-role"));
+        }
+        return chunks;
+    }
+
+    private boolean isRoleRelationQuery(String question) {
+        return question.contains("法人")
+                || question.contains("法定代表人")
+                || question.contains("董事")
+                || question.contains("监事")
+                || question.contains("担任")
+                || question.contains("任职");
+    }
+
+    /**
+     * 从「X是哪些公司的法人」类问句中提取人名提示（简单规则，本地验证用）。
+     */
+    private String extractPersonHintForRoleQuery(String question) {
+        if (question == null || question.isBlank()) {
+            return null;
+        }
+        String q = question.trim();
+        String[] patterns = {
+                "是哪些公司的",
+                "是哪些公司",
+                "在哪些公司",
+                "担任哪些公司",
+        };
+        for (String marker : patterns) {
+            int idx = q.indexOf(marker);
+            if (idx > 1) {
+                String name = q.substring(0, idx).trim();
+                name = name.replaceAll("^(请问|查询|帮我查|谁|什么人)", "").trim();
+                if (name.length() >= 2 && name.length() <= 12) {
+                    return name;
+                }
+            }
+        }
+        return null;
     }
 
     private List<ContextChunk> queryByCompanyHints(
@@ -219,6 +308,9 @@ public class GraphContextService {
         }
         if (q.contains("地址") || q.contains("注册地") || q.contains("办公")) {
             fields.add("地址");
+        }
+        if (q.contains("法人") || q.contains("法定代表人") || q.contains("董事") || q.contains("监事")) {
+            fields.add("关键人员");
         }
         return fields;
     }

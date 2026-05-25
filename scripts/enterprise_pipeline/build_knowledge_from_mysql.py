@@ -19,6 +19,21 @@ from typing import Any
 import pymysql
 from pymysql.cursors import DictCursor
 
+from schema_field_maps import (
+    CERTIFICATE_TYPE_LABELS,
+    COMPANY_ID_COLUMN_EXCLUDE,
+    COMPANY_SCALAR_ALIASES,
+    LEGAL_REP_COLUMN_CANDIDATES,
+    MAIN_CLASS_TYPE_LABELS,
+    MAIN_TYPE_LABELS,
+    MEMBER_TYPE_LABELS,
+    MODULE_KIND_LABELS,
+    OPERATING_STATUS_LABELS,
+    PERSON_ROLE_COLUMNS,
+    PRODUCT_LINE_LABELS,
+    SHAREHOLDER_TYPE_LABELS,
+)
+
 
 def row_value(row: dict[str, Any], key: str, default: Any = None) -> Any:
     if key in row:
@@ -124,6 +139,42 @@ def choose_first(cols: set[str], candidates: list[str]) -> str | None:
     return None
 
 
+def enum_label(value: Any, mapping: dict[str, str], fallback_prefix: str = "") -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if text in mapping:
+        return mapping[text]
+    if text.isdigit() and text in mapping:
+        return mapping[text]
+    try:
+        key = str(int(text))
+        if key in mapping:
+            return mapping[key]
+    except Exception:
+        pass
+    return f"{fallback_prefix}{text}" if fallback_prefix else text
+
+
+def yes_no_flag(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y"}:
+        return "是"
+    if text in {"0", "false", "no", "n"}:
+        return "否"
+    return text
+
+
+def append_select_alias(selected: list[str], cols: set[str], canonical: str, candidates: list[str]) -> None:
+    physical = choose_first(cols, candidates)
+    if physical and canonical not in {s.split(" AS ")[-1].strip() for s in selected if " AS " in s}:
+        selected.append(f"`{physical}` AS {canonical}")
+
+
 def query_companies(conn, schema: str, limit: int) -> list[dict[str, Any]]:
     table = choose_company_table(conn, schema)
     if table is None:
@@ -134,14 +185,7 @@ def query_companies(conn, schema: str, limit: int) -> list[dict[str, Any]]:
     if id_col is None or name_col is None:
         return []
 
-    status_col = choose_first(cols, ["status", "company_status"])
     short_name_col = choose_first(cols, ["short_name", "company_short_name"])
-    entity_type_col = choose_first(cols, ["entity_type", "company_type"])
-    entity_category_col = choose_first(cols, ["entity_category", "company_category"])
-    reg_addr_col = choose_first(cols, ["registered_address", "register_address", "address"])
-    office_addr_col = choose_first(cols, ["office_address", "work_address"])
-    business_scope_col = choose_first(cols, ["business_scope", "scope"])
-    parent_col = choose_first(cols, ["parent_company", "parent_company_name"])
 
     selected = [
         f"`{id_col}` AS company_id",
@@ -149,20 +193,24 @@ def query_companies(conn, schema: str, limit: int) -> list[dict[str, Any]]:
     ]
     if short_name_col:
         selected.append(f"`{short_name_col}` AS company_short_name")
-    if status_col:
-        selected.append(f"`{status_col}` AS status")
-    if entity_type_col:
-        selected.append(f"`{entity_type_col}` AS entity_type")
-    if entity_category_col:
-        selected.append(f"`{entity_category_col}` AS entity_category")
-    if reg_addr_col:
-        selected.append(f"`{reg_addr_col}` AS registered_address")
-    if office_addr_col:
-        selected.append(f"`{office_addr_col}` AS office_address")
-    if business_scope_col:
-        selected.append(f"`{business_scope_col}` AS business_scope")
-    if parent_col:
-        selected.append(f"`{parent_col}` AS parent_company")
+
+    for canonical, candidates in COMPANY_SCALAR_ALIASES.items():
+        append_select_alias(selected, cols, canonical, candidates)
+
+    parent_name_col = choose_first(cols, ["parent_company", "parent_company_name"])
+    if parent_name_col:
+        selected.append(f"`{parent_name_col}` AS parent_company")
+
+    legal_rep_col = choose_first(cols, LEGAL_REP_COLUMN_CANDIDATES)
+    if legal_rep_col:
+        selected.append(f"`{legal_rep_col}` AS legal_rep_id")
+
+    selected_canonical = {s.split(" AS ")[-1].strip() for s in selected if " AS " in s}
+    for col, _role in PERSON_ROLE_COLUMNS.items():
+        if col in cols and col not in selected_canonical:
+            selected.append(f"`{col}` AS {col}")
+    if "assigned_it_ids" in cols and "assigned_it_ids" not in selected_canonical:
+        selected.append("`assigned_it_ids` AS assigned_it_ids")
 
     delete_flag_sql = ""
     if "deleteflag" in cols:
@@ -225,6 +273,37 @@ def parse_id_list(value: Any) -> list[int]:
         if pid > 0:
             result.append(pid)
     return result
+
+
+def query_company_product_lines(conn, schema: str) -> list[dict[str, Any]]:
+    if not table_exists(conn, schema, "company_product_line"):
+        return []
+    sql = """
+    SELECT company_id, module_kind, product_line
+    FROM `company_product_line`
+    WHERE deleteflag = 0
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        return cur.fetchall()
+
+
+def query_company_shareholders(conn, schema: str) -> list[dict[str, Any]]:
+    if not table_exists(conn, schema, "company_shareholder_info"):
+        return []
+    sql = """
+    SELECT
+      company_id,
+      shareholder_type,
+      shareholder_id,
+      paid_in_capital,
+      subscribed_capital
+    FROM `company_shareholder_info`
+    WHERE deleteflag = 0
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        return cur.fetchall()
 
 
 def query_directors_supervisors(conn, schema: str) -> list[dict[str, Any]]:
@@ -308,18 +387,24 @@ def query_seal_person_detail(conn, schema: str) -> list[dict[str, Any]]:
         return cur.fetchall()
 
 
-def query_employee_map(conn, schema: str) -> dict[int, str]:
+def query_employee_map(conn, schema: str) -> tuple[dict[int, str], dict[str, int]]:
+    """返回 employee_id->主姓名、别名(含英文名/曾用名)->employee_id。"""
     if not table_exists(conn, schema, "employee"):
-        return {}
+        return {}, {}
     cols = table_columns(conn, schema, "employee")
     id_col = "id" if "id" in cols else None
     if id_col is None:
-        return {}
+        return {}, {}
     name_col = choose_first(cols, ["name", "employee_name", "real_name", "nickname"])
     if name_col is None:
-        return {}
+        return {}, {}
 
-    selected = [f"`{id_col}` AS id", f"`{name_col}` AS name"]
+    alias_cols = [
+        c
+        for c in ["another_name", "english_name", "name_spell", "another_name_spell"]
+        if c in cols
+    ]
+    selected = [f"`{id_col}` AS id", f"`{name_col}` AS name"] + [f"`{c}` AS {c}" for c in alias_cols]
     where_parts = []
     if "deleteflag" in cols:
         where_parts.append("deleteflag = 0")
@@ -329,6 +414,7 @@ def query_employee_map(conn, schema: str) -> dict[int, str]:
         cur.execute(sql)
         rows = cur.fetchall()
     result: dict[int, str] = {}
+    alias_to_id: dict[str, int] = {}
     for row in rows:
         try:
             key = int(row_value(row, "id", 0))
@@ -337,7 +423,12 @@ def query_employee_map(conn, schema: str) -> dict[int, str]:
         name = str(row_value(row, "name", "") or "").strip()
         if name:
             result[key] = name
-    return result
+            alias_to_id[name] = key
+        for col in alias_cols:
+            alias = str(row_value(row, col, "") or "").strip()
+            if alias and len(alias) >= 2:
+                alias_to_id[alias] = key
+    return result, alias_to_id
 
 
 def normalize_status(value: Any) -> str:
@@ -368,12 +459,21 @@ def role_person(role: str, emp_id: Any, emp_map: dict[int, str]) -> dict[str, An
 
 def member_type_name(value: Any) -> str:
     text = str(value or "").strip()
-    mapping = {
-        "1": "董事",
-        "2": "监事",
-        "3": "高管",
-    }
-    return mapping.get(text, f"董监高({text or '未知'})")
+    return enum_label(text, MEMBER_TYPE_LABELS, "董监高-")
+
+
+def product_line_label(module_kind: Any, product_line: Any) -> tuple[str, str]:
+    try:
+        mk = int(module_kind)
+    except Exception:
+        mk = 0
+    try:
+        pl = int(product_line)
+    except Exception:
+        pl = 0
+    module = MODULE_KIND_LABELS.get(mk, f"模块{mk}")
+    line = PRODUCT_LINE_LABELS.get(pl, f"线{pl}")
+    return module, line
 
 
 def build_company_rows(
@@ -383,7 +483,10 @@ def build_company_rows(
     certificate_management: list[dict[str, Any]],
     seal_management: list[dict[str, Any]],
     seal_person_detail: list[dict[str, Any]],
+    product_lines: list[dict[str, Any]],
+    shareholders: list[dict[str, Any]],
     employee_map: dict[int, str],
+    company_name_by_id: dict[str, str],
 ) -> list[dict[str, Any]]:
     by_company_accounts: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in bank_accounts:
@@ -407,6 +510,14 @@ def build_company_rows(
         if seal_id:
             seal_persons_by_seal_id[seal_id].append(row)
 
+    by_company_product_lines: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in product_lines:
+        by_company_product_lines[str(row.get("company_id") or "")].append(row)
+
+    by_company_shareholders: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in shareholders:
+        by_company_shareholders[str(row.get("company_id") or "")].append(row)
+
     rows: list[dict[str, Any]] = []
     for c in companies:
         company_id = str(c.get("company_id") or "").strip()
@@ -425,21 +536,7 @@ def build_company_rows(
         bank_payloads: list[dict[str, Any]] = []
         person_dedup: set[tuple[str, str]] = set()
 
-        for role, col in (
-            ("法定代表人", "legal_rep_id"),
-            ("公司监事", "company_supervisor_id"),
-            ("会计", "assigned_accountant_id"),
-            ("出纳", "assigned_cashier_id"),
-            ("会计主管", "accounting_supervisor_id"),
-            ("财务负责人", "financial_manager_id"),
-            ("办税人", "tax_handler_id"),
-            ("购票人", "ticket_purchaser_id"),
-            ("经理", "manager_id"),
-            ("企业联络人", "company_contact_id"),
-            ("董事长/执行董事", "chairman_exec_director_id"),
-            ("SSC薪资负责人", "ssc_payroll_manager_id"),
-            ("有限合伙人代表", "limited_partner_id"),
-        ):
+        for col, role in PERSON_ROLE_COLUMNS.items():
             person = role_person(role, c.get(col), employee_map)
             if not person:
                 continue
@@ -524,7 +621,9 @@ def build_company_rows(
             executors = parse_id_list(cert.get("executors"))
             certificates_payload.append(
                 {
-                    "cert_type": str(cert.get("certificate_type") or ""),
+                    "cert_type": enum_label(
+                        cert.get("certificate_type"), CERTIFICATE_TYPE_LABELS, "证照类型"
+                    ),
                     "status": normalize_status(cert.get("status")),
                     "code": "",
                     "issue_date": str(cert.get("issue_date") or ""),
@@ -591,19 +690,81 @@ def build_company_rows(
                 }
             )
 
+        product_lines_payload: list[dict[str, Any]] = []
+        for pl in by_company_product_lines.get(company_id, []):
+            module, line = product_line_label(pl.get("module_kind"), pl.get("product_line"))
+            product_lines_payload.append(
+                {"module": module, "line": line, "relation": "关联"}
+            )
+
+        shareholder_rows = by_company_shareholders.get(company_id, [])
+        total_subscribed = 0.0
+        for sh in shareholder_rows:
+            try:
+                total_subscribed += float(sh.get("subscribed_capital") or 0)
+            except Exception:
+                pass
+        shareholders_payload: list[dict[str, Any]] = []
+        for sh in shareholder_rows:
+            holder_type = enum_label(sh.get("shareholder_type"), SHAREHOLDER_TYPE_LABELS, "股东类型")
+            sid = sh.get("shareholder_id")
+            holder_name = ""
+            try:
+                sid_int = int(sid or 0)
+            except Exception:
+                sid_int = 0
+            if sid_int > 0:
+                if holder_type == "公司":
+                    holder_name = company_name_by_id.get(str(sid_int), f"公司#{sid_int}")
+                else:
+                    holder_name = employee_map.get(sid_int, f"自然人#{sid_int}")
+            ratio = ""
+            try:
+                sub = float(sh.get("subscribed_capital") or 0)
+                if total_subscribed > 0 and sub > 0:
+                    ratio = f"{sub / total_subscribed * 100:.2f}%"
+                elif sub > 0:
+                    ratio = f"认缴{sub:g}"
+            except Exception:
+                ratio = ""
+            shareholders_payload.append(
+                {
+                    "holder_type": holder_type,
+                    "holder_name": holder_name,
+                    "ratio": ratio,
+                    "subscribed_capital": str(sh.get("subscribed_capital") or ""),
+                    "paid_in_capital": str(sh.get("paid_in_capital") or ""),
+                }
+            )
+
+        parent_company = str(c.get("parent_company") or "").strip()
+        parent_id = str(c.get("parent_company_id") or "").strip()
+        if not parent_company and parent_id:
+            parent_name = company_name_by_id.get(parent_id, "")
+            parent_company = f"{parent_name}（ID {parent_id}）" if parent_name else f"总公司ID {parent_id}"
+
         row = {
             "company_id": company_id,
             "company_name": company_name,
             "company_short_name": str(c.get("company_short_name") or ""),
-            "status": normalize_status(c.get("status")),
-            "entity_type": str(c.get("entity_type") or ""),
-            "entity_category": str(c.get("entity_category") or ""),
+            "company_code": str(c.get("company_code") or ""),
+            "credit_code": str(c.get("credit_code") or ""),
+            "status": enum_label(c.get("status"), OPERATING_STATUS_LABELS) or normalize_status(c.get("status")),
+            "entity_type": enum_label(c.get("entity_type"), MAIN_TYPE_LABELS, "主体类型"),
+            "entity_category": enum_label(c.get("entity_category"), MAIN_CLASS_TYPE_LABELS, "主体分类"),
+            "currency": str(c.get("currency") or ""),
+            "registered_area": str(c.get("registered_area") or ""),
             "registered_address": str(c.get("registered_address") or ""),
             "office_address": str(c.get("office_address") or ""),
+            "established_date": str(c.get("established_date") or ""),
             "business_scope": str(c.get("business_scope") or ""),
-            "parent_company": str(c.get("parent_company") or ""),
-            "product_lines": [],
-            "shareholders": [],
+            "parent_company": parent_company,
+            "tax_registered": yes_no_flag(c.get("tax_registered")),
+            "bank_account_opened": yes_no_flag(c.get("bank_account_opened")),
+            "social_security_opened": yes_no_flag(c.get("social_security_opened")),
+            "housing_fund_opened": yes_no_flag(c.get("housing_fund_opened")),
+            "product_lines": product_lines_payload,
+            "shareholders": shareholders_payload,
             "certificates": certificates_payload,
             "directors_supervisors": directors_supervisors_payload,
             "seals": seals_payload,
@@ -636,15 +797,27 @@ def build_compiled_text(rows: list[dict[str, Any]]) -> str:
             for x in row.get("seals", [])
         )
         summary = f"来源=mysql.tdcomp; 银行账户数={len(row.get('bank_accounts', []))}; 关键人数量={len(row.get('key_people', []))}"
+        product_lines = "；".join(
+            f"{x.get('module')}/{x.get('line')}/{x.get('relation')}" for x in row.get("product_lines", [])
+        )
+        shareholders = "；".join(
+            f"{x.get('holder_type')}:{x.get('holder_name')}({x.get('ratio', '')})"
+            for x in row.get("shareholders", [])
+        )
         block = (
             f"{{companyId={row.get('company_id')}, companyName={row.get('company_name')}, summary={summary}}}\n"
             f"公司名称：{row.get('company_name')}\n"
+            f"统一社会信用代码：{row.get('credit_code')}\n"
             f"经营状态：{row.get('status')}\n"
             f"主体类型：{row.get('entity_type')}\n"
             f"主体分类：{row.get('entity_category')}\n"
+            f"注册地区：{row.get('registered_area')}\n"
+            f"母公司：{row.get('parent_company')}\n"
             f"注册地址：{row.get('registered_address')}\n"
             f"实际办公地址：{row.get('office_address')}\n"
             f"经营范围：{row.get('business_scope')}\n"
+            f"产品线：{product_lines}\n"
+            f"股东：{shareholders}\n"
             f"关键人员：{people}\n"
             f"董监高：{directors}\n"
             f"证照信息：{certs}\n"
@@ -664,6 +837,9 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
+    if not output_dir.is_absolute():
+        root = Path(__file__).resolve().parents[2]
+        output_dir = root / output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with open_conn(args) as conn:
@@ -673,7 +849,15 @@ def main() -> None:
         certificate_management = query_certificate_management(conn, args.schema)
         seal_management = query_seal_management(conn, args.schema)
         seal_person_detail = query_seal_person_detail(conn, args.schema)
-        employee_map = query_employee_map(conn, args.schema)
+        product_line_rows = query_company_product_lines(conn, args.schema)
+        shareholder_rows = query_company_shareholders(conn, args.schema)
+        employee_map, _employee_aliases = query_employee_map(conn, args.schema)
+
+    company_name_by_id = {
+        str(c.get("company_id") or "").strip(): str(c.get("company_name") or "").strip()
+        for c in companies
+        if str(c.get("company_id") or "").strip()
+    }
 
     rows = build_company_rows(
         companies,
@@ -682,7 +866,10 @@ def main() -> None:
         certificate_management,
         seal_management,
         seal_person_detail,
+        product_line_rows,
+        shareholder_rows,
         employee_map,
+        company_name_by_id,
     )
     if not rows:
         raise SystemExit("No normalized rows built from MySQL. Please check company table / permissions.")
@@ -702,6 +889,14 @@ def main() -> None:
         "directors_supervisors": sum(len(x.get("directors_supervisors", [])) for x in rows),
         "certificates": sum(len(x.get("certificates", [])) for x in rows),
         "seals": sum(len(x.get("seals", [])) for x in rows),
+        "product_lines": sum(len(x.get("product_lines", [])) for x in rows),
+        "shareholders": sum(len(x.get("shareholders", [])) for x in rows),
+        "legal_rep_roles": sum(
+            1
+            for x in rows
+            for p in x.get("key_people", [])
+            if p.get("role") == "法定代表人"
+        ),
         "output_jsonl": str(jsonl_path),
         "output_text": str(txt_path),
     }

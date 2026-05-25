@@ -171,8 +171,7 @@ def main() -> None:
                 })
                 SET p.name = person.name,
                     p.personId = person.person_id
-                MERGE (p)-[r:HAS_ROLE_IN]->(c)
-                SET r.role = person.role
+                MERGE (p)-[r:HAS_ROLE_IN {role: person.role}]->(c)
                 """,
                 {"rows": batch},
             )

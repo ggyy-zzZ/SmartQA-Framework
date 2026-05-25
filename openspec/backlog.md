@@ -31,7 +31,10 @@
 
 | 状态 | 模块 | 条目 |
 |------|------|------|
-| 待办 | 对齐与自检 | 证据对齐加强：提示词 / 后处理 / 可选轻量二次 LLM；**无证据路径**集成测试与固定用例（当前已有 `evidenceAlignment` 关键词启发式） |
+| 已完成 | 向量与运维 | 百炼 **text-embedding-v4**（`TextEmbeddingService`）；Qdrant `enterprise_knowledge_v2` / `enterprise_active_learning_v2`；`scripts/ops/reset_local_stores.py`、`rebuild_local_knowledge.py`；`docs/local-validation-plan.md` |
+| 已完成 | 回答闸门 | `QaAnswerGateService` + `qa.assistant.answer-gate-*`；编排层无证据不调 LLM |
+| 进行中 | 评测 | `data/eval/qa_cases.jsonl` + `scripts/eval/run_qa_eval.py`；灌库后跑基线 CSV 再微调 |
+| 待办 | 对齐与自检 | 证据对齐加强：`alignment-strict` 已可配；**无证据路径**集成测试与固定用例（当前已有 `evidenceAlignment` 关键词启发式） |
 | 待办 | 回答与追问 | 追问策略 **可观测**：结构化记录「为何追问」（缺哪类槽位、哪路检索为空） |
 | 待办 | OpenSpec | 已归档变更在 `proposal.md` 中标记说明；保持 **`spec.md` 为能力单一事实来源**，backlog 仅作排队视图 |
 

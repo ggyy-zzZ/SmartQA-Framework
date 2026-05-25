@@ -3,6 +3,8 @@ package com.qa.demo.qa.orchestration;
 import com.qa.demo.knowledge.KnowledgeAssistantPrompts;
 import com.qa.demo.qa.answer.MiniMaxClient;
 import com.qa.demo.qa.answer.QaAnswerFallbackService;
+import com.qa.demo.qa.answer.QaAnswerGateService;
+import com.qa.demo.qa.embedding.TextEmbeddingService;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
@@ -53,6 +55,8 @@ public class QaAskOrchestrator {
     private final EvidenceAlignmentService evidenceAlignmentService;
     private final SedimentationQueueService sedimentationQueueService;
     private final QaSseStreamSupport sseStreamSupport;
+    private final QaAnswerGateService answerGateService;
+    private final TextEmbeddingService textEmbeddingService;
 
     public QaAskOrchestrator(
             IntentRouterService intentRouterService,
@@ -70,7 +74,9 @@ public class QaAskOrchestrator {
             LearningResponseBuilder learningResponseBuilder,
             EvidenceAlignmentService evidenceAlignmentService,
             SedimentationQueueService sedimentationQueueService,
-            QaSseStreamSupport sseStreamSupport
+            QaSseStreamSupport sseStreamSupport,
+            QaAnswerGateService answerGateService,
+            TextEmbeddingService textEmbeddingService
     ) {
         this.intentRouterService = intentRouterService;
         this.graphContextService = graphContextService;
@@ -88,6 +94,8 @@ public class QaAskOrchestrator {
         this.evidenceAlignmentService = evidenceAlignmentService;
         this.sedimentationQueueService = sedimentationQueueService;
         this.sseStreamSupport = sseStreamSupport;
+        this.answerGateService = answerGateService;
+        this.textEmbeddingService = textEmbeddingService;
     }
 
     public Map<String, Object> buildAskResponse(String question, String scope, String conversationId, Boolean followUpFlag)
@@ -163,6 +171,12 @@ public class QaAskOrchestrator {
             retrievalResult = learnedFirst.isEmpty()
                     ? new QaRetrievalPipeline.RetrievalResult("personal_scope_no_memory", List.of())
                     : new QaRetrievalPipeline.RetrievalResult("active_learning_personal", learnedFirst);
+        } else if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
+            retrievalResult = retrievalPipeline.retrieveUnifiedEnterprise(
+                    retrievalQuestion,
+                    learnedFirst,
+                    intentDecision.intent()
+            );
         } else if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             retrievalResult = new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
         } else {
@@ -179,27 +193,31 @@ public class QaAskOrchestrator {
                             && "employee_not_found".equals(c.companyId())
             );
         }
-        boolean canAnswer = !evidence.isEmpty();
+        QaAnswerGateService.GateDecision gate = answerGateService.evaluate(intentDecision, evidence);
+        boolean canAnswer = gate.canAnswer();
+        boolean allowGenerate = gate.allowGenerate();
         boolean unknownIntent = "unknown".equalsIgnoreCase(intentDecision.intent());
-        String route = unknownIntent
-                ? "reject_unknown_intent"
-                : (canAnswer ? retrievalSource + "_retrieval_generate" : "reject_insufficient_evidence");
-        double confidence = answerFallbackService.calcConfidence(evidence);
+        String route = resolveInitialRoute(unknownIntent, allowGenerate, gate.rejectReason(), retrievalSource);
+        double confidence = allowGenerate ? answerFallbackService.calcConfidence(evidence) : 0.20;
         String answer;
         boolean degraded = false;
         String fallbackReason = "";
 
         if (unknownIntent && evidence.isEmpty()) {
             answer = KnowledgeAssistantPrompts.unknownCoverageUserMessage();
+            route = "reject_unknown_intent";
+        } else if (!allowGenerate) {
+            answer = KnowledgeAssistantPrompts.insufficientEvidenceGeneralHint();
+            route = "reject_gate_" + nullToEmpty(gate.rejectReason());
         } else {
             try {
                 answer = miniMaxClient.askWithEvidence(modelContextBlock, question, evidence);
-                route = canAnswer ? retrievalSource + "_generate_llm" : "reject_insufficient_evidence";
+                route = retrievalSource + "_generate_llm";
             } catch (Exception ex) {
                 degraded = true;
                 fallbackReason = answerFallbackService.sanitizeError(ex.getMessage());
                 answer = answerFallbackService.buildFallbackAnswer(question, evidence);
-                route = canAnswer ? retrievalSource + "_fallback_template" : "reject_insufficient_evidence";
+                route = retrievalSource + "_fallback_template";
             }
         }
 
@@ -222,6 +240,14 @@ public class QaAskOrchestrator {
         response.put("scope", scope);
         response.put("conversationId", convId);
         response.put("followUpApplied", followUpApplied);
+        response.put("embeddingProvider", textEmbeddingService.activeProvider());
+        response.put("unifiedRetrieval", properties.isUnifiedRetrievalEnabled());
+        response.put("rerankProvider", retrievalResult.retrievalSource().contains("rerank")
+                ? retrievalResult.retrievalSource().replace("unified_rerank_", "")
+                : "none");
+        if (gate.rejectReason() != null) {
+            response.put("answerGateRejectReason", gate.rejectReason());
+        }
         boolean shouldDeposit = unknownIntent || !canAnswer;
         response.put("knowledgeDepositTriggered", shouldDeposit);
         if (degraded) {
@@ -230,7 +256,7 @@ public class QaAskOrchestrator {
         putEvidenceAlignment(response, question, answer, evidence, canAnswer);
         qaLogService.appendAskEvent(response);
         if (shouldDeposit) {
-            String depositReason = unknownIntent ? "unknown_intent" : "insufficient_evidence";
+            String depositReason = unknownIntent ? "unknown_intent" : nullToEmpty(gate.rejectReason(), "insufficient_evidence");
             Map<String, Object> candidate = qaLogService.buildKnowledgeCandidateEvent(
                     turnId,
                     question,
@@ -362,6 +388,13 @@ public class QaAskOrchestrator {
                         sseStreamSupport.emitThinking(emitter, "learning_recall", "当前为个人知识库模式，但尚未命中个人知识。");
                         retrievalResult = new QaRetrievalPipeline.RetrievalResult("personal_scope_no_memory", List.of());
                     }
+                } else if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
+                    sseStreamSupport.emitThinking(emitter, "retrieval", "企业统一召回：图+向量+结构化+主动学习，并重排证据。");
+                    retrievalResult = retrievalPipeline.retrieveUnifiedEnterprise(
+                            retrievalQuestion,
+                            learnedFirst,
+                            intentDecision.intent()
+                    );
                 } else if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
                     sseStreamSupport.emitThinking(emitter, "learning_recall", "命中主动学习知识，优先基于新记忆回答。");
                     retrievalResult = new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
@@ -379,7 +412,9 @@ public class QaAskOrchestrator {
                                     && "employee_not_found".equals(c.companyId())
                     );
                 }
-                boolean canAnswer = !evidence.isEmpty();
+                QaAnswerGateService.GateDecision gate = answerGateService.evaluate(intentDecision, evidence);
+                boolean canAnswer = gate.canAnswer();
+                boolean allowGenerate = gate.allowGenerate();
                 boolean unknownIntent = "unknown".equalsIgnoreCase(intentDecision.intent());
                 sseStreamSupport.emitThinking(
                         emitter,
@@ -397,10 +432,8 @@ public class QaAskOrchestrator {
                     sseStreamSupport.emitThinking(emitter, "evidence", "检索到的相关对象：" + companies);
                 }
 
-                String route = unknownIntent
-                        ? "reject_unknown_intent"
-                        : (canAnswer ? retrievalSource + "_retrieval_generate" : "reject_insufficient_evidence");
-                double confidence = answerFallbackService.calcConfidence(evidence);
+                String route = resolveInitialRoute(unknownIntent, allowGenerate, gate.rejectReason(), retrievalSource);
+                double confidence = allowGenerate ? answerFallbackService.calcConfidence(evidence) : 0.20;
                 String answer;
                 boolean degraded = false;
                 String fallbackReason = "";
@@ -409,9 +442,11 @@ public class QaAskOrchestrator {
                 if (unknownIntent && evidence.isEmpty()) {
                     sseStreamSupport.emitThinking(emitter, "decision", "当前问题超出知识库覆盖范围，先返回引导性说明。");
                     answer = KnowledgeAssistantPrompts.unknownCoverageUserMessage();
-                } else if (!canAnswer) {
-                    sseStreamSupport.emitThinking(emitter, "decision", "证据不足，返回可执行的补充建议。");
+                    route = "reject_unknown_intent";
+                } else if (!allowGenerate) {
+                    sseStreamSupport.emitThinking(emitter, "decision", "证据不足或未过回答闸门，返回补充建议。");
                     answer = KnowledgeAssistantPrompts.insufficientEvidenceStreamingHint();
+                    route = "reject_gate_" + nullToEmpty(gate.rejectReason());
                 } else {
                     sseStreamSupport.emitThinking(emitter, "generation", "开始调用模型进行流式生成。");
                     try {
@@ -463,6 +498,14 @@ public class QaAskOrchestrator {
                 response.put("scope", scope);
                 response.put("conversationId", convId);
                 response.put("followUpApplied", followUpApplied);
+                response.put("embeddingProvider", textEmbeddingService.activeProvider());
+                response.put("unifiedRetrieval", properties.isUnifiedRetrievalEnabled());
+                response.put("rerankProvider", retrievalSource.contains("rerank")
+                        ? retrievalSource.replace("unified_rerank_", "")
+                        : "none");
+                if (gate.rejectReason() != null) {
+                    response.put("answerGateRejectReason", gate.rejectReason());
+                }
                 boolean shouldDeposit = unknownIntent || !canAnswer;
                 response.put("knowledgeDepositTriggered", shouldDeposit);
                 if (degraded) {
@@ -471,7 +514,7 @@ public class QaAskOrchestrator {
                 putEvidenceAlignment(response, question, answer, evidence, canAnswer);
                 qaLogService.appendAskEvent(response);
                 if (shouldDeposit) {
-                    String depositReason = unknownIntent ? "unknown_intent" : "insufficient_evidence";
+                    String depositReason = unknownIntent ? "unknown_intent" : nullToEmpty(gate.rejectReason(), "insufficient_evidence");
                     Map<String, Object> candidate = qaLogService.buildKnowledgeCandidateEvent(
                             turnId,
                             question,
@@ -505,6 +548,29 @@ public class QaAskOrchestrator {
             }
         });
         return emitter;
+    }
+
+    private static String resolveInitialRoute(
+            boolean unknownIntent,
+            boolean allowGenerate,
+            String gateRejectReason,
+            String retrievalSource
+    ) {
+        if (unknownIntent) {
+            return "reject_unknown_intent";
+        }
+        if (!allowGenerate) {
+            return "reject_gate_" + nullToEmpty(gateRejectReason);
+        }
+        return retrievalSource + "_retrieval_generate";
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null || value.isBlank() ? "unknown" : value;
+    }
+
+    private static String nullToEmpty(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 
     private void putEvidenceAlignment(

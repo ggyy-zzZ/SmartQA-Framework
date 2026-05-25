@@ -69,41 +69,31 @@ python scripts/enterprise_pipeline/run_pipeline.py \
 请先确保 Qdrant 已启动（默认 `http://localhost:6333`）。
 
 ```bash
+# 推荐：百炼 text-embedding-v4（与 Java 应用默认一致，1024 维，集合 enterprise_knowledge_v2）
+export DASHSCOPE_API_KEY="你的百炼密钥"
 python scripts/enterprise_pipeline/sync_vectors_qdrant.py \
   --input data/knowledge/enterprise_mysql_clean.jsonl \
   --host localhost \
   --port 6333 \
-  --collection enterprise_knowledge_v1 \
-  --embedding-provider hash \
+  --collection enterprise_knowledge_v2 \
+  --embedding-provider dashscope \
+  --embedding-model text-embedding-v4 \
+  --embedding-dim 1024 \
   --recreate
 ```
 
 > `embedding-provider` 可选：
-> - `hash`：本地无外部依赖，先跑通流程（推荐先用）
-> - `minimax`：调用嵌入 API（需提供 `--embedding-api-key`）
+> - `dashscope`：**默认**，百炼 `text-embedding-v4`（需 `DASHSCOPE_API_KEY` 或 `--embedding-api-key`）
+> - `hash`：本地伪向量，仅用于无 API 时联调
+> - `minimax`：MiniMax 嵌入 API
 
-使用 MiniMax 嵌入示例：
-
-```bash
-python scripts/enterprise_pipeline/sync_vectors_qdrant.py \
-  --input data/knowledge/enterprise_mysql_clean.jsonl \
-  --host localhost \
-  --port 6333 \
-  --collection enterprise_knowledge_v1 \
-  --embedding-provider minimax \
-  --embedding-model MiniMax-Embedding-1 \
-  --embedding-api-url https://api.minimaxi.com/v1/embeddings \
-  --embedding-api-key "你的key" \
-  --recreate
-```
-
-查询验证：
+查询验证（须与灌库时相同的 provider / dim / collection）：
 
 ```bash
 python scripts/enterprise_pipeline/query_vectors_qdrant.py \
   --query "猎道信息技术有限公司经营状态" \
-  --collection enterprise_knowledge_v1 \
-  --embedding-provider hash \
+  --collection enterprise_knowledge_v2 \
+  --embedding-provider dashscope \
   --top-k 5
 ```
 

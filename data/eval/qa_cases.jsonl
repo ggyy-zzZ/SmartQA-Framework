@@ -1,0 +1,7 @@
+{"id":"v01","question":"万仕道（北京）管理咨询有限责任公司的注册地址是什么？","scope":"enterprise","expectedIntent":"vector","mustHitSource":["qdrant-vector"],"shouldReject":false,"notes":"需 playground 一键重建灌库"}
+{"id":"v02","question":"万仕道（北京）管理咨询有限责任公司广州分公司的注册地址","scope":"enterprise","expectedIntent":"vector","mustHitSource":["qdrant-vector"],"shouldReject":false,"notes":"向量语义检索"}
+{"id":"g01","question":"万仕道（北京）管理咨询有限责任公司有哪些证照相关信息？","scope":"enterprise","expectedIntent":"graph","mustHitSource":["neo4j"],"shouldReject":false,"notes":"需 Neo4j 已从 clean.jsonl 同步"}
+{"id":"r01","question":"火星上的公司注册流程","scope":"enterprise","expectedIntent":"unknown","mustHitSource":[],"shouldReject":true,"notes":"应拒答或 gate"}
+{"id":"r02","question":"帮我查一下","scope":"enterprise","expectedIntent":"unknown","mustHitSource":[],"shouldReject":true,"notes":"模糊短问句"}
+{"id":"p01","question":"戴科彬是哪些公司的法人","scope":"enterprise","expectedIntent":"graph","mustHitSource":["neo4j-person-role","qdrant-vector","rerank"],"shouldReject":false,"notes":"P0 统一召回+重排；证据应含法定代表人"}
+{"id":"p02","question":"万仕道（北京）管理咨询有限责任公司的股东有哪些","scope":"enterprise","expectedIntent":"hybrid","mustHitSource":["qdrant-vector"],"shouldReject":false,"notes":"股东字段已入向量摘要"}

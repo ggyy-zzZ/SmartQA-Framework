@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 
 import numpy as np
 import requests
@@ -16,12 +17,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--query", required=True, help="Natural language query")
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=6333)
-    parser.add_argument("--collection", default="enterprise_knowledge_v1")
-    parser.add_argument("--embedding-provider", default="hash", choices=["hash", "minimax"])
-    parser.add_argument("--embedding-model", default="MiniMax-Embedding-1")
-    parser.add_argument("--embedding-dim", type=int, default=768)
-    parser.add_argument("--embedding-api-url", default="https://api.minimaxi.com/v1/embeddings")
-    parser.add_argument("--embedding-api-key", default="")
+    parser.add_argument("--collection", default="enterprise_knowledge_v2")
+    parser.add_argument(
+        "--embedding-provider",
+        default="dashscope",
+        choices=["hash", "minimax", "dashscope"],
+    )
+    parser.add_argument("--embedding-model", default="text-embedding-v4")
+    parser.add_argument("--embedding-dim", type=int, default=1024)
+    parser.add_argument(
+        "--embedding-api-url",
+        default="https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding",
+    )
+    parser.add_argument(
+        "--embedding-api-key",
+        default=os.environ.get("DASHSCOPE_API_KEY", ""),
+    )
     parser.add_argument("--top-k", type=int, default=5)
     return parser.parse_args()
 
@@ -84,9 +95,47 @@ def minimax_embed_text(
     return vectors[0].get("embedding", [])
 
 
+def dashscope_embed_text(
+    text: str,
+    api_url: str,
+    api_key: str,
+    model: str,
+    dimension: int,
+    timeout: int = 60,
+) -> list[float]:
+    if not api_key:
+        raise ValueError("embedding-api-key is required for dashscope provider")
+    payload = {
+        "model": model,
+        "input": {"texts": [text]},
+        "parameters": {"dimension": dimension, "output_type": "dense"},
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    resp = requests.post(api_url, headers=headers, json=payload, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code"):
+        raise ValueError(f"DashScope error: {data}")
+    embeddings = (data.get("output") or {}).get("embeddings") or []
+    if not embeddings:
+        raise ValueError(f"DashScope returned no embeddings: {data}")
+    return embeddings[0].get("embedding", [])
+
+
 def build_query_vector(args: argparse.Namespace) -> list[float]:
     if args.embedding_provider == "hash":
         return hash_embed_text(args.query, args.embedding_dim)
+    if args.embedding_provider == "dashscope":
+        return dashscope_embed_text(
+            text=args.query,
+            api_url=args.embedding_api_url,
+            api_key=args.embedding_api_key,
+            model=args.embedding_model,
+            dimension=args.embedding_dim,
+        )
     return minimax_embed_text(
         text=args.query,
         api_url=args.embedding_api_url,

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -19,12 +20,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", default="data/knowledge/enterprise_mysql_clean.jsonl")
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=6333)
-    parser.add_argument("--collection", default="enterprise_knowledge_v1")
-    parser.add_argument("--embedding-provider", default="hash", choices=["hash", "minimax"])
-    parser.add_argument("--embedding-model", default="MiniMax-Embedding-1")
-    parser.add_argument("--embedding-dim", type=int, default=768)
-    parser.add_argument("--embedding-api-url", default="https://api.minimaxi.com/v1/embeddings")
-    parser.add_argument("--embedding-api-key", default="")
+    parser.add_argument(
+        "--embedding-provider",
+        default="dashscope",
+        choices=["hash", "minimax", "dashscope"],
+    )
+    parser.add_argument("--embedding-model", default="text-embedding-v4")
+    parser.add_argument("--embedding-dim", type=int, default=1024)
+    parser.add_argument(
+        "--embedding-api-url",
+        default="https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding",
+    )
+    parser.add_argument(
+        "--embedding-api-key",
+        default=os.environ.get("DASHSCOPE_API_KEY", ""),
+    )
+    parser.add_argument("--collection", default="enterprise_knowledge_v2")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--recreate", action="store_true")
@@ -51,6 +62,11 @@ def build_document(row: dict[str, Any]) -> str:
     )
     key_people = ", ".join(
         f"{x.get('role', '')}:{x.get('name', '')}" for x in row.get("key_people", [])
+    )
+    legal_representatives = ", ".join(
+        x.get("name", "")
+        for x in row.get("key_people", [])
+        if "法定代表" in str(x.get("role", ""))
     )
     shareholders = ", ".join(
         f"{x.get('holder_name', '')}({x.get('ratio', '')})" for x in row.get("shareholders", [])
@@ -79,14 +95,18 @@ def build_document(row: dict[str, Any]) -> str:
         f"公司ID: {row.get('company_id', '')}\n"
         f"公司名: {row.get('company_name', '')}\n"
         f"简称: {row.get('company_short_name', '')}\n"
+        f"统一社会信用代码: {row.get('credit_code', '')}\n"
         f"经营状态: {row.get('status', '')}\n"
         f"主体类型: {row.get('entity_type', '')}\n"
         f"主体分类: {row.get('entity_category', '')}\n"
+        f"成立日期: {row.get('established_date', '')}\n"
         f"注册地区: {row.get('registered_area', '')}\n"
+        f"母公司: {row.get('parent_company', '')}\n"
         f"注册地址: {row.get('registered_address', '')}\n"
         f"办公地址: {row.get('office_address', '')}\n"
         f"经营范围: {row.get('business_scope', '')}\n"
         f"产品线: {product_lines}\n"
+        f"法定代表人: {legal_representatives}\n"
         f"关键人员: {key_people}\n"
         f"股东: {shareholders}\n"
         f"证照: {certificates}\n"
@@ -169,19 +189,60 @@ def minimax_embed_batch(
     return [item.get("embedding", []) for item in vectors]
 
 
+def dashscope_embed_batch(
+    texts: list[str],
+    api_url: str,
+    api_key: str,
+    model: str,
+    dimension: int,
+    timeout: int = 60,
+) -> list[list[float]]:
+    if not api_key:
+        raise ValueError("embedding-api-key is required for dashscope provider")
+    payload = {
+        "model": model,
+        "input": {"texts": texts},
+        "parameters": {"dimension": dimension, "output_type": "dense"},
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    resp = requests.post(api_url, headers=headers, json=payload, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code"):
+        raise ValueError(f"DashScope error: {data}")
+    embeddings = (data.get("output") or {}).get("embeddings") or []
+    if not embeddings:
+        raise ValueError(f"DashScope returned no embeddings: {data}")
+    ordered = sorted(embeddings, key=lambda x: x.get("text_index", 0))
+    return [item.get("embedding", []) for item in ordered]
+
+
 def build_vectors(args: argparse.Namespace, docs: list[str]) -> list[list[float]]:
     if args.embedding_provider == "hash":
         return [hash_embed_text(doc, args.embedding_dim) for doc in docs]
 
+    api_batch = 10 if args.embedding_provider == "dashscope" else args.batch_size
     vectors: list[list[float]] = []
-    for i in range(0, len(docs), args.batch_size):
-        batch = docs[i : i + args.batch_size]
-        batch_vec = minimax_embed_batch(
-            texts=batch,
-            api_url=args.embedding_api_url,
-            api_key=args.embedding_api_key,
-            model=args.embedding_model,
-        )
+    for i in range(0, len(docs), api_batch):
+        batch = docs[i : i + api_batch]
+        if args.embedding_provider == "dashscope":
+            batch_vec = dashscope_embed_batch(
+                texts=batch,
+                api_url=args.embedding_api_url,
+                api_key=args.embedding_api_key,
+                model=args.embedding_model,
+                dimension=args.embedding_dim,
+            )
+        else:
+            batch_vec = minimax_embed_batch(
+                texts=batch,
+                api_url=args.embedding_api_url,
+                api_key=args.embedding_api_key,
+                model=args.embedding_model,
+            )
         vectors.extend(batch_vec)
     return vectors
 
