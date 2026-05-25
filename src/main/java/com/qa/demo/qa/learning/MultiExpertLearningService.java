@@ -28,15 +28,18 @@ public class MultiExpertLearningService {
     private final QaAssistantProperties properties;
     private final ActiveLearningService activeLearningService;
     private final MysqlSchemaCatalogService schemaCatalogService;
+    private final SyncTrackingService syncTrackingService;
 
     public MultiExpertLearningService(
             QaAssistantProperties properties,
             ActiveLearningService activeLearningService,
-            MysqlSchemaCatalogService schemaCatalogService
+            MysqlSchemaCatalogService schemaCatalogService,
+            SyncTrackingService syncTrackingService
     ) {
         this.properties = properties;
         this.activeLearningService = activeLearningService;
         this.schemaCatalogService = schemaCatalogService;
+        this.syncTrackingService = syncTrackingService;
     }
 
     /**
@@ -69,7 +72,7 @@ public class MultiExpertLearningService {
 
             // ========== 阶段4：执行学习 ==========
             log.info("[ExpertSession-{}] 阶段4：执行学习，共 {} 个任务", sessionId, consensus.learningTasks().size());
-            executeLearning(consensus, scope, sessionId);
+            executeLearning(consensus, scope, dynamicConn, sessionId);
 
             return new MultiExpertLearningResult(true, sessionId, dataAnalysis, storageEval, consensus, allOpinions, "学习完成");
 
@@ -96,10 +99,11 @@ public class MultiExpertLearningService {
         DataAnalysisResult analyze(MysqlSchemaCatalogService.DynamicConnection conn, String sessionId) {
             List<ExpertOpinion> opinions = new ArrayList<>();
             List<TableProfile> tableProfiles = new ArrayList<>();
+            List<MysqlSchemaCatalogService.TableRelationship> relationships = Collections.emptyList();
 
             try {
                 List<String> tables = schemaCatalogService.listAllTablesWithConnection(conn);
-                List<MysqlSchemaCatalogService.TableRelationship> relationships = schemaCatalogService.getTableRelationshipsWithConnection(conn);
+                relationships = schemaCatalogService.getTableRelationshipsWithConnection(conn);
 
                 StringBuilder analysis = new StringBuilder();
                 analysis.append("# 数据分析专家报告\n\n");
@@ -204,7 +208,7 @@ public class MultiExpertLearningService {
                 }
 
                 // 推断业务含义
-                String businessMeaning = inferBusinessMeaning(tableName, columns, sampleData);
+                businessMeaning = inferBusinessMeaning(tableName, columns, sampleData);
 
             } catch (Exception e) {
                 log.warn("Table analysis warning for {}: {}", tableName, e.getMessage());
@@ -444,7 +448,7 @@ public class MultiExpertLearningService {
 
     // ========== 执行学习 ==========
 
-    private void executeLearning(ExpertConsensus consensus, String scope, String sessionId) {
+    private void executeLearning(ExpertConsensus consensus, String scope, MysqlSchemaCatalogService.DynamicConnection conn, String sessionId) {
         for (LearningTask task : consensus.learningTasks()) {
             try {
                 if (task.tableName().equals("_cross_table_relationships")) {
@@ -461,6 +465,15 @@ public class MultiExpertLearningService {
                     );
                     log.info("[ExpertSession-{}] 表 {} 学习完成 (mysql={}, qdrant={}, neo4j={})",
                             sessionId, task.tableName(), policy.mysql(), policy.qdrant(), policy.neo4j());
+
+                    // 记录同步状态
+                    syncTrackingService.recordSync(
+                            conn.host(),
+                            conn.port(),
+                            conn.database(),
+                            task.tableName(),
+                            task.estimatedRows()
+                    );
                 }
             } catch (Exception e) {
                 log.error("[ExpertSession-{}] 表 {} 学习失败: {}", sessionId, task.tableName(), e.getMessage());

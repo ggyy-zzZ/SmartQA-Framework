@@ -109,6 +109,11 @@ public class QaAssistantProperties {
     private String structuredIngestScheduleCron = "0 0 2 * * ?";
 
     /**
+     * 是否启用定时增量同步（每30分钟检查一次已学习的数据源是否有新增数据）。
+     */
+    private boolean enableScheduledSync = true;
+
+    /**
      * 清单 JSON 文件路径（仅运维配置本地路径）；含 {@code tables} 数组与可选 {@code jobName}。
      */
     private String structuredIngestManifestPath = "";
@@ -504,5 +509,13 @@ public class QaAssistantProperties {
 
     public void setEmployeeBaseLimit(int employeeBaseLimit) {
         this.employeeBaseLimit = employeeBaseLimit;
+    }
+
+    public boolean getEnableScheduledSync() {
+        return enableScheduledSync;
+    }
+
+    public void setEnableScheduledSync(boolean enableScheduledSync) {
+        this.enableScheduledSync = enableScheduledSync;
     }
 }
