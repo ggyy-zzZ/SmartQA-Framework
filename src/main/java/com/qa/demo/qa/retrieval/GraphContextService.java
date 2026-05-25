@@ -2,6 +2,7 @@ package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.IntentDecision;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Result;
@@ -24,26 +25,77 @@ public class GraphContextService {
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, int topK) {
-        int limitedTopK = Math.max(1, Math.min(topK, 10));
-        List<String> companyHints = extractCompanyHints(question);
+        return retrieveTopChunks(question, topK, null);
+    }
+
+    /**
+     * @param intent 来自 {@link com.qa.demo.qa.intent.IntentRouterService} 的 LLM/规则抽取结果，可减少问句模板硬编码依赖
+     */
+    public List<ContextChunk> retrieveTopChunks(String question, int topK, IntentDecision intent) {
+        boolean personRoleList = intent != null && intent.isPersonRoleListQuery();
+        int limitedTopK = personRoleList
+                ? Math.max(1, topK)
+                : Math.max(1, Math.min(topK, 10));
+        List<String> companyHints = resolveCompanyHints(question, intent);
         List<ContextChunk> chunks = new ArrayList<>();
         try (Session session = neo4jDriver.session()) {
-            String personHint = extractPersonHintForRoleQuery(question);
-            if (personHint != null && isRoleRelationQuery(question)) {
-                chunks.addAll(queryByPersonAndRole(session, question, personHint, limitedTopK));
+            String personHint = resolvePersonHint(question, intent);
+            if (personHint != null && shouldQueryPersonRole(question, intent)) {
+                String roleFocus = resolveRoleFocus(question, intent);
+                chunks.addAll(queryByPersonAndRole(session, question, personHint, limitedTopK, roleFocus));
                 if (!chunks.isEmpty()) {
                     return chunks;
                 }
             }
             if (!companyHints.isEmpty()) {
                 chunks.addAll(queryByCompanyHints(session, question, companyHints, limitedTopK));
-                // If question carries explicit company hints but graph has no hit,
-                // fallback to document retrieval in controller instead of random intent samples.
                 return chunks;
             }
             chunks.addAll(queryByIntentKeywords(session, question, limitedTopK));
         }
         return chunks;
+    }
+
+    private static List<String> resolveCompanyHints(String question, IntentDecision intent) {
+        if (intent != null && intent.hasCompanyHints()) {
+            return intent.companyHints();
+        }
+        return extractCompanyHints(question);
+    }
+
+    private static String resolvePersonHint(String question, IntentDecision intent) {
+        if (intent != null && intent.hasPersonFocus()) {
+            return intent.personName().trim();
+        }
+        return extractPersonHintForRoleQuery(question);
+    }
+
+    private static boolean shouldQueryPersonRole(String question, IntentDecision intent) {
+        if (intent != null && intent.isPersonRoleListQuery()) {
+            return intent.hasPersonFocus() || extractPersonHintForRoleQuery(question) != null;
+        }
+        if (intent != null && intent.hasPersonFocus()) {
+            return true;
+        }
+        return extractPersonHintForRoleQuery(question) != null && isRoleRelationQuery(question);
+    }
+
+    private static String resolveRoleFocus(String question, IntentDecision intent) {
+        if (intent != null && intent.roleFocus() != null && !intent.roleFocus().isBlank()
+                && !"any".equalsIgnoreCase(intent.roleFocus())) {
+            return intent.roleFocus().toLowerCase(Locale.ROOT);
+        }
+        String q = question.toLowerCase(Locale.ROOT);
+        if (q.contains("法定代表人") || q.contains("法人")) {
+            return "legal_rep";
+        }
+        if (q.contains("董事")) {
+            return "director";
+        }
+        if (q.contains("监事")) {
+            return "supervisor";
+        }
+        return "any";
     }
 
     public boolean hasExplicitCompanyHint(String question) {
@@ -97,17 +149,18 @@ public class GraphContextService {
             Session session,
             String question,
             String personHint,
-            int topK
+            int topK,
+            String roleFocus
     ) {
-        boolean legalRepOnly = question.contains("法人") || question.contains("法定代表人");
         Result result = session.run(
                 """
                 MATCH (p:Person)-[r:HAS_ROLE_IN]->(c:Company)
                 WHERE p.name CONTAINS $personHint
                   AND (
-                    $legalRepOnly = false
-                    OR r.role CONTAINS '法定代表'
-                    OR r.role CONTAINS '法人'
+                    $roleFocus = 'any'
+                    OR ($roleFocus = 'legal_rep' AND (r.role CONTAINS '法定代表' OR r.role CONTAINS '法人'))
+                    OR ($roleFocus = 'director' AND r.role CONTAINS '董事')
+                    OR ($roleFocus = 'supervisor' AND r.role CONTAINS '监事')
                   )
                 RETURN c.companyId AS companyId,
                        c.name AS companyName,
@@ -119,7 +172,7 @@ public class GraphContextService {
                 """,
                 org.neo4j.driver.Values.parameters(
                         "personHint", personHint,
-                        "legalRepOnly", legalRepOnly,
+                        "roleFocus", roleFocus == null ? "any" : roleFocus,
                         "topK", topK
                 )
         );
@@ -139,7 +192,7 @@ public class GraphContextService {
         return chunks;
     }
 
-    private boolean isRoleRelationQuery(String question) {
+    private static boolean isRoleRelationQuery(String question) {
         return question.contains("法人")
                 || question.contains("法定代表人")
                 || question.contains("董事")
@@ -149,9 +202,9 @@ public class GraphContextService {
     }
 
     /**
-     * 从「X是哪些公司的法人」类问句中提取人名提示（简单规则，本地验证用）。
+     * 从「X是哪些公司/主体的法人」类问句中提取人名（规则兜底；优先使用 LLM 抽取的 personName）。
      */
-    private String extractPersonHintForRoleQuery(String question) {
+    public static String extractPersonHintForRoleQuery(String question) {
         if (question == null || question.isBlank()) {
             return null;
         }
@@ -159,18 +212,49 @@ public class GraphContextService {
         String[] patterns = {
                 "是哪些公司的",
                 "是哪些公司",
+                "是哪些主体的",
+                "是哪些主体",
+                "是哪些单位的",
+                "是哪些单位",
+                "是哪些企业的",
+                "是哪些企业",
                 "在哪些公司",
+                "在哪些主体",
                 "担任哪些公司",
+                "担任哪些主体",
         };
         for (String marker : patterns) {
             int idx = q.indexOf(marker);
             if (idx > 1) {
-                String name = q.substring(0, idx).trim();
-                name = name.replaceAll("^(请问|查询|帮我查|谁|什么人)", "").trim();
-                if (name.length() >= 2 && name.length() <= 12) {
+                String name = extractPersonNameBeforeMarker(q, idx);
+                if (name != null) {
                     return name;
                 }
             }
+        }
+        // 「X是哪些主体的法人」：主体在「法人」前、不在上述 marker 中时的兜底
+        int legalIdx = q.indexOf("法人");
+        if (legalIdx > 1 && (q.contains("哪些主体") || q.contains("哪些公司") || q.contains("哪些企业"))) {
+            int whichIdx = q.indexOf("哪些");
+            if (whichIdx > 1) {
+                String name = extractPersonNameBeforeMarker(q, whichIdx);
+                if (name != null) {
+                    return name;
+                }
+            }
+        }
+        return null;
+    }
+
+    private String extractPersonNameBeforeMarker(String q, int markerStart) {
+        String name = q.substring(0, markerStart).trim();
+        name = name.replaceAll("^(请问|查询|帮我查|谁|什么人)", "").trim();
+        // 去掉末尾「是」：戴科彬是哪些…
+        if (name.endsWith("是") && name.length() > 1) {
+            name = name.substring(0, name.length() - 1).trim();
+        }
+        if (name.length() >= 2 && name.length() <= 12) {
+            return name;
         }
         return null;
     }
@@ -272,7 +356,7 @@ public class GraphContextService {
         return chunks;
     }
 
-    private List<String> extractCompanyHints(String question) {
+    public static List<String> extractCompanyHints(String question) {
         String q = question.toLowerCase(Locale.ROOT);
         Set<String> hints = new HashSet<>();
         String[] tokens = q.split("[^\\p{L}\\p{N}]+");

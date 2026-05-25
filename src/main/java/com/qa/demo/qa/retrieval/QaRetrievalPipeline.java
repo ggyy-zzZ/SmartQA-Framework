@@ -2,6 +2,7 @@ package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import org.springframework.stereotype.Service;
 
@@ -61,14 +62,15 @@ public class QaRetrievalPipeline {
     public RetrievalResult retrieveUnifiedEnterprise(
             String question,
             List<ContextChunk> learned,
-            String intentHint
+            IntentDecision intent
     ) throws IOException {
-        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, intentHint);
+        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, intent);
         merged = mergeLearnedUnconditionally(learned, merged);
         RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
-        base = appendSupplementalTables(base, question);
-        base = appendEmployeeBaseInfo(base, question);
-        List<ContextChunk> reranked = evidenceRerankService.rerank(question, base.evidence());
+        base = appendSupplementalTables(base, question, intent);
+        base = appendEmployeeBaseInfo(base, question, intent);
+        int evidenceTopK = resolveFinalEvidenceTopK(intent);
+        List<ContextChunk> reranked = evidenceRerankService.rerank(question, base.evidence(), evidenceTopK);
         String source = "unified_rerank_" + evidenceRerankService.activeProvider();
         return new RetrievalResult(source, reranked);
     }
@@ -85,14 +87,14 @@ public class QaRetrievalPipeline {
             case "unknown" -> new RetrievalResult("unknown", List.of());
             default -> retrieveHybrid(question);
         };
-        RetrievalResult withSupplemental = appendSupplementalTables(base, question);
-        return appendEmployeeBaseInfo(withSupplemental, question);
+        RetrievalResult withSupplemental = appendSupplementalTables(base, question, null);
+        return appendEmployeeBaseInfo(withSupplemental, question, null);
     }
 
     /**
      * 追加检测到的 supplemental tables 查询结果。
      */
-    private RetrievalResult appendSupplementalTables(RetrievalResult base, String question) {
+    private RetrievalResult appendSupplementalTables(RetrievalResult base, String question, IntentDecision intent) {
         List<String> supplementalTables = entityTableMapper.getSupplementalTablesForQuestion(question);
         if (supplementalTables.isEmpty()) {
             return base;
@@ -112,17 +114,16 @@ public class QaRetrievalPipeline {
                 }
             }
         }
-        int cap = Math.max(properties.getRetrievalTopK(), 12);
-        if (merged.size() > cap) {
-            merged = new ArrayList<>(merged.subList(0, cap));
-        }
-        return new RetrievalResult("supplemental_appended_" + base.retrievalSource(), merged);
+        return trimEvidence(merged, resolveFinalEvidenceTopK(intent), "supplemental_appended_" + base.retrievalSource());
     }
 
     /**
      * 检测问题中的人名/花名，追加员工基础信息到检索结果。
      */
-    private RetrievalResult appendEmployeeBaseInfo(RetrievalResult base, String question) {
+    private RetrievalResult appendEmployeeBaseInfo(RetrievalResult base, String question, IntentDecision intent) {
+        if (intent != null && intent.isPersonRoleListQuery()) {
+            return base;
+        }
         if (employeeBaseKnowledge.size() == 0) {
             return base;
         }
@@ -162,11 +163,15 @@ public class QaRetrievalPipeline {
                 merged.add(chunk);
             }
         }
-        int cap = Math.max(properties.getRetrievalTopK(), 12);
-        if (merged.size() > cap) {
-            merged = new ArrayList<>(merged.subList(0, cap));
+        return trimEvidence(merged, resolveFinalEvidenceTopK(intent), "employee_base_appended_" + base.retrievalSource());
+    }
+
+    private RetrievalResult trimEvidence(List<ContextChunk> merged, int cap, String retrievalSource) {
+        int limit = Math.max(1, cap);
+        if (merged.size() > limit) {
+            merged = new ArrayList<>(merged.subList(0, limit));
         }
-        return new RetrievalResult("employee_base_appended_" + base.retrievalSource(), merged);
+        return new RetrievalResult(retrievalSource, merged);
     }
 
     private List<String> extractPotentialNames(String question) {
@@ -431,9 +436,15 @@ public class QaRetrievalPipeline {
         return c.source() + "|" + c.companyId() + "|" + c.companyName() + "|" + c.field();
     }
 
-    private List<ContextChunk> collectHybridCandidatesExpanded(String question, String intentHint) throws IOException {
+    private List<ContextChunk> collectHybridCandidatesExpanded(String question, IntentDecision intent) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
-        appendUnique(merged, safeGraphRetrieve(question, properties.getRecallGraphTopK()));
+        int graphTopK = resolveGraphRecallTopK(intent);
+        List<ContextChunk> graph = safeGraphRetrieve(question, graphTopK, intent);
+        appendUnique(merged, graph);
+        // 任职/法人列表：图谱已覆盖时不再混入无关向量片段，避免重排挤掉正确条目
+        if (intent != null && intent.isPersonRoleListQuery() && !graph.isEmpty()) {
+            return merged;
+        }
         appendUnique(merged, vectorContextService.retrieveTopChunks(question, properties.getRecallVectorTopK()));
         appendUnique(merged, safeMysqlRetrieve(question));
         appendUnique(merged, safeSqlRetrieve(question));
@@ -517,9 +528,27 @@ public class QaRetrievalPipeline {
         return safeGraphRetrieve(question, properties.getRetrievalTopK());
     }
 
+    private int resolveGraphRecallTopK(IntentDecision intent) {
+        if (intent != null && intent.isPersonRoleListQuery()) {
+            return Math.max(properties.getRecallGraphTopK(), properties.getRecallGraphPersonRoleTopK());
+        }
+        return properties.getRecallGraphTopK();
+    }
+
+    private int resolveFinalEvidenceTopK(IntentDecision intent) {
+        if (intent != null && intent.isPersonRoleListQuery()) {
+            return Math.max(properties.getRetrievalTopK(), properties.getRecallGraphPersonRoleTopK());
+        }
+        return properties.getRetrievalTopK();
+    }
+
     private List<ContextChunk> safeGraphRetrieve(String question, int topK) {
+        return safeGraphRetrieve(question, topK, null);
+    }
+
+    private List<ContextChunk> safeGraphRetrieve(String question, int topK, IntentDecision intent) {
         try {
-            return graphContextService.retrieveTopChunks(question, topK);
+            return graphContextService.retrieveTopChunks(question, topK, intent);
         } catch (Exception ignored) {
             return List.of();
         }

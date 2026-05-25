@@ -175,7 +175,7 @@ public class QaAskOrchestrator {
             retrievalResult = retrievalPipeline.retrieveUnifiedEnterprise(
                     retrievalQuestion,
                     learnedFirst,
-                    intentDecision.intent()
+                    intentDecision
             );
         } else if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             retrievalResult = new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
@@ -229,9 +229,7 @@ public class QaAskOrchestrator {
         response.put("confidence", confidence);
         response.put("route", route);
         response.put("retrievalSource", retrievalSource);
-        response.put("intent", intentDecision.intent());
-        response.put("intentConfidence", intentDecision.confidence());
-        response.put("routeReason", intentDecision.reason());
+        putIntentMetadata(response, intentDecision);
         response.put("evidence", evidence);
         response.put("degraded", degraded);
         response.put("docsDir", properties.getDocsDir());
@@ -368,13 +366,20 @@ public class QaAskOrchestrator {
                 }
 
                 IntentDecision intentDecision = intentRouterService.decide(retrievalQuestion, explicitCompanyHint);
+                String intentDetail = intentDecision.queryType() != null && !intentDecision.queryType().isBlank()
+                        ? "，形态=" + intentDecision.queryType()
+                        : "";
+                if (intentDecision.hasPersonFocus()) {
+                    intentDetail += "，人物=" + intentDecision.personName();
+                }
                 sseStreamSupport.emitThinking(
                         emitter,
                         "intent",
                         String.format(
-                                "路由判定：%s（置信度 %.2f）。原因：%s",
+                                "路由判定：%s（置信度 %.2f%s）。原因：%s",
                                 intentDecision.intent(),
                                 intentDecision.confidence(),
+                                intentDetail,
                                 intentDecision.reason()
                         )
                 );
@@ -393,7 +398,7 @@ public class QaAskOrchestrator {
                     retrievalResult = retrievalPipeline.retrieveUnifiedEnterprise(
                             retrievalQuestion,
                             learnedFirst,
-                            intentDecision.intent()
+                            intentDecision
                     );
                 } else if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
                     sseStreamSupport.emitThinking(emitter, "learning_recall", "命中主动学习知识，优先基于新记忆回答。");
@@ -487,9 +492,7 @@ public class QaAskOrchestrator {
                 response.put("confidence", confidence);
                 response.put("route", route);
                 response.put("retrievalSource", retrievalSource);
-                response.put("intent", intentDecision.intent());
-                response.put("intentConfidence", intentDecision.confidence());
-                response.put("routeReason", intentDecision.reason());
+                putIntentMetadata(response, intentDecision);
                 response.put("evidence", evidence);
                 response.put("degraded", degraded);
                 response.put("docsDir", properties.getDocsDir());
@@ -571,6 +574,25 @@ public class QaAskOrchestrator {
 
     private static String nullToEmpty(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private static void putIntentMetadata(Map<String, Object> response, IntentDecision intentDecision) {
+        response.put("intent", intentDecision.intent());
+        response.put("intentConfidence", intentDecision.confidence());
+        response.put("routeReason", intentDecision.reason());
+        if (intentDecision.queryType() != null && !intentDecision.queryType().isBlank()) {
+            response.put("queryType", intentDecision.queryType());
+        }
+        if (intentDecision.hasPersonFocus()) {
+            response.put("personName", intentDecision.personName());
+        }
+        if (intentDecision.roleFocus() != null && !intentDecision.roleFocus().isBlank()
+                && !"any".equalsIgnoreCase(intentDecision.roleFocus())) {
+            response.put("roleFocus", intentDecision.roleFocus());
+        }
+        if (intentDecision.hasCompanyHints()) {
+            response.put("companyHints", intentDecision.companyHints());
+        }
     }
 
     private void putEvidenceAlignment(

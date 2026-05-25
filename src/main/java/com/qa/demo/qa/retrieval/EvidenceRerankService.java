@@ -51,10 +51,17 @@ public class EvidenceRerankService {
      * @return 重排后 TopK 证据（score 已按重排结果更新）
      */
     public List<ContextChunk> rerank(String question, List<ContextChunk> candidates) {
+        return rerank(question, candidates, Math.max(1, properties.getRetrievalTopK()));
+    }
+
+    /**
+     * @param finalTopK 送入生成模型的证据条数；列表型问题（如法人任职）应使用更大 topK
+     */
+    public List<ContextChunk> rerank(String question, List<ContextChunk> candidates, int finalTopK) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        int finalTopK = Math.max(1, properties.getRetrievalTopK());
+        finalTopK = Math.max(1, finalTopK);
         int candidateCap = Math.max(finalTopK, properties.getRerankCandidateMax());
         List<ContextChunk> capped = candidates.size() > candidateCap
                 ? new ArrayList<>(candidates.subList(0, candidateCap))

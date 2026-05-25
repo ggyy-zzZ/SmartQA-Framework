@@ -71,6 +71,12 @@ public class QaAssistantProperties {
     /** 统一召回阶段图谱路 TopK */
     private int recallGraphTopK = 10;
 
+    /** 人物任职列表类问题（person_role_list）图谱召回上限 */
+    private int recallGraphPersonRoleTopK = 32;
+
+    /** 是否用 MiniMax 做意图+实体抽取（无 API Key 时自动走规则） */
+    private boolean intentLlmEnabled = true;
+
     /** 证据不足时是否拦截 LLM 生成（本地验证建议开启） */
     private boolean answerGateEnabled = true;
 
@@ -509,6 +515,22 @@ public class QaAssistantProperties {
 
     public void setRecallGraphTopK(int recallGraphTopK) {
         this.recallGraphTopK = recallGraphTopK;
+    }
+
+    public int getRecallGraphPersonRoleTopK() {
+        return recallGraphPersonRoleTopK;
+    }
+
+    public void setRecallGraphPersonRoleTopK(int recallGraphPersonRoleTopK) {
+        this.recallGraphPersonRoleTopK = recallGraphPersonRoleTopK;
+    }
+
+    public boolean isIntentLlmEnabled() {
+        return intentLlmEnabled;
+    }
+
+    public void setIntentLlmEnabled(boolean intentLlmEnabled) {
+        this.intentLlmEnabled = intentLlmEnabled;
     }
 
     public boolean isAnswerGateEnabled() {

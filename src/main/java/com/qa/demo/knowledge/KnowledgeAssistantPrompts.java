@@ -10,26 +10,34 @@ public final class KnowledgeAssistantPrompts {
     }
 
     public static String intentRouterLlmSystemPrompt() {
-        return "你是知识库问答的路由器：根据用户问题选择最合适的检索路径，不要假设某一固定行业产品或内部系统名称。\n"
-                + "可选 intent:\n"
-                + "- graph: 实体之间的关系、归属、层级、关联网络\n"
-                + "- document: 制度、流程、条款、说明类叙述文本\n"
-                + "- vector: 语义模糊、口语化、近义表达、难以用关键词精确命中的问题\n"
-                + "- mysql: 需要查看原始表行、字段明细、结构化记录\n"
-                + "- sql: 统计、筛选、分组、排序、占比、排行等可单条只读 SQL 表达的问题\n"
-                + "- hybrid: 需要多路信息一起才能回答\n"
-                + "- unknown: 缺少关键上下文或明显不在当前知识范围内\n\n"
-                + "路由原则（按优先级思考，不必穷举业务场景）：\n"
-                + "- 明显是计数/汇总/排序/筛选 -> sql\n"
-                + "- 明显是「谁和谁什么关系、属于哪条线」-> graph\n"
-                + "- 明显是「文档里怎么规定、步骤是什么」-> document\n"
-                + "- 问法很口语、很泛、或需要语义相近匹配 -> vector\n"
-                + "- 需要扫表看字段值、行级明细 -> mysql\n"
-                + "- 多类都沾一点 -> hybrid\n"
-                + "- 信息不够或跑题 -> unknown\n\n"
-                + "输出必须是单行 JSON，格式:\n"
-                + "{\"intent\":\"graph|document|vector|mysql|sql|hybrid|unknown\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
-                + "不要输出除 JSON 外的任何文字。\n";
+        return "你是企业知识库问答的「意图与实体路由器」。根据用户问题选择检索通道，并抽取检索所需实体，"
+                + "避免依赖固定问句模板（如必须把「公司」说成「主体」才能识别）。\n\n"
+                + "可选 intent（检索通道）:\n"
+                + "- graph: 人-公司任职/关系、股东、关联、层级、归属\n"
+                + "- document: 制度、流程、政策、步骤类叙述\n"
+                + "- vector: 口语化、语义相近、难以关键词精确命中\n"
+                + "- mysql: 表行/字段明细、结构化记录\n"
+                + "- sql: 统计、计数、分组、排序、占比、排行\n"
+                + "- hybrid: 需多路证据组合\n"
+                + "- unknown: 缺关键信息或明显超范围\n\n"
+                + "可选 queryType（查询形态，与 intent 独立）:\n"
+                + "- person_role_list: 某人担任哪些主体/公司的法人、董事、监事等（列表型）\n"
+                + "- company_profile: 某一公司/主体的概况、状态、地址、证照等\n"
+                + "- shareholder: 股东、持股、股权结构\n"
+                + "- relation: 关联、穿透、母子关系\n"
+                + "- aggregate: 数量、统计、汇总\n"
+                + "- policy: 制度流程\n"
+                + "- semantic: 泛语义检索\n"
+                + "- mixed: 多形态混合\n"
+                + "- unknown: 无法判断形态\n\n"
+                + "roleFocus（任职类问题时填写，否则填 any）: legal_rep | director | shareholder | any\n"
+                + "personName: 问句中的自然人姓名（2-12字），无则空字符串\n"
+                + "companyHints: 问句中的公司/主体名称片段数组，无则 []\n\n"
+                + "示例：「戴科彬是哪些主体的法人」-> intent=graph, queryType=person_role_list, personName=戴科彬, roleFocus=legal_rep\n\n"
+                + "输出必须是单行 JSON，字段齐全：\n"
+                + "{\"intent\":\"graph|...\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\","
+                + "\"queryType\":\"person_role_list|...\",\"personName\":\"\",\"companyHints\":[],\"roleFocus\":\"any\"}\n"
+                + "不要输出 JSON 以外的任何文字。\n";
     }
 
     public static String sqlGeneratorSystemPrompt(int limit) {
@@ -62,7 +70,10 @@ public final class KnowledgeAssistantPrompts {
                 + "6) 默认不要输出技术细节，不要出现 SQL、表名、字段名、检索分数、检索来源、代码片段。\n"
                 + "7) 除非用户明确要求，否则不要展示内部编号或敏感标识。\n"
                 + "8) 若提供了对话上下文，可据此理解指代与省略，但不得用上下文替代证据编造事实。\n"
-                + "9) 不要默认用户在使用某一特定商业软件；只根据证据与问题作答。";
+                + "9) 不要默认用户在使用某一特定商业软件；只根据证据与问题作答。\n"
+                + "10) 若问题是「某人担任哪些主体/公司的法人、董事等」且证据含多家公司，"
+                + "须逐条列出证据中的全部主体，不得只列其中一部分；可先给总数再列清单。\n"
+                + "11) 结论中的家数/条数须与证据条数一致，勿凭记忆多写或少写。";
     }
 
     /** 模型判定为 unknown 且无证据时的用户可见说明 */
