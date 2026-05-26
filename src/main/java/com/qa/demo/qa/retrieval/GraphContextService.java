@@ -5,7 +5,9 @@ import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
 import com.qa.demo.qa.domain.EnterpriseLexicon;
+import com.qa.demo.qa.domain.GraphCompanyFacetCatalog;
 import com.qa.demo.qa.domain.QuestionEntityExtractor;
+import com.qa.demo.qa.retrieval.graph.GraphCompanySnippetBuilder;
 import com.qa.demo.qa.retrieval.graph.GraphPersonRoleQuery;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
@@ -25,15 +27,18 @@ public class GraphContextService {
     private final Driver neo4jDriver;
     private final QuestionEntityExtractor entityExtractor;
     private final EnterpriseLexicon lexicon;
+    private final GraphCompanyFacetCatalog companyFacetCatalog;
 
     public GraphContextService(
             Driver neo4jDriver,
             QuestionEntityExtractor entityExtractor,
-            EnterpriseLexicon lexicon
+            EnterpriseLexicon lexicon,
+            GraphCompanyFacetCatalog companyFacetCatalog
     ) {
         this.neo4jDriver = neo4jDriver;
         this.entityExtractor = entityExtractor;
         this.lexicon = lexicon;
+        this.companyFacetCatalog = companyFacetCatalog;
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, int topK) {
@@ -62,7 +67,7 @@ public class GraphContextService {
                 }
             }
             if (!companyHints.isEmpty()) {
-                chunks.addAll(queryByCompanyHints(session, question, companyHints, limitedTopK));
+                chunks.addAll(queryByCompanyHints(session, question, intent, companyHints, limitedTopK));
                 return chunks;
             }
             chunks.addAll(queryByIntentKeywords(session, question, limitedTopK));
@@ -166,6 +171,7 @@ public class GraphContextService {
     private List<ContextChunk> queryByCompanyHints(
             Session session,
             String question,
+            IntentDecision intent,
             List<String> companyHints,
             int topK
     ) {
@@ -208,15 +214,10 @@ public class GraphContextService {
         while (result.hasNext()) {
             Record record = result.next();
             String companyName = safeString(record, "companyName");
-            String snippet = "状态=" + safeString(record, "status")
-                    + "; 类型=" + safeString(record, "entityType")
-                    + "; 分类=" + safeString(record, "entityCategory")
-                    + "; 地址=" + safeString(record, "registeredAddress")
-                    + "; 产品线=" + safeList(record, "productLines")
-                    + "; 股东=" + safeList(record, "shareholders")
-                    + "; 关键人=" + safeList(record, "roles")
-                    + "; 证照=" + safeList(record, "certificates")
-                    + "; 印章=" + safeList(record, "seals");
+            String snippet = GraphCompanySnippetBuilder.buildSnippet(record, intent, companyFacetCatalog);
+            if (snippet.isBlank()) {
+                snippet = "状态=" + safeString(record, "status");
+            }
             double score = 18.0 + Math.min(4.0, companyName.length() / 10.0);
             chunks.add(new ContextChunk(
                     safeString(record, "companyId"),

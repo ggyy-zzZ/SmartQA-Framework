@@ -1,0 +1,36 @@
+{
+  "facetLabels": {
+    "status": "状态",
+    "entityType": "类型",
+    "entityCategory": "分类",
+    "registeredAddress": "地址",
+    "businessScope": "经营范围",
+    "productLines": "产品线",
+    "shareholders": "股东",
+    "roles": "关键人",
+    "certificates": "证照",
+    "seals": "印章"
+  },
+  "facetsByQueryType": {
+    "default": [
+      "status", "entityType", "entityCategory", "registeredAddress",
+      "productLines", "shareholders", "roles", "certificates", "seals"
+    ],
+    "company_profile": [
+      "status", "entityType", "entityCategory", "registeredAddress",
+      "businessScope", "productLines", "shareholders", "roles"
+    ],
+    "company_certificate": [
+      "status", "certificates", "roles"
+    ],
+    "company_seal": [
+      "status", "seals", "roles"
+    ],
+    "shareholder": [
+      "status", "shareholders"
+    ],
+    "relation": [
+      "status", "entityType", "shareholders", "productLines"
+    ]
+  }
+}
