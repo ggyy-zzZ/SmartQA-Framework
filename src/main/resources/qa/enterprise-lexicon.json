@@ -1,0 +1,57 @@
+{
+  "personMarkers": [
+    "是哪些公司的", "是哪些公司", "是哪些主体的", "是哪些主体",
+    "是哪些单位的", "是哪些单位", "是哪些企业的", "是哪些企业",
+    "在哪些公司", "在哪些主体", "担任哪些公司", "担任哪些主体"
+  ],
+  "personQuestionPrefixes": ["请问", "查询", "帮我查", "谁", "什么人"],
+  "personListTriggers": ["哪些", "多少", "列出", "名单"],
+  "roleRelationTriggers": ["法人", "法定代表人", "董事", "监事", "担任", "任职"],
+  "companySuffixes": ["有限公司", "分公司", "集团", "公司"],
+  "companyHintWindowChars": 14,
+  "roleFocusKeywords": {
+    "legal_rep": ["法定代表人", "法人"],
+    "director": ["董事"],
+    "supervisor": ["监事"],
+    "shareholder": ["股东", "股权", "持股"]
+  },
+  "queryTypeRules": {
+    "person_role_list": {
+      "requiresPerson": true,
+      "anyKeywords": ["法人", "董事", "监事", "任职", "担任"],
+      "listKeywords": ["哪些", "多少", "列出", "名单"]
+    },
+    "shareholder": { "anyKeywords": ["股东", "股权", "持股"] },
+    "aggregate": { "anyKeywords": ["多少", "统计", "数量", "总数"] },
+    "policy": { "anyKeywords": ["流程", "制度", "规定"] }
+  },
+  "routingKeywords": {
+    "relation": ["股东", "股权", "穿透", "关系", "关联", "总公司", "分公司", "法人", "董事", "监事", "任职", "担任"],
+    "document": ["流程", "规定", "制度", "政策", "步骤", "怎么办"],
+    "semantic": ["类似", "大概", "相关", "介绍", "说明"],
+    "mysql": ["mysql", "数据库", "表", "字段", "结构化", "明细", "记录", "sql", "schema"],
+    "sql": ["多少", "总数", "数量", "统计", "占比", "按", "分组", "top", "排行", "最近", "最大", "最小"]
+  },
+  "routingScores": {
+    "hybrid": 0.72,
+    "sql": 0.76,
+    "mysql": 0.72,
+    "graph": 0.70,
+    "document": 0.68,
+    "vector": 0.66,
+    "unknown": 0.45
+  },
+  "graphFieldKeywords": {
+    "状态": ["经营状态", "存续", "注销"],
+    "出资与持股": ["股东", "持股", "股权"],
+    "资质与许可": ["证照", "许可证", "执照"],
+    "地址": ["地址", "注册地", "办公"],
+    "关键人员": ["法人", "法定代表人", "董事", "监事"]
+  },
+  "sqlPersonRoleKeywords": ["角色", "担任", "职位", "负责人", "联络人", "经理", "法人", "法定代表人"],
+  "sqlListStyleKeywords": ["哪些", "哪些公司", "列表", "所有", "全部", "有啥角色", "什么角色", "分别"],
+  "sqlCountStyleKeywords": ["多少", "统计", "总数", "count"],
+  "nameStopwords": ["哪些", "哪个", "角色", "企业", "什么", "有啥", "请问", "帮我", "现在", "内部", "担任"],
+  "namePrefixNoise": ["请问", "请帮我", "帮我", "麻烦", "查询", "查一下", "我想知道", "想知道", "请"],
+  "roleKeywordMarkers": ["法定代表人", "法人", "角色", "职位", "职务", "负责人", "担任"]
+}

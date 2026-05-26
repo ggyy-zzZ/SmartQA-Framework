@@ -180,7 +180,7 @@ public class QaAskOrchestrator {
         } else if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             retrievalResult = new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
         } else {
-            retrievalResult = retrievalPipeline.retrieveByIntent(intentDecision.intent(), retrievalQuestion);
+            retrievalResult = retrievalPipeline.retrieveByIntent(intentDecision, retrievalQuestion);
             if (QaScopes.ENTERPRISE.equals(scope)) {
                 retrievalResult = retrievalPipeline.mergeEnterpriseActiveLearning(retrievalResult, learnedFirst, explicitCompanyHint);
             }
@@ -404,7 +404,7 @@ public class QaAskOrchestrator {
                     sseStreamSupport.emitThinking(emitter, "learning_recall", "命中主动学习知识，优先基于新记忆回答。");
                     retrievalResult = new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
                 } else {
-                    retrievalResult = retrievalPipeline.retrieveByIntent(intentDecision.intent(), retrievalQuestion);
+                    retrievalResult = retrievalPipeline.retrieveByIntent(intentDecision, retrievalQuestion);
                     if (QaScopes.ENTERPRISE.equals(scope)) {
                         retrievalResult = retrievalPipeline.mergeEnterpriseActiveLearning(retrievalResult, learnedFirst, explicitCompanyHint);
                     }

@@ -77,6 +77,11 @@ public class QaAssistantProperties {
     /** 是否用 MiniMax 做意图+实体抽取（无 API Key 时自动走规则） */
     private boolean intentLlmEnabled = true;
 
+    /**
+     * LLM 意图置信度不低于该值且槽位已齐备时，跳过规则 enrich（仅补 reason 前缀）。
+     */
+    private double intentLlmEnrichMinConfidence = 0.72;
+
     /** 证据不足时是否拦截 LLM 生成（本地验证建议开启） */
     private boolean answerGateEnabled = true;
 
@@ -531,6 +536,14 @@ public class QaAssistantProperties {
 
     public void setIntentLlmEnabled(boolean intentLlmEnabled) {
         this.intentLlmEnabled = intentLlmEnabled;
+    }
+
+    public double getIntentLlmEnrichMinConfidence() {
+        return intentLlmEnrichMinConfidence;
+    }
+
+    public void setIntentLlmEnrichMinConfidence(double intentLlmEnrichMinConfidence) {
+        this.intentLlmEnrichMinConfidence = intentLlmEnrichMinConfidence;
     }
 
     public boolean isAnswerGateEnabled() {

@@ -1,0 +1,38 @@
+{
+  "columns": {
+    "legal_rep_id": "法定代表人",
+    "manager_id": "经理",
+    "financial_manager_id": "财务负责人",
+    "finance_manager_id": "财务负责人",
+    "tax_handler_id": "办税人",
+    "taxer_id": "办税人",
+    "tax_manager_id": "办税人",
+    "ticket_purchaser_id": "购票人",
+    "invoice_buyer_id": "购票人",
+    "company_contact_id": "联络人",
+    "contact_id": "联络人",
+    "company_supervisor_id": "监事",
+    "assigned_accountant_id": "会计",
+    "assigned_cashier_id": "出纳",
+    "accounting_supervisor_id": "会计主管",
+    "chairman_exec_director_id": "执行董事/董事长",
+    "ssc_payroll_manager_id": "SSC薪资负责人",
+    "it_owner_id": "IT负责人",
+    "ssc_salary_owner_id": "SSC薪资负责人",
+    "certificate_keeper_id": "证照保管人",
+    "certificate_supervisor_id": "证照监管人",
+    "certificate_executor_id": "证照执行人"
+  },
+  "priorityPatterns": [
+    { "contains": "legal_rep", "priority": 0 },
+    { "contains": "manager", "priority": 1 },
+    { "contains": "financial", "priority": 2 },
+    { "contains": "finance", "priority": 2 },
+    { "contains": "tax", "priority": 2 },
+    { "contains": "invoice", "priority": 2 },
+    { "contains": "contact", "priority": 3 },
+    { "contains": "it", "priority": 3 },
+    { "contains": "ssc", "priority": 3 }
+  ],
+  "defaultPriority": 4
+}

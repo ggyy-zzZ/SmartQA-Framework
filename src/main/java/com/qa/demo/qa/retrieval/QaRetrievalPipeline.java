@@ -3,6 +3,7 @@ package com.qa.demo.qa.retrieval;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.core.RetrievalPlan;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import org.springframework.stereotype.Service;
 
@@ -28,6 +29,8 @@ public class QaRetrievalPipeline {
     private final EntityTableMapper entityTableMapper;
     private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
     private final EvidenceRerankService evidenceRerankService;
+    private final RetrievalPlanFactory retrievalPlanFactory;
+    private final SqlTopKResolver sqlTopKResolver;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -39,7 +42,9 @@ public class QaRetrievalPipeline {
             QaAssistantProperties properties,
             EntityTableMapper entityTableMapper,
             EmployeeBaseKnowledgeService employeeBaseKnowledge,
-            EvidenceRerankService evidenceRerankService
+            EvidenceRerankService evidenceRerankService,
+            RetrievalPlanFactory retrievalPlanFactory,
+            SqlTopKResolver sqlTopKResolver
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -51,6 +56,8 @@ public class QaRetrievalPipeline {
         this.entityTableMapper = entityTableMapper;
         this.employeeBaseKnowledge = employeeBaseKnowledge;
         this.evidenceRerankService = evidenceRerankService;
+        this.retrievalPlanFactory = retrievalPlanFactory;
+        this.sqlTopKResolver = sqlTopKResolver;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -64,37 +71,44 @@ public class QaRetrievalPipeline {
             List<ContextChunk> learned,
             IntentDecision intent
     ) throws IOException {
-        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, intent);
+        RetrievalPlan plan = retrievalPlanFactory.from(intent);
+        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan);
         merged = mergeLearnedUnconditionally(learned, merged);
         RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
-        base = appendSupplementalTables(base, question, intent);
-        base = appendEmployeeBaseInfo(base, question, intent);
-        int evidenceTopK = resolveFinalEvidenceTopK(intent);
-        List<ContextChunk> reranked = evidenceRerankService.rerank(question, base.evidence(), evidenceTopK);
+        base = appendSupplementalTables(base, question, plan);
+        base = appendEmployeeBaseInfo(base, question, plan);
+        List<ContextChunk> reranked = evidenceRerankService.rerank(
+                question, base.evidence(), plan.finalEvidenceTopK());
         String source = "unified_rerank_" + evidenceRerankService.activeProvider();
         return new RetrievalResult(source, reranked);
     }
 
     public RetrievalResult retrieveByIntent(String intent, String question) throws IOException {
-        String normalized = intent == null ? "" : intent.toLowerCase();
+        IntentDecision decision = new IntentDecision(intent, 0.5, "legacy_string_intent_only");
+        return retrieveByIntent(decision, question);
+    }
+
+    public RetrievalResult retrieveByIntent(IntentDecision intent, String question) throws IOException {
+        RetrievalPlan plan = retrievalPlanFactory.from(intent);
+        String normalized = intent.intent() == null ? "" : intent.intent().toLowerCase();
         RetrievalResult base = switch (normalized) {
-            case "graph" -> retrieveGraphFirst(question);
+            case "graph" -> retrieveGraphFirst(question, plan);
             case "vector" -> retrieveVectorFirst(question);
             case "document" -> retrieveDocumentFirst(question);
             case "mysql" -> retrieveMysqlFirst(question);
             case "sql" -> retrieveSqlFirst(question);
-            case "hybrid" -> retrieveHybrid(question);
+            case "hybrid" -> retrieveHybrid(question, plan);
             case "unknown" -> new RetrievalResult("unknown", List.of());
-            default -> retrieveHybrid(question);
+            default -> retrieveHybrid(question, plan);
         };
-        RetrievalResult withSupplemental = appendSupplementalTables(base, question, null);
-        return appendEmployeeBaseInfo(withSupplemental, question, null);
+        RetrievalResult withSupplemental = appendSupplementalTables(base, question, plan);
+        return appendEmployeeBaseInfo(withSupplemental, question, plan);
     }
 
     /**
      * 追加检测到的 supplemental tables 查询结果。
      */
-    private RetrievalResult appendSupplementalTables(RetrievalResult base, String question, IntentDecision intent) {
+    private RetrievalResult appendSupplementalTables(RetrievalResult base, String question, RetrievalPlan plan) {
         List<String> supplementalTables = entityTableMapper.getSupplementalTablesForQuestion(question);
         if (supplementalTables.isEmpty()) {
             return base;
@@ -114,14 +128,14 @@ public class QaRetrievalPipeline {
                 }
             }
         }
-        return trimEvidence(merged, resolveFinalEvidenceTopK(intent), "supplemental_appended_" + base.retrievalSource());
+        return trimEvidence(merged, plan.finalEvidenceTopK(), "supplemental_appended_" + base.retrievalSource());
     }
 
     /**
      * 检测问题中的人名/花名，追加员工基础信息到检索结果。
      */
-    private RetrievalResult appendEmployeeBaseInfo(RetrievalResult base, String question, IntentDecision intent) {
-        if (intent != null && intent.isPersonRoleListQuery()) {
+    private RetrievalResult appendEmployeeBaseInfo(RetrievalResult base, String question, RetrievalPlan plan) {
+        if (plan.skipEmployeeBaseAppend()) {
             return base;
         }
         if (employeeBaseKnowledge.size() == 0) {
@@ -163,7 +177,7 @@ public class QaRetrievalPipeline {
                 merged.add(chunk);
             }
         }
-        return trimEvidence(merged, resolveFinalEvidenceTopK(intent), "employee_base_appended_" + base.retrievalSource());
+        return trimEvidence(merged, plan.finalEvidenceTopK(), "employee_base_appended_" + base.retrievalSource());
     }
 
     private RetrievalResult trimEvidence(List<ContextChunk> merged, int cap, String retrievalSource) {
@@ -277,51 +291,11 @@ public class QaRetrievalPipeline {
     }
 
     public int resolveSqlTopK(String question) {
-        int base = Math.max(1, properties.getMysqlTopK());
-        if (question == null || question.isBlank()) {
-            return base;
-        }
-        String q = question.toLowerCase();
-        boolean listStyle = q.contains("哪些")
-                || q.contains("哪些公司")
-                || q.contains("列表")
-                || q.contains("所有")
-                || q.contains("全部")
-                || q.contains("有啥角色")
-                || q.contains("什么角色")
-                || q.contains("分别");
-        if (listStyle) {
-            return Math.max(base, 20);
-        }
-        boolean countStyle = q.contains("多少")
-                || q.contains("统计")
-                || q.contains("总数")
-                || q.contains("count");
-        if (countStyle) {
-            return Math.max(base, 10);
-        }
-        return base;
+        return sqlTopKResolver.resolve(question, retrievalPlanFactory.from(null));
     }
 
     private RetrievalResult retrieveGraphFirst(String question) throws IOException {
-        List<ContextChunk> graph = safeGraphRetrieve(question);
-        if (!graph.isEmpty()) {
-            return new RetrievalResult("graph", graph);
-        }
-        List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
-        if (!vector.isEmpty()) {
-            return new RetrievalResult("vector_fallback_after_graph", vector);
-        }
-        List<ContextChunk> mysql = safeMysqlRetrieve(question);
-        if (!mysql.isEmpty()) {
-            return new RetrievalResult("mysql_fallback_after_graph", mysql);
-        }
-        List<ContextChunk> sql = safeSqlRetrieve(question);
-        if (!sql.isEmpty()) {
-            return new RetrievalResult("sql_fallback_after_graph", sql);
-        }
-        return new RetrievalResult("document_fallback_after_graph",
-                documentContextService.retrieveTopChunks(question, properties.getDocsDir(), properties.getRetrievalTopK()));
+        return retrieveGraphFirst(question, retrievalPlanFactory.from(null));
     }
 
     private RetrievalResult retrieveVectorFirst(String question) throws IOException {
@@ -436,18 +410,16 @@ public class QaRetrievalPipeline {
         return c.source() + "|" + c.companyId() + "|" + c.companyName() + "|" + c.field();
     }
 
-    private List<ContextChunk> collectHybridCandidatesExpanded(String question, IntentDecision intent) throws IOException {
+    private List<ContextChunk> collectHybridCandidatesExpanded(String question, RetrievalPlan plan) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
-        int graphTopK = resolveGraphRecallTopK(intent);
-        List<ContextChunk> graph = safeGraphRetrieve(question, graphTopK, intent);
+        List<ContextChunk> graph = safeGraphRetrieve(question, plan);
         appendUnique(merged, graph);
-        // 任职/法人列表：图谱已覆盖时不再混入无关向量片段，避免重排挤掉正确条目
-        if (intent != null && intent.isPersonRoleListQuery() && !graph.isEmpty()) {
+        if (plan.preferGraphOnly() && !graph.isEmpty()) {
             return merged;
         }
         appendUnique(merged, vectorContextService.retrieveTopChunks(question, properties.getRecallVectorTopK()));
         appendUnique(merged, safeMysqlRetrieve(question));
-        appendUnique(merged, safeSqlRetrieve(question));
+        appendUnique(merged, safeSqlRetrieve(question, plan));
         if (merged.isEmpty()) {
             return documentContextService.retrieveTopChunks(
                     question,
@@ -473,9 +445,34 @@ public class QaRetrievalPipeline {
         }
     }
 
+    private RetrievalResult retrieveGraphFirst(String question, RetrievalPlan plan) throws IOException {
+        List<ContextChunk> graph = safeGraphRetrieve(question, plan);
+        if (!graph.isEmpty()) {
+            return new RetrievalResult("graph", graph);
+        }
+        List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
+        if (!vector.isEmpty()) {
+            return new RetrievalResult("vector_fallback_after_graph", vector);
+        }
+        List<ContextChunk> mysql = safeMysqlRetrieve(question);
+        if (!mysql.isEmpty()) {
+            return new RetrievalResult("mysql_fallback_after_graph", mysql);
+        }
+        List<ContextChunk> sql = safeSqlRetrieve(question);
+        if (!sql.isEmpty()) {
+            return new RetrievalResult("sql_fallback_after_graph", sql);
+        }
+        return new RetrievalResult("document_fallback_after_graph",
+                documentContextService.retrieveTopChunks(question, properties.getDocsDir(), properties.getRetrievalTopK()));
+    }
+
     private RetrievalResult retrieveHybrid(String question) throws IOException {
+        return retrieveHybrid(question, retrievalPlanFactory.from(null));
+    }
+
+    private RetrievalResult retrieveHybrid(String question, RetrievalPlan plan) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
-        List<ContextChunk> graph = safeGraphRetrieve(question);
+        List<ContextChunk> graph = safeGraphRetrieve(question, plan);
         if (!graph.isEmpty()) {
             merged.addAll(graph);
         }
@@ -525,30 +522,12 @@ public class QaRetrievalPipeline {
     }
 
     private List<ContextChunk> safeGraphRetrieve(String question) {
-        return safeGraphRetrieve(question, properties.getRetrievalTopK());
+        return safeGraphRetrieve(question, retrievalPlanFactory.from(null));
     }
 
-    private int resolveGraphRecallTopK(IntentDecision intent) {
-        if (intent != null && intent.isPersonRoleListQuery()) {
-            return Math.max(properties.getRecallGraphTopK(), properties.getRecallGraphPersonRoleTopK());
-        }
-        return properties.getRecallGraphTopK();
-    }
-
-    private int resolveFinalEvidenceTopK(IntentDecision intent) {
-        if (intent != null && intent.isPersonRoleListQuery()) {
-            return Math.max(properties.getRetrievalTopK(), properties.getRecallGraphPersonRoleTopK());
-        }
-        return properties.getRetrievalTopK();
-    }
-
-    private List<ContextChunk> safeGraphRetrieve(String question, int topK) {
-        return safeGraphRetrieve(question, topK, null);
-    }
-
-    private List<ContextChunk> safeGraphRetrieve(String question, int topK, IntentDecision intent) {
+    private List<ContextChunk> safeGraphRetrieve(String question, RetrievalPlan plan) {
         try {
-            return graphContextService.retrieveTopChunks(question, topK, intent);
+            return graphContextService.retrieveTopChunks(question, plan);
         } catch (Exception ignored) {
             return List.of();
         }
@@ -563,8 +542,12 @@ public class QaRetrievalPipeline {
     }
 
     private List<ContextChunk> safeSqlRetrieve(String question) {
+        return safeSqlRetrieve(question, retrievalPlanFactory.from(null));
+    }
+
+    private List<ContextChunk> safeSqlRetrieve(String question, RetrievalPlan plan) {
         try {
-            return sqlQueryService.retrieveTopChunks(question, resolveSqlTopK(question));
+            return sqlQueryService.retrieveTopChunks(question, plan);
         } catch (Exception ignored) {
             return List.of();
         }
