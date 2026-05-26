@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -18,6 +19,12 @@ public class QuestionEntityExtractor {
 
     private static final Pattern PREFIX_NOISE = Pattern.compile(
             "^(请问|查询|帮我查|谁|什么人)"
+    );
+    private static final Pattern PERSON_BEFORE_RESIGN = Pattern.compile(
+            "([\\u4e00-\\u9fa5]{2,4})\\s*离职"
+    );
+    private static final Pattern LEADING_PERSON_NAME = Pattern.compile(
+            "^([\\u4e00-\\u9fa5]{2,3})(?=[，,。；;：:？?！!、\\s]|离职|负责|管|是|在|的|有)"
     );
 
     private final EnterpriseLexicon lexicon;
@@ -54,6 +61,17 @@ public class QuestionEntityExtractor {
             if (whichIdx > 1) {
                 return personNameBefore(q, whichIdx);
             }
+        }
+        Matcher resignMatcher = PERSON_BEFORE_RESIGN.matcher(q);
+        if (resignMatcher.find()) {
+            String name = resignMatcher.group(1);
+            if (isPlausiblePersonName(name)) {
+                return name;
+            }
+        }
+        String leading = extractLeadingPersonName(q);
+        if (leading != null) {
+            return leading;
         }
         return null;
     }
@@ -106,5 +124,27 @@ public class QuestionEntityExtractor {
             return name;
         }
         return null;
+    }
+
+    private String extractLeadingPersonName(String question) {
+        String stripped = question.trim();
+        for (String noise : lexicon.namePrefixNoise()) {
+            if (stripped.startsWith(noise)) {
+                stripped = stripped.substring(noise.length()).trim();
+            }
+        }
+        Matcher matcher = LEADING_PERSON_NAME.matcher(stripped);
+        if (!matcher.find()) {
+            return null;
+        }
+        String name = matcher.group(1);
+        return isPlausiblePersonName(name) ? name : null;
+    }
+
+    private boolean isPlausiblePersonName(String name) {
+        if (name == null || name.length() < 2 || name.length() > 4) {
+            return false;
+        }
+        return !lexicon.nameStopwords().contains(name);
     }
 }

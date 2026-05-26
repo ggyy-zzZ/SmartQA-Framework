@@ -584,7 +584,11 @@ public class QaRetrievalPipeline {
             return;
         }
         int maxRows = Math.max(properties.getRecallGraphTopK() * 8, 64);
-        appendUnique(merged, personCertificateQueryService.retrieve(intent.personName(), maxRows));
+        appendUnique(merged, personCertificateQueryService.retrieve(
+                intent.personEmployeeId(),
+                intent.personName(),
+                maxRows
+        ));
     }
 
     private boolean shouldIncludeCompiledDocs(RetrievalPlan plan, String question) {

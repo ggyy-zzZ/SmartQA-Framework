@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 将问句/LLM 槽位中的敬称、别名解析为规范姓名；结合任职角色（如法人）在图谱中消歧。
+ * 将问句/LLM 槽位中的敬称、别名解析为规范姓名，并绑定员工唯一标识（意图边界，检索层不再按姓名模糊匹配）。
  */
 @Component
 public class PersonNameResolver {
@@ -40,34 +40,39 @@ public class PersonNameResolver {
         String trimmed = rawPersonName.trim();
         String fromLearning = activeLearningService.resolvePersonAlias(trimmed, learned);
         if (!fromLearning.equals(trimmed)) {
-            return PersonNameResolution.resolved(fromLearning);
+            return withEmployeeId(fromLearning);
         }
 
         String fromEmployee = employeeBaseKnowledge.resolveCanonicalName(trimmed);
         if (!fromEmployee.equals(trimmed) && !PersonNameParser.hasHonorificSuffix(fromEmployee)) {
-            return PersonNameResolution.resolved(fromEmployee);
+            return withEmployeeId(fromEmployee);
         }
 
         String searchCore = PersonNameParser.hasHonorificSuffix(trimmed)
                 ? PersonNameParser.stripHonorific(trimmed)
                 : trimmed;
         if (searchCore.isBlank()) {
-            return PersonNameResolution.resolved(trimmed);
+            return withEmployeeId(trimmed);
         }
 
         String role = roleFocus == null || roleFocus.isBlank() ? "any" : roleFocus;
         List<String> graphNames = graphContextService.listPersonNamesByHintAndRole(searchCore, role, 12);
         if (graphNames.size() == 1) {
-            return PersonNameResolution.resolved(graphNames.get(0));
+            return withEmployeeId(graphNames.get(0));
         }
         if (graphNames.size() > 1) {
             return PersonNameResolution.ambiguous(trimmed, graphNames);
         }
 
         if (!fromEmployee.equals(trimmed)) {
-            return PersonNameResolution.resolved(fromEmployee);
+            return withEmployeeId(fromEmployee);
         }
-        return PersonNameResolution.resolved(trimmed);
+        return withEmployeeId(trimmed);
+    }
+
+    private PersonNameResolution withEmployeeId(String canonicalName) {
+        Integer id = employeeBaseKnowledge.resolveToEmployeeId(canonicalName);
+        return PersonNameResolution.resolved(canonicalName, id);
     }
 
     public boolean needsClarification(PersonNameResolution resolution) {

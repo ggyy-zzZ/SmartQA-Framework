@@ -23,4 +23,16 @@ class PersonCertificateIntentHeuristicsTest {
     void certificateTypeFollowUpWithoutCertKeyword() {
         assertTrue(PersonCertificateIntentHeuristics.isCertificateTypeFollowUp("涉及类型有哪些"));
     }
+
+    @Test
+    void detectsStewardshipQuestionWithoutCertKeyword() {
+        assertTrue(PersonCertificateIntentHeuristics.isPersonStewardshipListWithoutCertKeyword(
+                "张雁雯离职了，我想知道她在负责了哪些东西", "张雁雯"));
+    }
+
+    @Test
+    void extractsPersonBeforeResignation() {
+        assertEquals("张雁雯", PersonCertificateIntentHeuristics.extractPersonNameFromQuestion(
+                "张雁雯离职了，我想知道她在负责了哪些东西"));
+    }
 }

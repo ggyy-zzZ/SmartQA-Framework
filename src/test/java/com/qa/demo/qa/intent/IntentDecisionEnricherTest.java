@@ -36,6 +36,17 @@ class IntentDecisionEnricherTest {
                 .thenReturn(PersonNameResolution.resolved("戴科彬"));
         when(personNameResolver.resolve(eq(""), any(), any()))
                 .thenReturn(PersonNameResolution.resolved(""));
+        when(personNameResolver.resolve(any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    String raw = invocation.getArgument(0);
+                    if (raw == null || raw.isBlank()) {
+                        return PersonNameResolution.resolved("");
+                    }
+                    if ("戴先生".equals(raw)) {
+                        return PersonNameResolution.resolved("戴科彬");
+                    }
+                    return PersonNameResolution.resolved(raw, "张雁雯".equals(raw) ? 110008506 : null);
+                });
         enricher = new IntentDecisionEnricher(props, extractor, personNameResolver);
     }
 
@@ -91,9 +102,7 @@ class IntentDecisionEnricherTest {
     }
 
     @Test
-    void forcesPersonCertificateListAndMysqlIntent() {
-        when(personNameResolver.resolve(eq("张雁雯"), any(), any()))
-                .thenReturn(PersonNameResolution.resolved("张雁雯"));
+    void forcesPersonCertificateListWithoutCouplingToMysqlIntent() {
         IntentDecision rule = new IntentDecision(
                 "hybrid",
                 0.7,
@@ -105,8 +114,28 @@ class IntentDecisionEnricherTest {
         );
         IntentDecision out = enricher.enrich(rule, "张雁雯负责哪些证照", false, "rule").decision();
         assertEquals("张雁雯", out.personName());
+        assertEquals(110008506, out.personEmployeeId());
         assertEquals("person_certificate_list", out.queryType());
-        assertEquals("mysql", out.intent());
+        assertEquals("hybrid", out.intent());
+    }
+
+    @Test
+    void forcesPersonCertificateForResignationStewardshipQuestion() {
+        IntentDecision rule = new IntentDecision(
+                "hybrid",
+                0.7,
+                "rule_hybrid",
+                "",
+                "",
+                List.of(),
+                "any"
+        );
+        String question = "张雁雯离职了，我想知道她在负责了哪些东西";
+        IntentDecision out = enricher.enrich(rule, question, false, "rule").decision();
+        assertEquals("张雁雯", out.personName());
+        assertEquals(110008506, out.personEmployeeId());
+        assertEquals("person_certificate_list", out.queryType());
+        assertEquals("hybrid", out.intent());
     }
 
     @Test

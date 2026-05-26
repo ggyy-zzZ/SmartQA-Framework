@@ -43,7 +43,12 @@ public final class IntentSlots {
                 .filter(s -> !s.isBlank())
                 .distinct()
                 .toList();
-        return new IntentDecision(intent, confidence, reason, queryType, personName, companyHints, roleFocus);
+        Integer personEmployeeId = raw.personEmployeeId();
+        if (personEmployeeId != null && personEmployeeId <= 0) {
+            personEmployeeId = null;
+        }
+        return new IntentDecision(
+                intent, confidence, reason, queryType, personName, companyHints, roleFocus, personEmployeeId);
     }
 
     /**
@@ -57,7 +62,7 @@ public final class IntentSlots {
             return d.hasPersonFocus() && hasRoleFocus(d);
         }
         if (d.isPersonCertificateListQuery()) {
-            return d.hasPersonFocus();
+            return d.hasPersonEmployeeId() || d.hasPersonFocus();
         }
         if ("company_profile".equalsIgnoreCase(d.queryType())
                 || "company_certificate".equalsIgnoreCase(d.queryType())

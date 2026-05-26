@@ -1,6 +1,7 @@
 package com.qa.demo.qa.domain;
 
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -9,7 +10,16 @@ import java.util.regex.Pattern;
 public final class PersonCertificateIntentHeuristics {
 
     private static final Pattern PERSON_BEFORE_STEWARD = Pattern.compile(
-            "([\\u4e00-\\u9fa5]{2,12})\\s*(负责|管|监管|保管|执行)"
+            "([\\u4e00-\\u9fa5]{2,4})\\s*(负责|管|监管|保管|执行)"
+    );
+    private static final Set<String> PRONOUN_NAME_BLOCKLIST = Set.of(
+            "她", "他", "它", "其", "这", "那", "谁", "哪", "啥", "什"
+    );
+    private static final Pattern PERSON_BEFORE_RESIGN = Pattern.compile(
+            "([\\u4e00-\\u9fa5]{2,4})\\s*离职"
+    );
+    private static final Pattern LEADING_PERSON_NAME = Pattern.compile(
+            "^([\\u4e00-\\u9fa5]{2,3})(?=[，,。；;：:？?！!、\\s]|离职|负责|管|是|在|的|有)"
     );
 
     private PersonCertificateIntentHeuristics() {
@@ -27,20 +37,49 @@ public final class PersonCertificateIntentHeuristics {
             return false;
         }
         String t = question.strip();
-        if (!containsCertKeyword(t)) {
+        if (containsCertKeyword(t)) {
+            return containsAny(t, "哪些", "负责", "管", "列出", "多少", "什么", "啥", "涉及")
+                    || PERSON_BEFORE_STEWARD.matcher(t).find();
+        }
+        return isPersonStewardshipListWithoutCertKeyword(t, person);
+    }
+
+    /**
+     * 「某人负责/管了哪些东西」等口语化职责问句（无「证照」字样）。
+     */
+    public static boolean isPersonStewardshipListWithoutCertKeyword(String question, String personName) {
+        if (question == null || question.isBlank() || personName == null || personName.isBlank()) {
             return false;
         }
-        return containsAny(t, "哪些", "负责", "管", "列出", "多少", "什么", "啥", "涉及")
-                || PERSON_BEFORE_STEWARD.matcher(t).find();
+        String t = question.strip();
+        if (!containsAny(t, "负责", "管", "监管", "保管", "执行")) {
+            return false;
+        }
+        return containsAny(t, "哪些", "什么", "啥", "东西", "涉及", "列出", "多少");
     }
 
     public static String extractPersonNameFromQuestion(String question) {
         if (question == null || question.isBlank()) {
             return "";
         }
-        var matcher = PERSON_BEFORE_STEWARD.matcher(question.strip());
-        if (matcher.find()) {
-            return matcher.group(1);
+        String t = question.strip();
+        var resignMatcher = PERSON_BEFORE_RESIGN.matcher(t);
+        if (resignMatcher.find()) {
+            return resignMatcher.group(1);
+        }
+        var stewardMatcher = PERSON_BEFORE_STEWARD.matcher(t);
+        while (stewardMatcher.find()) {
+            String name = stewardMatcher.group(1);
+            if (!PRONOUN_NAME_BLOCKLIST.contains(name)) {
+                return name;
+            }
+        }
+        var leadingMatcher = LEADING_PERSON_NAME.matcher(t);
+        if (leadingMatcher.find()) {
+            String name = leadingMatcher.group(1);
+            if (!PRONOUN_NAME_BLOCKLIST.contains(name)) {
+                return name;
+            }
         }
         return "";
     }

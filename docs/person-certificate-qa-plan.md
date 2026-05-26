@@ -48,18 +48,24 @@
    业务真相：`tdcomp.certificate_management` + `company` + `employee`。  
    管道产物：`data/knowledge/enterprise_mysql_clean.jsonl`（公司聚合）为离线镜像，**不是**第二套事实库。
 
-2. **人物证照 = 查询视图，不是新知识库**  
+2. **唯一标识与业务属性解耦**  
+   - **标识**：`employee_id`、`company_id`、`certificate_management.id`、`certificate_type` 枚举码 —— 仅用于关联、去重、精确查询。  
+   - **属性**：姓名、证照类型中文名、角色标签、状态 —— 用于证据 snippet 与面向用户的生成。  
+   - 意图层：`personName` = 展示用规范名；`personEmployeeId` = 检索锚点（在 `PersonNameResolver` 一次性绑定）。  
+   - 禁止：用姓名 LIKE 在检索层猜人；用 `intent=mysql` 表达「人物证照」业务形态；在 snippet 中展示类型码或 `公司#123` 式编码解释。
+
+3. **人物证照 = 查询视图，不是新知识库**  
    不在 Qdrant 为「每人每证」建独立 point；不在全量组合下预计算笛卡尔积。
 
-3. **意图 → 检索 → 生成分工**  
+4. **意图 → 检索 → 生成分工**  
    - 意图：定 `queryType`、锚点人物、会话 `topic`、输出契约。  
    - 检索：按形态走专用通道，证据 snippet 统一三列。  
    - 生成：仅依据证据填表，禁止用 `entityType` 凑证照答案。
 
-4. **公司维度仍是主索引**  
+5. **公司维度仍是主索引**  
    向量 / Neo4j / `compiled.txt` 继续服务「某公司有哪些证照」；人物证照走**结构化查询优先**。
 
-5. **增量可维护**  
+6. **增量可维护**  
    新业务证照 → 现有 build/sync 流程 → 人物证照查询自动覆盖，无需单独「人证照库」同步。
 
 ---
@@ -115,7 +121,8 @@
 | 字段 | 含义 | 示例 |
 |------|------|------|
 | `queryType` | 查询形态 | `person_certificate_list` / `company_certificate` / `person_role_list` |
-| `anchorPerson` | 锚点人物（规范名） | 张雁雯 |
+| `anchorPerson` | 锚点人物（规范名，展示） | 张雁雯 |
+| `anchorEmployeeId` | 锚点员工主键（检索） | 110008506 |
 | `topic` | 会话主题 | `certificate` |
 | `followUpKind` | 追问细分 | `certificate_type_enum` / `detail_list` / `none` |
 | `outputSchema` | 允许输出字段 | certType, companyName, stewardRole, status |

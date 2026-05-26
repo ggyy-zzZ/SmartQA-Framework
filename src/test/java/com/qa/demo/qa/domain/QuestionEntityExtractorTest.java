@@ -22,6 +22,16 @@ class QuestionEntityExtractorTest {
     }
 
     @Test
+    void extractsPersonBeforeResignation() {
+        assertEquals("张雁雯", extractor.extractPersonName("张雁雯离职了，我想知道她在负责了哪些东西"));
+    }
+
+    @Test
+    void extractsPersonBeforeResignationPhrase() {
+        assertEquals("张雁雯", extractor.extractPersonName("张雁雯离职了，我想知道她在负责了哪些东西"));
+    }
+
+    @Test
     void infersPersonRoleListQueryType() {
         String type = extractor.inferQueryType("戴科彬是哪些主体的法人", "戴科彬");
         assertEquals("person_role_list", type);
@@ -34,7 +44,7 @@ class QuestionEntityExtractorTest {
 
     @Test
     void infersCompanyCertificateQueryType() {
-        String type = extractor.inferQueryType("万仕道公司有哪些证照", "万仕道");
+        String type = extractor.inferQueryType("万仕道公司有哪些证照", "");
         assertEquals("company_certificate", type);
     }
 

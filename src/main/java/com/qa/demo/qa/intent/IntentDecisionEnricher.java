@@ -75,7 +75,9 @@ public class IntentDecisionEnricher {
                 && rulePerson != null) {
             return false;
         }
-        if (PersonCertificateIntentHeuristics.isPersonCertificateListQuestion(question, decision.personName())
+        if ((PersonCertificateIntentHeuristics.isPersonCertificateListQuestion(question, decision.personName())
+                || PersonCertificateIntentHeuristics.isPersonStewardshipListWithoutCertKeyword(
+                        question, decision.personName()))
                 && !decision.isPersonCertificateListQuery()) {
             return false;
         }
@@ -104,7 +106,9 @@ public class IntentDecisionEnricher {
             companyHints.addAll(entityExtractor.extractCompanyHints(question));
         }
         String inferredQueryType = entityExtractor.inferQueryType(question, personName);
-        if (PersonCertificateIntentHeuristics.isPersonCertificateListQuestion(question, personName)) {
+        if (PersonCertificateIntentHeuristics.isPersonCertificateListQuestion(question, personName)
+                || PersonCertificateIntentHeuristics.isPersonStewardshipListWithoutCertKeyword(
+                        question, personName)) {
             queryType = "person_certificate_list";
         } else if (queryType == null || queryType.isBlank()) {
             queryType = inferredQueryType;
@@ -122,8 +126,9 @@ public class IntentDecisionEnricher {
         }
 
         String intent = base.intent();
-        if ("person_certificate_list".equalsIgnoreCase(queryType)) {
-            intent = "mysql";
+        if ("person_certificate_list".equalsIgnoreCase(queryType)
+                && (intent == null || intent.isBlank() || "unknown".equalsIgnoreCase(intent))) {
+            intent = "hybrid";
         }
         return new IntentDecision(
                 intent,
@@ -132,7 +137,8 @@ public class IntentDecisionEnricher {
                 queryType == null ? "" : queryType,
                 personName == null ? "" : personName,
                 List.copyOf(companyHints),
-                roleFocus
+                roleFocus,
+                base.personEmployeeId()
         );
     }
 
@@ -166,35 +172,41 @@ public class IntentDecisionEnricher {
                 decision.roleFocus()
         );
         String resolved = resolution.canonicalName();
+        String displayName = resolved.isBlank() ? decision.personName() : resolved;
         if (resolved.isBlank() || resolved.equals(decision.personName())) {
             if (resolution.needsClarification()) {
                 String reason = decision.reason() == null ? "" : decision.reason();
                 reason = reason + "|person_ambiguous";
-                IntentDecision ambiguous = new IntentDecision(
-                        decision.intent(),
-                        decision.confidence(),
-                        reason,
-                        decision.queryType(),
-                        decision.personName(),
-                        decision.companyHints(),
-                        decision.roleFocus()
-                );
+                IntentDecision ambiguous = copyPersonFields(decision, decision.personName(), null, reason);
                 return IntentRoutingOutcome.of(ambiguous, resolution);
             }
-            return IntentRoutingOutcome.of(decision, resolution);
+            return IntentRoutingOutcome.of(
+                    copyPersonFields(decision, displayName, resolution.employeeId(), decision.reason()),
+                    resolution
+            );
         }
         String reason = decision.reason() == null ? "" : decision.reason();
         reason = reason + "|person_resolved:" + decision.personName() + "->" + resolved;
-        IntentDecision updated = new IntentDecision(
+        IntentDecision updated = copyPersonFields(decision, resolved, resolution.employeeId(), reason);
+        return IntentRoutingOutcome.of(updated, resolution);
+    }
+
+    private static IntentDecision copyPersonFields(
+            IntentDecision decision,
+            String personName,
+            Integer personEmployeeId,
+            String reason
+    ) {
+        return new IntentDecision(
                 decision.intent(),
                 decision.confidence(),
                 reason,
                 decision.queryType(),
-                resolved,
+                personName,
                 decision.companyHints(),
-                decision.roleFocus()
+                decision.roleFocus(),
+                personEmployeeId != null ? personEmployeeId : decision.personEmployeeId()
         );
-        return IntentRoutingOutcome.of(updated, PersonNameResolution.resolved(resolved));
     }
 
     private IntentDecision withSourcePrefix(IntentDecision decision, String source) {
@@ -209,7 +221,8 @@ public class IntentDecisionEnricher {
                 decision.queryType(),
                 decision.personName(),
                 decision.companyHints(),
-                decision.roleFocus()
+                decision.roleFocus(),
+                decision.personEmployeeId()
         );
     }
 }
