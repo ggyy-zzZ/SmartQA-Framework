@@ -4,6 +4,11 @@ import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.IntentDecision;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 @Service
 public class IntentRouterService {
 
@@ -27,10 +32,29 @@ public class IntentRouterService {
     public IntentDecision decide(String question, boolean explicitCompanyHint) {
         if (properties.isIntentLlmEnabled() && hasMinimaxKey()) {
             try {
-                IntentDecision llmDecision = llmClassifier.classify(question, explicitCompanyHint);
+                int timeoutMs = Math.max(5_000, properties.getIntentLlmTimeoutMs());
+                IntentDecision llmDecision = CompletableFuture
+                        .supplyAsync(() -> {
+                            try {
+                                return llmClassifier.classify(question, explicitCompanyHint);
+                            } catch (Exception ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        })
+                        .orTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                        .get();
                 if (IntentSlots.VALID_INTENTS.contains(llmDecision.intent())
                         && !"unknown".equalsIgnoreCase(llmDecision.intent())) {
                     return enricher.enrich(llmDecision, question, explicitCompanyHint, "llm");
+                }
+            } catch (ExecutionException ex) {
+                if (ex.getCause() instanceof TimeoutException) {
+                    return enricher.enrich(
+                            ruleEngine.classify(question, explicitCompanyHint, "llm_timeout"),
+                            question,
+                            explicitCompanyHint,
+                            "rule"
+                    );
                 }
             } catch (Exception ignored) {
                 // fallback to rule route

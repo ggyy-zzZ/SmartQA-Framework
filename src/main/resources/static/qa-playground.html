@@ -232,33 +232,123 @@
             line-height: 1.65;
             font-size: 14px;
         }
-        .thinking-box { min-height: 52px; color: #cbd5e1; }
-        .thinking-item { padding: 3px 0; }
+        .thinking-panel { display: flex; flex-direction: column; gap: 10px; }
+        .thinking-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .thinking-progress-wrap {
+            flex: 1;
+            min-width: 120px;
+            max-width: 280px;
+            height: 4px;
+            background: rgba(148, 163, 184, 0.15);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .thinking-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 0.35s ease;
+        }
+        .thinking-box {
+            min-height: 120px;
+            max-height: 320px;
+            overflow-y: auto;
+            color: #cbd5e1;
+        }
+        .thinking-timeline { position: relative; padding-left: 4px; }
+        .thinking-step {
+            position: relative;
+            padding: 8px 8px 8px 20px;
+            border-left: 2px solid rgba(129, 140, 248, 0.25);
+            margin-bottom: 4px;
+        }
+        .thinking-step:last-child { margin-bottom: 0; }
+        .thinking-step.active {
+            border-left-color: var(--accent);
+            background: rgba(129, 140, 248, 0.08);
+            border-radius: 0 8px 8px 0;
+        }
+        .thinking-step-time {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 2px;
+        }
+        .thinking-step-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
         .thinking-phase {
             font-size: 10px;
+            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: var(--accent);
-            margin-right: 6px;
-            opacity: 0.9;
+            letter-spacing: 0.05em;
+            color: #c7d2fe;
+            background: rgba(99, 102, 241, 0.25);
+            padding: 2px 8px;
+            border-radius: 6px;
         }
-        .thinking-model {
-            border-left: 2px solid rgba(129, 140, 248, 0.45);
-            padding-left: 10px;
-            margin-top: 6px;
+        .thinking-step-msg {
+            font-size: 13px;
+            line-height: 1.55;
             white-space: pre-wrap;
             word-break: break-word;
         }
-        .thinking-item::before {
-            content: "";
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--accent);
-            margin-right: 8px;
-            vertical-align: middle;
+        .thinking-tags {
+            margin-top: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
         }
+        .thinking-tag {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
+            color: #94a3b8;
+            font-family: ui-monospace, Consolas, monospace;
+        }
+        .thinking-model-box {
+            margin-top: 8px;
+            border: 1px solid rgba(129, 140, 248, 0.35);
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.5);
+        }
+        .thinking-model-head {
+            font-size: 12px;
+            font-weight: 600;
+            color: #a5b4fc;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .thinking-model-body {
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.55;
+            max-height: 140px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #94a3b8;
+        }
+        .thinking-model-body.streaming::after {
+            content: "▋";
+            animation: blink 1s step-end infinite;
+            color: var(--accent);
+            margin-left: 2px;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+        .thinking-placeholder { color: var(--muted); font-size: 13px; padding: 8px 4px; }
         .answer-box {
             min-height: 100px;
             color: var(--text);
@@ -433,9 +523,18 @@
             </div>
         </div>
         <div class="result-block">
-            <div class="panel-label">思考过程</div>
-            <div id="thinking" class="thinking-box">
-                <div class="thinking-item" style="color:var(--muted);">等待你的提问…</div>
+            <div class="panel-label">思考过程（实时 · 可核对路由与证据）</div>
+            <div class="thinking-panel">
+                <div class="thinking-toolbar">
+                    <span id="thinkingStepLabel">等待提问</span>
+                    <div class="thinking-progress-wrap" title="处理进度">
+                        <div id="thinkingProgressBar" class="thinking-progress-bar"></div>
+                    </div>
+                    <label class="check" style="margin:0;"><input type="checkbox" id="showThinkingDetail" checked> 显示技术细节</label>
+                </div>
+                <div id="thinking" class="thinking-box">
+                    <div class="thinking-placeholder">等待你的提问…</div>
+                </div>
             </div>
         </div>
         <div class="result-block">
@@ -519,6 +618,9 @@
     const askBtnEl = document.getElementById("askBtn");
     const statusTextEl = document.getElementById("statusText");
     const thinkingEl = document.getElementById("thinking");
+    const thinkingStepLabelEl = document.getElementById("thinkingStepLabel");
+    const thinkingProgressBarEl = document.getElementById("thinkingProgressBar");
+    const showThinkingDetailEl = document.getElementById("showThinkingDetail");
     const answerEl = document.getElementById("answer");
 
     const learnTextTitleEl = document.getElementById("learnTextTitle");
@@ -543,28 +645,103 @@
         }
     }
 
+    const THINKING_PHASE_ORDER = [
+        "start", "question", "context", "hint", "learning", "recall", "orchestrate", "clarify",
+        "intent_wait", "intent_done", "intent", "learning_recall", "retrieval", "retrieval_done",
+        "evidence", "audit", "decision", "generation", "model", "degrade", "result", "meta"
+    ];
+
     function phaseLabel(phase) {
         const map = {
             start: "开始", question: "问题", context: "上下文", hint: "对象",
-            learning: "学习", orchestrate: "调度", clarify: "澄清", intent: "意图",
-            learning_recall: "记忆", retrieval: "检索", evidence: "证据",
-            decision: "决策", generation: "生成", model: "模型", degrade: "降级", result: "结果"
+            learning: "学习", orchestrate: "调度", clarify: "澄清",
+            intent_wait: "意图识别", intent_done: "意图结果", intent: "意图",
+            recall: "记忆", learning_recall: "记忆",
+            retrieval: "检索中", retrieval_done: "检索完成", evidence: "证据",
+            audit: "质检", decision: "决策", generation: "生成", model: "模型推理",
+            degrade: "降级", result: "结果", meta: "结果摘要"
         };
         return map[phase] || phase || "步骤";
     }
 
-    function renderThinkingLive() {
-        let html = "";
-        for (const item of thinkingSteps) {
-            html += '<div class="thinking-item"><span class="thinking-phase">' + escapeHtml(phaseLabel(item.phase))
-                + '</span>' + escapeHtml(item.message || "") + '</div>';
+    function formatStepTime(iso) {
+        if (!iso) return "";
+        try {
+            const d = new Date(iso);
+            return d.toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+        } catch {
+            return "";
         }
-        if (modelThinkingBuffer) {
-            html += '<div class="thinking-item thinking-model"><span class="thinking-phase">模型推理</span>'
-                + escapeHtml(modelThinkingBuffer) + '</div>';
+    }
+
+    function formatDetailTags(details) {
+        if (!details || typeof details !== "object" || !showThinkingDetailEl.checked) return "";
+        const parts = [];
+        for (const [key, val] of Object.entries(details)) {
+            if (val == null || val === "") continue;
+            let text = val;
+            if (Array.isArray(val)) text = val.join(", ");
+            else if (typeof val === "object") text = JSON.stringify(val);
+            else if (typeof val === "boolean") text = val ? "是" : "否";
+            else if (typeof val === "number") text = String(val);
+            parts.push('<span class="thinking-tag">' + escapeHtml(key) + "=" + escapeHtml(String(text)) + "</span>");
         }
-        if (!html) {
-            html = '<div class="thinking-item" style="color:var(--muted);">正在检索与组织回答…</div>';
+        return parts.length ? '<div class="thinking-tags">' + parts.join("") + "</div>" : "";
+    }
+
+    function thinkingProgressPercent() {
+        const n = thinkingSteps.length + (modelThinkingBuffer ? 1 : 0);
+        return Math.min(95, Math.round((n / 12) * 100));
+    }
+
+    function normalizeSseBuffer(text) {
+        return (text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    }
+
+    function processSseBlock(block) {
+        if (!block || !block.trim()) return;
+        let eventName = "message";
+        const dataLines = [];
+        for (const line of block.split("\n")) {
+            if (line.startsWith("event:")) {
+                eventName = line.slice(6).trim();
+            } else if (line.startsWith("data:")) {
+                dataLines.push(line.slice(5).trimStart());
+            }
+        }
+        return {eventName, data: parseSseData(dataLines.join("\n"))};
+    }
+
+    function renderThinkingLive(isStreaming) {
+        const total = thinkingSteps.length;
+        thinkingStepLabelEl.textContent = total > 0
+            ? ("已记录 " + total + " 步" + (modelThinkingBuffer ? " · 模型推理中" : ""))
+            : "正在连接…";
+        thinkingProgressBarEl.style.width = (total > 0 ? thinkingProgressPercent() : 8) + "%";
+
+        if (total === 0 && !modelThinkingBuffer) {
+            thinkingEl.innerHTML = '<div class="thinking-placeholder">正在检索与组织回答…</div>';
+            return;
+        }
+
+        let html = '<div class="thinking-timeline">';
+        thinkingSteps.forEach((item, idx) => {
+            const active = idx === total - 1 && !modelThinkingBuffer;
+            html += '<div class="thinking-step' + (active ? " active" : "") + '">'
+                + '<div class="thinking-step-time">' + escapeHtml(formatStepTime(item.timestamp)) + "</div>"
+                + '<div class="thinking-step-head"><span class="thinking-phase">' + escapeHtml(phaseLabel(item.phase)) + "</span></div>"
+                + '<div class="thinking-step-msg">' + escapeHtml(item.message || "") + "</div>"
+                + formatDetailTags(item.details)
+                + "</div>";
+        });
+        html += "</div>";
+
+        if (modelThinkingBuffer && showThinkingDetailEl.checked) {
+            html += '<div class="thinking-model-box">'
+                + '<div class="thinking-model-head">模型推理过程（生成答案前的内部推理，可核对逻辑）</div>'
+                + '<div class="thinking-model-body' + (isStreaming ? " streaming" : "") + '">'
+                + escapeHtml(modelThinkingBuffer)
+                + "</div></div>";
         }
         thinkingEl.innerHTML = html;
         thinkingEl.scrollTop = thinkingEl.scrollHeight;
@@ -573,7 +750,19 @@
     function resetThinkingPanel() {
         thinkingSteps = [];
         modelThinkingBuffer = "";
+        thinkingProgressBarEl.style.width = "0%";
+        thinkingStepLabelEl.textContent = "等待提问";
         renderThinkingLive();
+    }
+
+    function addThinkingStep(phase, message, details, timestamp) {
+        thinkingSteps.push({
+            phase: phase || "step",
+            message: message || "",
+            details: details || null,
+            timestamp: timestamp || new Date().toISOString()
+        });
+        renderThinkingLive(true);
     }
 
     function onThinkingEvent(payload) {
@@ -582,10 +771,28 @@
         const message = payload.message || "";
         if (phase === "model") {
             modelThinkingBuffer += message;
-        } else if (message) {
-            thinkingSteps.push({phase, message});
+            renderThinkingLive(true);
+            return;
         }
-        renderThinkingLive();
+        if (message || (payload.details && Object.keys(payload.details).length)) {
+            addThinkingStep(phase, message, payload.details, payload.timestamp);
+        }
+    }
+
+    function onMetaOrFinalSummary(data, label) {
+        if (!data || typeof data !== "object") return;
+        const details = {};
+        ["intent", "queryType", "personName", "roleFocus", "confidence", "canAnswer",
+            "retrievalSource", "rerankProvider", "route", "evidence"].forEach(k => {
+            if (data[k] !== undefined && data[k] !== null && data[k] !== "") {
+                details[k] = data[k];
+            }
+        });
+        if (Array.isArray(data.evidence)) {
+            details.evidenceCount = data.evidence.length;
+        }
+        const msg = label + (details.evidenceCount != null ? "，证据 " + details.evidenceCount + " 条" : "");
+        addThinkingStep("meta", msg, details, data.timestamp);
     }
 
     function renderAnswer(text, streaming) {
@@ -614,76 +821,110 @@
         statusTextEl.className = "status" + (text.includes("完成") ? " ok" : (isError || text.includes("失败") || text.includes("错误") ? " error" : ""));
     }
 
+    function handleSseEvent(eventName, data, state) {
+        if (eventName === "thinking") {
+            onThinkingEvent(data);
+            setStatus("思考中…");
+            state.lastEventAt = Date.now();
+            return;
+        }
+        if (eventName === "delta") {
+            const chunk = typeof data === "string" ? data : (data == null ? "" : String(data));
+            if (chunk) {
+                state.streamedDelta = true;
+                state.answerBuffer += chunk;
+                renderAnswer(state.answerBuffer, true);
+                setStatus("生成中…");
+                state.lastEventAt = Date.now();
+            }
+            return;
+        }
+        if (eventName === "meta") {
+            onMetaOrFinalSummary(data, "元数据已就绪");
+            if (data && data.intent) {
+                setStatus("检索完成 · " + data.intent);
+            }
+            state.lastEventAt = Date.now();
+            return;
+        }
+        if (eventName === "final") {
+            if (data && data.answer != null) {
+                state.answerBuffer = String(data.answer);
+            }
+            onMetaOrFinalSummary(data, "最终答复已生成");
+            thinkingProgressBarEl.style.width = "100%";
+            state.lastEventAt = Date.now();
+            return;
+        }
+        if (eventName === "qa_error") {
+            const msg = data && data.message ? data.message : "流式问答失败";
+            throw new Error(msg);
+        }
+    }
+
     async function consumeAskStream(question, scope, signal) {
         const resp = await fetch("/qa/ask/stream", {
             method: "POST",
-            headers: {"Content-Type": "application/json", "Accept": "text/event-stream"},
+            headers: {"Content-Type": "application/json; charset=utf-8", "Accept": "text/event-stream"},
             body: JSON.stringify({question, scope}),
             signal
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         if (!resp.body) throw new Error("浏览器不支持流式响应");
 
+        addThinkingStep("start", "已连接服务端，等待处理进度…", null);
+        setStatus("已连接…");
+
         const reader = resp.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
-        let answerBuffer = "";
-        let streamedDelta = false;
+        const state = {answerBuffer: "", streamedDelta: false, lastEventAt: Date.now()};
+        const idleLimitMs = 120000;
 
         while (true) {
-            const {done, value} = await reader.read();
+            if (Date.now() - state.lastEventAt > idleLimitMs) {
+                throw new Error("超过 " + (idleLimitMs / 1000) + " 秒未收到新进度，已中止（可能卡在 MiniMax 或向量/重排接口）");
+            }
+            const readPromise = reader.read();
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("__read_timeout__")), Math.min(15000, idleLimitMs))
+            );
+            let done, value;
+            try {
+                ({done, value} = await Promise.race([readPromise, timeoutPromise]));
+            } catch (e) {
+                if (e.message === "__read_timeout__") {
+                    continue;
+                }
+                throw e;
+            }
             if (done) break;
             buffer += decoder.decode(value, {stream: true});
+            buffer = normalizeSseBuffer(buffer);
             const blocks = buffer.split("\n\n");
             buffer = blocks.pop() || "";
 
             for (const block of blocks) {
-                if (!block.trim()) continue;
-                let eventName = "message";
-                const dataLines = [];
-                for (const line of block.split("\n")) {
-                    if (line.startsWith("event:")) {
-                        eventName = line.slice(6).trim();
-                    } else if (line.startsWith("data:")) {
-                        dataLines.push(line.slice(5).trimStart());
-                    }
-                }
-                const dataRaw = dataLines.join("\n");
-                const data = parseSseData(dataRaw);
-
-                if (eventName === "thinking") {
-                    onThinkingEvent(data);
-                    setStatus("思考中…");
-                } else if (eventName === "delta") {
-                    const chunk = typeof data === "string" ? data : (data == null ? "" : String(data));
-                    if (chunk) {
-                        streamedDelta = true;
-                        answerBuffer += chunk;
-                        renderAnswer(answerBuffer, true);
-                        setStatus("生成中…");
-                    }
-                } else if (eventName === "meta") {
-                    if (data && data.intent) {
-                        setStatus("检索完成 · " + data.intent);
-                    }
-                } else if (eventName === "final") {
-                    if (data && data.answer != null) {
-                        answerBuffer = String(data.answer);
-                    }
-                } else if (eventName === "qa_error") {
-                    const msg = data && data.message ? data.message : "流式问答失败";
-                    throw new Error(msg);
-                } else if (eventName === "done") {
-                    // stream complete
-                }
+                const parsed = processSseBlock(block);
+                if (!parsed) continue;
+                handleSseEvent(parsed.eventName, parsed.data, state);
             }
         }
 
-        if (!streamedDelta && !answerBuffer && thinkingSteps.length === 0 && !modelThinkingBuffer) {
-            thinkingSteps.push({phase: "result", message: "流程已结束，未收到分步思考事件。"});
-            renderThinkingLive();
+        buffer = normalizeSseBuffer(buffer);
+        if (buffer.trim()) {
+            const parsed = processSseBlock(buffer);
+            if (parsed) {
+                handleSseEvent(parsed.eventName, parsed.data, state);
+            }
         }
-        renderAnswer(answerBuffer || "暂时无法根据现有知识回答该问题。", false);
+
+        if (!state.streamedDelta && !state.answerBuffer && thinkingSteps.length <= 1 && !modelThinkingBuffer) {
+            addThinkingStep("result", "流程已结束，未收到分步思考事件。", null);
+        }
+        thinkingProgressBarEl.style.width = "100%";
+        renderThinkingLive(false);
+        renderAnswer(state.answerBuffer || "暂时无法根据现有知识回答该问题。", false);
     }
 
     askBtnEl.addEventListener("click", async () => {
@@ -718,6 +959,8 @@
             askAbortController = null;
         }
     });
+
+    showThinkingDetailEl.addEventListener("change", () => renderThinkingLive(false));
 
     questionEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {

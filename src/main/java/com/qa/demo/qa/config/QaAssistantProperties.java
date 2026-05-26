@@ -82,6 +82,9 @@ public class QaAssistantProperties {
      */
     private double intentLlmEnrichMinConfidence = 0.72;
 
+    /** 意图 LLM 单次调用超时（毫秒），超时后走规则路由 */
+    private int intentLlmTimeoutMs = 45_000;
+
     /** 证据不足时是否拦截 LLM 生成（本地验证建议开启） */
     private boolean answerGateEnabled = true;
 
@@ -544,6 +547,14 @@ public class QaAssistantProperties {
 
     public void setIntentLlmEnrichMinConfidence(double intentLlmEnrichMinConfidence) {
         this.intentLlmEnrichMinConfidence = intentLlmEnrichMinConfidence;
+    }
+
+    public int getIntentLlmTimeoutMs() {
+        return intentLlmTimeoutMs;
+    }
+
+    public void setIntentLlmTimeoutMs(int intentLlmTimeoutMs) {
+        this.intentLlmTimeoutMs = intentLlmTimeoutMs;
     }
 
     public boolean isAnswerGateEnabled() {

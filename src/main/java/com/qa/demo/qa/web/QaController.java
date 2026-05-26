@@ -264,7 +264,8 @@ public class QaController {
     }
 
     @PostMapping(value = "/ask/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter askStream(@Valid @RequestBody AskRequest request) {
+    public SseEmitter askStream(@Valid @RequestBody AskRequest request, jakarta.servlet.http.HttpServletResponse response) {
+        applySseResponseHeaders(response);
         return askOrchestrator.startAskStream(
                 request.question(),
                 QaScopes.normalize(request.scope()),
@@ -1512,5 +1513,15 @@ public class QaController {
                     "timestamp", OffsetDateTime.now().toString()
             );
         }
+    }
+
+    private static void applySseResponseHeaders(jakarta.servlet.http.HttpServletResponse response) {
+        if (response == null) {
+            return;
+        }
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setHeader("X-Accel-Buffering", "no");
     }
 }

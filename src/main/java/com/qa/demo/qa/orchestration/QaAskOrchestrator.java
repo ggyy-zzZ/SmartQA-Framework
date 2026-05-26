@@ -319,6 +319,7 @@ public class QaAskOrchestrator {
                 if (explicitCompanyHint) {
                     sseStreamSupport.emitThinking(emitter, "hint", "已从问题中识别到具体对象名称或编号，将优先围绕该对象检索。");
                 }
+                sseStreamSupport.emitThinking(emitter, "recall", "正在检索主动学习记忆与调度准备…");
                 List<ContextChunk> learnedFirst = retrievalPipeline.safeActiveLearningRetrieve(question, scope);
                 QaRetrievalOrchestrator.RetrievalPlan retrievalPlan =
                         retrievalOrchestrator.prepareRetrievalQuestion(sessionRetrievalSeed, learnedFirst);
@@ -365,23 +366,27 @@ public class QaAskOrchestrator {
                     return;
                 }
 
+                sseStreamSupport.emitThinking(emitter, "intent_wait", "正在识别意图与实体（大模型），请稍候…");
                 IntentDecision intentDecision = intentRouterService.decide(retrievalQuestion, explicitCompanyHint);
-                String intentDetail = intentDecision.queryType() != null && !intentDecision.queryType().isBlank()
-                        ? "，形态=" + intentDecision.queryType()
-                        : "";
-                if (intentDecision.hasPersonFocus()) {
-                    intentDetail += "，人物=" + intentDecision.personName();
+                Map<String, Object> intentDetails = new HashMap<>();
+                intentDetails.put("intent", intentDecision.intent());
+                intentDetails.put("queryType", intentDecision.queryType());
+                intentDetails.put("personName", intentDecision.personName());
+                intentDetails.put("roleFocus", intentDecision.roleFocus());
+                intentDetails.put("confidence", intentDecision.confidence());
+                intentDetails.put("routeReason", intentDecision.reason());
+                if (intentDecision.hasCompanyHints()) {
+                    intentDetails.put("companyHints", intentDecision.companyHints());
                 }
                 sseStreamSupport.emitThinking(
                         emitter,
-                        "intent",
+                        "intent_done",
                         String.format(
-                                "路由判定：%s（置信度 %.2f%s）。原因：%s",
+                                "路由判定：%s（置信度 %.2f）",
                                 intentDecision.intent(),
-                                intentDecision.confidence(),
-                                intentDetail,
-                                intentDecision.reason()
-                        )
+                                intentDecision.confidence()
+                        ),
+                        intentDetails
                 );
 
                 QaRetrievalPipeline.RetrievalResult retrievalResult;
@@ -394,7 +399,10 @@ public class QaAskOrchestrator {
                         retrievalResult = new QaRetrievalPipeline.RetrievalResult("personal_scope_no_memory", List.of());
                     }
                 } else if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
-                    sseStreamSupport.emitThinking(emitter, "retrieval", "企业统一召回：图+向量+结构化+主动学习，并重排证据。");
+                    String retrievalHint = intentDecision.isPersonRoleListQuery()
+                            ? "企业统一召回：人物任职列表优先走图谱，并重排证据。"
+                            : "企业统一召回：图+向量+结构化+主动学习，并重排证据。";
+                    sseStreamSupport.emitThinking(emitter, "retrieval", retrievalHint);
                     retrievalResult = retrievalPipeline.retrieveUnifiedEnterprise(
                             retrievalQuestion,
                             learnedFirst,
@@ -421,20 +429,35 @@ public class QaAskOrchestrator {
                 boolean canAnswer = gate.canAnswer();
                 boolean allowGenerate = gate.allowGenerate();
                 boolean unknownIntent = "unknown".equalsIgnoreCase(intentDecision.intent());
+                Map<String, Object> retrievalDetails = new HashMap<>();
+                retrievalDetails.put("retrievalSource", retrievalSource);
+                retrievalDetails.put("evidenceCount", evidence.size());
                 sseStreamSupport.emitThinking(
                         emitter,
-                        "retrieval",
-                        String.format("检索完成：来源=%s，命中证据=%d 条。", retrievalSource, evidence.size())
+                        "retrieval_done",
+                        String.format("检索完成：来源=%s，命中证据=%d 条。", retrievalSource, evidence.size()),
+                        retrievalDetails
                 );
                 if (!evidence.isEmpty()) {
                     String companies = evidence.stream()
                             .map(ContextChunk::companyName)
                             .filter(name -> name != null && !name.isBlank())
                             .distinct()
-                            .limit(5)
+                            .limit(8)
                             .reduce((a, b) -> a + "、" + b)
                             .orElse("已命中相关企业信息");
-                    sseStreamSupport.emitThinking(emitter, "evidence", "检索到的相关对象：" + companies);
+                    List<String> sources = evidence.stream()
+                            .map(ContextChunk::source)
+                            .filter(s -> s != null && !s.isBlank())
+                            .distinct()
+                            .limit(6)
+                            .toList();
+                    sseStreamSupport.emitThinking(
+                            emitter,
+                            "evidence",
+                            "检索到的相关对象：" + companies,
+                            Map.of("sources", sources, "sampleCount", Math.min(8, evidence.size()))
+                    );
                 }
 
                 String route = resolveInitialRoute(unknownIntent, allowGenerate, gate.rejectReason(), retrievalSource);
@@ -443,6 +466,23 @@ public class QaAskOrchestrator {
                 boolean degraded = false;
                 String fallbackReason = "";
                 boolean answerAlreadyStreamed = false;
+
+                sseStreamSupport.emitThinking(
+                        emitter,
+                        "audit",
+                        String.format(
+                                "回答闸门：证据 %d 条，允许生成=%s，最终路由=%s",
+                                evidence.size(),
+                                allowGenerate,
+                                route
+                        ),
+                        Map.of(
+                                "canAnswer", canAnswer,
+                                "allowGenerate", allowGenerate,
+                                "gateReject", gate.rejectReason() == null ? "" : gate.rejectReason(),
+                                "answerConfidence", confidence
+                        )
+                );
 
                 if (unknownIntent && evidence.isEmpty()) {
                     sseStreamSupport.emitThinking(emitter, "decision", "当前问题超出知识库覆盖范围，先返回引导性说明。");

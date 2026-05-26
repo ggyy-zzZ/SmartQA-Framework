@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,12 +35,22 @@ public class QaSseStreamSupport {
     }
 
     public void emitThinking(SseEmitter emitter, String phase, String message) {
+        emitThinking(emitter, phase, message, null);
+    }
+
+    /**
+     * @param details 可选结构化字段，供前端展示「可核对」的路由/证据摘要（如 intent、queryType、evidenceCount）
+     */
+    public void emitThinking(SseEmitter emitter, String phase, String message, Map<String, Object> details) {
         try {
-            emitter.send(SseEmitter.event().name("thinking").data(Map.of(
-                    "phase", phase,
-                    "message", message,
-                    "timestamp", OffsetDateTime.now().toString()
-            )));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("phase", phase);
+            payload.put("message", message == null ? "" : message);
+            payload.put("timestamp", OffsetDateTime.now().toString());
+            if (details != null && !details.isEmpty()) {
+                payload.put("details", details);
+            }
+            emitter.send(SseEmitter.event().name("thinking").data(payload));
         } catch (IOException ignored) {
             // Ignore client disconnect during streaming.
         }
