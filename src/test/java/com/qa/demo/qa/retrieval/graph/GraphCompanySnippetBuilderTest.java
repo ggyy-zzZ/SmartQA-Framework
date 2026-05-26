@@ -2,6 +2,7 @@ package com.qa.demo.qa.retrieval.graph;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.CertificateSealEnumCatalog;
 import com.qa.demo.qa.domain.GraphCompanyFacetCatalog;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -16,10 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GraphCompanySnippetBuilderTest {
 
     private static GraphCompanyFacetCatalog catalog;
+    private static CertificateSealEnumCatalog enumCatalog;
 
     @BeforeAll
     static void setUp() {
-        catalog = GraphCompanyFacetCatalog.loadDefault(new ObjectMapper());
+        ObjectMapper mapper = new ObjectMapper();
+        catalog = GraphCompanyFacetCatalog.loadDefault(mapper);
+        enumCatalog = CertificateSealEnumCatalog.loadDefault(mapper);
     }
 
     @Test
@@ -34,7 +38,8 @@ class GraphCompanySnippetBuilderTest {
                 scalars,
                 lists,
                 catalog.facetsForQueryType("company_certificate"),
-                catalog
+                catalog,
+                enumCatalog
         );
         assertTrue(snippet.contains("证照="));
         assertFalse(snippet.contains("股东="));
@@ -52,7 +57,8 @@ class GraphCompanySnippetBuilderTest {
                 scalars,
                 lists,
                 catalog.facetsForQueryType("company_seal"),
-                catalog
+                catalog,
+                enumCatalog
         );
         assertTrue(snippet.contains("印章="));
         assertFalse(snippet.contains("证照="));
@@ -69,9 +75,30 @@ class GraphCompanySnippetBuilderTest {
                 scalars,
                 lists,
                 catalog.facetsForQueryType(intent.queryType()),
-                catalog
+                catalog,
+                enumCatalog
         );
         assertTrue(snippet.contains("证照="));
         assertFalse(snippet.contains("股东="));
+    }
+
+    @Test
+    void numericCertificateAndSealCodesResolveToChineseLabels() {
+        Map<String, String> scalars = Map.of("status", "存续");
+        Map<String, String> lists = Map.of(
+                "certificates", "[9:有效, 17:有效]",
+                "seals", "[1(有效), 4(有效)]"
+        );
+        String snippet = GraphCompanySnippetBuilder.buildSnippet(
+                scalars,
+                lists,
+                List.of("status", "certificates", "seals"),
+                catalog,
+                enumCatalog
+        );
+        assertTrue(snippet.contains("ICP备案:有效"));
+        assertTrue(snippet.contains("ISO9001:有效"));
+        assertTrue(snippet.contains("法定名称章"));
+        assertTrue(snippet.contains("合同专用章"));
     }
 }

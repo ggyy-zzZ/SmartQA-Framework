@@ -1,6 +1,7 @@
 package com.qa.demo.qa.retrieval.graph;
 
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.CertificateSealEnumCatalog;
 import com.qa.demo.qa.domain.GraphCompanyFacetCatalog;
 import org.neo4j.driver.Record;
 
@@ -20,7 +21,8 @@ public final class GraphCompanySnippetBuilder {
     public static String buildSnippet(
             Record record,
             IntentDecision intent,
-            GraphCompanyFacetCatalog facetCatalog
+            GraphCompanyFacetCatalog facetCatalog,
+            CertificateSealEnumCatalog enumCatalog
     ) {
         Map<String, String> scalars = new LinkedHashMap<>();
         scalars.put("status", safeString(record, "status"));
@@ -38,24 +40,43 @@ public final class GraphCompanySnippetBuilder {
 
         String queryType = intent == null ? "" : intent.queryType();
         List<String> facets = facetCatalog.facetsForQueryType(queryType);
-        return buildSnippet(scalars, lists, facets, facetCatalog);
+        return buildSnippet(scalars, lists, facets, facetCatalog, enumCatalog);
     }
 
     static String buildSnippet(
             Map<String, String> scalars,
             Map<String, String> lists,
             List<String> facetKeys,
-            GraphCompanyFacetCatalog facetCatalog
+            GraphCompanyFacetCatalog facetCatalog,
+            CertificateSealEnumCatalog enumCatalog
     ) {
+        Map<String, String> displayLists = applyEnumLabels(lists, enumCatalog);
         List<String> parts = new ArrayList<>();
         for (String key : facetKeys) {
-            String value = scalars.containsKey(key) ? scalars.get(key) : lists.get(key);
+            String value = scalars.containsKey(key) ? scalars.get(key) : displayLists.get(key);
             if (!hasContent(value)) {
                 continue;
             }
             parts.add(facetCatalog.label(key) + "=" + value);
         }
         return String.join("; ", parts);
+    }
+
+    private static Map<String, String> applyEnumLabels(
+            Map<String, String> lists,
+            CertificateSealEnumCatalog enumCatalog
+    ) {
+        if (enumCatalog == null || lists == null || lists.isEmpty()) {
+            return lists == null ? Map.of() : lists;
+        }
+        Map<String, String> out = new LinkedHashMap<>(lists);
+        if (out.containsKey("certificates")) {
+            out.put("certificates", enumCatalog.formatCertificateListForSnippet(out.get("certificates")));
+        }
+        if (out.containsKey("seals")) {
+            out.put("seals", enumCatalog.formatSealListForSnippet(out.get("seals")));
+        }
+        return out;
     }
 
     private static boolean hasContent(String value) {

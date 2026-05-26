@@ -11,4 +11,9 @@ public class GraphCompanyFacetCatalogConfiguration {
     public GraphCompanyFacetCatalog graphCompanyFacetCatalog(ObjectMapper objectMapper) {
         return GraphCompanyFacetCatalog.loadDefault(objectMapper);
     }
+
+    @Bean
+    public CertificateSealEnumCatalog certificateSealEnumCatalog(ObjectMapper objectMapper) {
+        return CertificateSealEnumCatalog.loadDefault(objectMapper);
+    }
 }

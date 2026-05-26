@@ -31,6 +31,7 @@ from schema_field_maps import (
     OPERATING_STATUS_LABELS,
     PERSON_ROLE_COLUMNS,
     PRODUCT_LINE_LABELS,
+    SEAL_TYPE_LABELS,
     SHAREHOLDER_TYPE_LABELS,
 )
 
@@ -702,7 +703,7 @@ def build_company_rows(
             seals_payload.append(
                 {
                     "seal_id": seal_id,
-                    "seal_type": str(seal.get("seal_type") or ""),
+                    "seal_type": enum_label(seal.get("seal_type"), SEAL_TYPE_LABELS, "印章类型"),
                     "seal_category": str(seal.get("seal_category") or ""),
                     "custody_department": str(seal.get("custody_department") or ""),
                     "supplier": str(seal.get("supplier") or ""),

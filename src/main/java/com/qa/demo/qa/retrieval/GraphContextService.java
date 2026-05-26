@@ -6,6 +6,7 @@ import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
 import com.qa.demo.qa.domain.PersonNameParser;
 import com.qa.demo.qa.domain.EnterpriseLexicon;
+import com.qa.demo.qa.domain.CertificateSealEnumCatalog;
 import com.qa.demo.qa.domain.GraphCompanyFacetCatalog;
 import com.qa.demo.qa.domain.QuestionEntityExtractor;
 import com.qa.demo.qa.retrieval.graph.GraphCompanySnippetBuilder;
@@ -29,17 +30,20 @@ public class GraphContextService {
     private final QuestionEntityExtractor entityExtractor;
     private final EnterpriseLexicon lexicon;
     private final GraphCompanyFacetCatalog companyFacetCatalog;
+    private final CertificateSealEnumCatalog certificateSealEnumCatalog;
 
     public GraphContextService(
             Driver neo4jDriver,
             QuestionEntityExtractor entityExtractor,
             EnterpriseLexicon lexicon,
-            GraphCompanyFacetCatalog companyFacetCatalog
+            GraphCompanyFacetCatalog companyFacetCatalog,
+            CertificateSealEnumCatalog certificateSealEnumCatalog
     ) {
         this.neo4jDriver = neo4jDriver;
         this.entityExtractor = entityExtractor;
         this.lexicon = lexicon;
         this.companyFacetCatalog = companyFacetCatalog;
+        this.certificateSealEnumCatalog = certificateSealEnumCatalog;
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, int topK) {
@@ -233,7 +237,8 @@ public class GraphContextService {
         while (result.hasNext()) {
             Record record = result.next();
             String companyName = safeString(record, "companyName");
-            String snippet = GraphCompanySnippetBuilder.buildSnippet(record, intent, companyFacetCatalog);
+            String snippet = GraphCompanySnippetBuilder.buildSnippet(
+                    record, intent, companyFacetCatalog, certificateSealEnumCatalog);
             if (snippet.isBlank()) {
                 snippet = "状态=" + safeString(record, "status");
             }
