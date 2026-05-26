@@ -234,6 +234,21 @@
         }
         .thinking-box { min-height: 52px; color: #cbd5e1; }
         .thinking-item { padding: 3px 0; }
+        .thinking-phase {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            margin-right: 6px;
+            opacity: 0.9;
+        }
+        .thinking-model {
+            border-left: 2px solid rgba(129, 140, 248, 0.45);
+            padding-left: 10px;
+            margin-top: 6px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
         .thinking-item::before {
             content: "";
             display: inline-block;
@@ -515,18 +530,72 @@
         return (text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    function renderThinking(items) {
-        if (!items || !items.length) {
-            thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">等待你的提问…</div>';
-            return;
+    let askAbortController = null;
+    let thinkingSteps = [];
+    let modelThinkingBuffer = "";
+
+    function parseSseData(raw) {
+        if (raw == null || raw === "") return null;
+        try {
+            return JSON.parse(raw);
+        } catch {
+            return raw;
         }
-        thinkingEl.innerHTML = items.map(item =>
-            '<div class="thinking-item">' + escapeHtml(item.message || "") + '</div>'
-        ).join("");
     }
 
-    function renderAnswer(text) {
+    function phaseLabel(phase) {
+        const map = {
+            start: "开始", question: "问题", context: "上下文", hint: "对象",
+            learning: "学习", orchestrate: "调度", clarify: "澄清", intent: "意图",
+            learning_recall: "记忆", retrieval: "检索", evidence: "证据",
+            decision: "决策", generation: "生成", model: "模型", degrade: "降级", result: "结果"
+        };
+        return map[phase] || phase || "步骤";
+    }
+
+    function renderThinkingLive() {
+        let html = "";
+        for (const item of thinkingSteps) {
+            html += '<div class="thinking-item"><span class="thinking-phase">' + escapeHtml(phaseLabel(item.phase))
+                + '</span>' + escapeHtml(item.message || "") + '</div>';
+        }
+        if (modelThinkingBuffer) {
+            html += '<div class="thinking-item thinking-model"><span class="thinking-phase">模型推理</span>'
+                + escapeHtml(modelThinkingBuffer) + '</div>';
+        }
+        if (!html) {
+            html = '<div class="thinking-item" style="color:var(--muted);">正在检索与组织回答…</div>';
+        }
+        thinkingEl.innerHTML = html;
+        thinkingEl.scrollTop = thinkingEl.scrollHeight;
+    }
+
+    function resetThinkingPanel() {
+        thinkingSteps = [];
+        modelThinkingBuffer = "";
+        renderThinkingLive();
+    }
+
+    function onThinkingEvent(payload) {
+        if (!payload || typeof payload !== "object") return;
+        const phase = payload.phase || "";
+        const message = payload.message || "";
+        if (phase === "model") {
+            modelThinkingBuffer += message;
+        } else if (message) {
+            thinkingSteps.push({phase, message});
+        }
+        renderThinkingLive();
+    }
+
+    function renderAnswer(text, streaming) {
         const content = text || "";
+        if (streaming) {
+            answerEl.textContent = content;
+            answerEl.classList.add("streaming");
+            return;
+        }
+        answerEl.classList.remove("streaming");
         if (window.marked && typeof window.marked.parse === "function") {
             answerEl.innerHTML = window.marked.parse(content, {gfm: true, breaks: true});
         } else {
@@ -535,13 +604,86 @@
     }
 
     function clearResult() {
-        thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--muted);">正在检索与组织回答…</div>';
+        resetThinkingPanel();
         answerEl.innerHTML = "";
+        answerEl.classList.remove("streaming");
     }
 
     function setStatus(text, isError) {
         statusTextEl.textContent = text;
         statusTextEl.className = "status" + (text.includes("完成") ? " ok" : (isError || text.includes("失败") || text.includes("错误") ? " error" : ""));
+    }
+
+    async function consumeAskStream(question, scope, signal) {
+        const resp = await fetch("/qa/ask/stream", {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "Accept": "text/event-stream"},
+            body: JSON.stringify({question, scope}),
+            signal
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        if (!resp.body) throw new Error("浏览器不支持流式响应");
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        let answerBuffer = "";
+        let streamedDelta = false;
+
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, {stream: true});
+            const blocks = buffer.split("\n\n");
+            buffer = blocks.pop() || "";
+
+            for (const block of blocks) {
+                if (!block.trim()) continue;
+                let eventName = "message";
+                const dataLines = [];
+                for (const line of block.split("\n")) {
+                    if (line.startsWith("event:")) {
+                        eventName = line.slice(6).trim();
+                    } else if (line.startsWith("data:")) {
+                        dataLines.push(line.slice(5).trimStart());
+                    }
+                }
+                const dataRaw = dataLines.join("\n");
+                const data = parseSseData(dataRaw);
+
+                if (eventName === "thinking") {
+                    onThinkingEvent(data);
+                    setStatus("思考中…");
+                } else if (eventName === "delta") {
+                    const chunk = typeof data === "string" ? data : (data == null ? "" : String(data));
+                    if (chunk) {
+                        streamedDelta = true;
+                        answerBuffer += chunk;
+                        renderAnswer(answerBuffer, true);
+                        setStatus("生成中…");
+                    }
+                } else if (eventName === "meta") {
+                    if (data && data.intent) {
+                        setStatus("检索完成 · " + data.intent);
+                    }
+                } else if (eventName === "final") {
+                    if (data && data.answer != null) {
+                        answerBuffer = String(data.answer);
+                    }
+                } else if (eventName === "qa_error") {
+                    const msg = data && data.message ? data.message : "流式问答失败";
+                    throw new Error(msg);
+                } else if (eventName === "done") {
+                    // stream complete
+                }
+            }
+        }
+
+        if (!streamedDelta && !answerBuffer && thinkingSteps.length === 0 && !modelThinkingBuffer) {
+            thinkingSteps.push({phase: "result", message: "流程已结束，未收到分步思考事件。"});
+            renderThinkingLive();
+        }
+        renderAnswer(answerBuffer || "暂时无法根据现有知识回答该问题。", false);
     }
 
     askBtnEl.addEventListener("click", async () => {
@@ -551,28 +693,29 @@
             alert("请输入问题");
             return;
         }
+        if (askAbortController) {
+            askAbortController.abort();
+        }
+        askAbortController = new AbortController();
+        const signal = askAbortController.signal;
+
         askBtnEl.disabled = true;
         clearResult();
-        setStatus("思考中…");
+        setStatus("连接中…");
         try {
-            const resp = await fetch("/qa/ask", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({question, scope})
-            });
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            const data = await resp.json();
-            if (data.thinking && data.thinking.length > 0) {
-                renderThinking(data.thinking);
-            }
-            renderAnswer(data.answer || "暂时无法根据现有知识回答该问题。");
+            await consumeAskStream(question, scope, signal);
             setStatus("完成");
         } catch (e) {
+            if (e.name === "AbortError") {
+                setStatus("已取消");
+                return;
+            }
             thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--error);">错误：' + escapeHtml(e.message) + '</div>';
             answerEl.innerHTML = "";
             setStatus("失败", true);
         } finally {
             askBtnEl.disabled = false;
+            askAbortController = null;
         }
     });
 
