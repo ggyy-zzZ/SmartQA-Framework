@@ -4,6 +4,7 @@ import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
+import com.qa.demo.qa.domain.PersonNameParser;
 import com.qa.demo.qa.domain.EnterpriseLexicon;
 import com.qa.demo.qa.domain.GraphCompanyFacetCatalog;
 import com.qa.demo.qa.domain.QuestionEntityExtractor;
@@ -138,6 +139,24 @@ public class GraphContextService {
             return intent.personName().trim();
         }
         return entityExtractor.extractPersonName(question);
+    }
+
+    /**
+     * 结合任职类型（如法人）在图谱中列出姓名候选，用于敬称/姓级指称消歧。
+     */
+    public List<String> listPersonNamesByHintAndRole(String personHint, String roleFocus, int limit) {
+        if (personHint == null || personHint.isBlank()) {
+            return List.of();
+        }
+        String hint = PersonNameParser.hasHonorificSuffix(personHint)
+                ? PersonNameParser.stripHonorific(personHint)
+                : personHint.trim();
+        if (hint.isBlank()) {
+            return List.of();
+        }
+        try (Session session = neo4jDriver.session()) {
+            return GraphPersonRoleQuery.listDistinctPersonNames(session, hint, roleFocus, limit);
+        }
     }
 
     private boolean shouldQueryPersonRole(String question, IntentDecision intent) {

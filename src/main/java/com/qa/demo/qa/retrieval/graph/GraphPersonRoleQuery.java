@@ -23,6 +23,9 @@ public final class GraphPersonRoleQuery {
             int topK,
             String fieldLabel
     ) {
+        if (personHint == null || personHint.isBlank()) {
+            return List.of();
+        }
         Result result = session.run(
                 """
                 MATCH (p:Person)-[r:HAS_ROLE_IN]->(c:Company)
@@ -62,6 +65,50 @@ public final class GraphPersonRoleQuery {
             ));
         }
         return chunks;
+    }
+
+    /**
+     * 按姓名片段 + 任职类型列出图谱中 DISTINCT 人名（用于敬称/姓级指称消歧）。
+     */
+    public static List<String> listDistinctPersonNames(
+            Session session,
+            String nameHint,
+            String roleFocus,
+            int limit
+    ) {
+        if (nameHint == null || nameHint.isBlank()) {
+            return List.of();
+        }
+        int top = Math.max(1, Math.min(limit, 20));
+        Result result = session.run(
+                """
+                MATCH (p:Person)-[r:HAS_ROLE_IN]->(:Company)
+                WHERE p.name CONTAINS $nameHint
+                  AND (
+                    $roleFocus = 'any'
+                    OR ($roleFocus = 'legal_rep' AND (r.role CONTAINS '法定代表' OR r.role CONTAINS '法人'))
+                    OR ($roleFocus = 'director' AND r.role CONTAINS '董事')
+                    OR ($roleFocus = 'supervisor' AND r.role CONTAINS '监事')
+                  )
+                RETURN DISTINCT p.name AS personName
+                ORDER BY personName
+                LIMIT $top
+                """,
+                org.neo4j.driver.Values.parameters(
+                        "nameHint", nameHint,
+                        "roleFocus", roleFocus == null ? "any" : roleFocus,
+                        "top", top
+                )
+        );
+        List<String> names = new ArrayList<>();
+        while (result.hasNext()) {
+            Record record = result.next();
+            String name = safeString(record, "personName");
+            if (!name.isBlank()) {
+                names.add(name);
+            }
+        }
+        return names;
     }
 
     private static String safeString(Record record, String key) {

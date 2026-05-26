@@ -12,10 +12,15 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class IntentDecisionEnricherTest {
 
     private IntentDecisionEnricher enricher;
+    private PersonNameResolver personNameResolver;
 
     @BeforeEach
     void setUp() {
@@ -24,7 +29,14 @@ class IntentDecisionEnricherTest {
         QuestionEntityExtractor extractor = new QuestionEntityExtractor(lexicon);
         QaAssistantProperties props = new QaAssistantProperties();
         props.setIntentLlmEnrichMinConfidence(0.72);
-        enricher = new IntentDecisionEnricher(props, extractor);
+        personNameResolver = mock(PersonNameResolver.class);
+        when(personNameResolver.resolve(eq("戴科彬"), any(), any()))
+                .thenReturn(PersonNameResolution.resolved("戴科彬"));
+        when(personNameResolver.resolve(eq("戴先生"), any(), any()))
+                .thenReturn(PersonNameResolution.resolved("戴科彬"));
+        when(personNameResolver.resolve(eq(""), any(), any()))
+                .thenReturn(PersonNameResolution.resolved(""));
+        enricher = new IntentDecisionEnricher(props, extractor, personNameResolver);
     }
 
     @Test
@@ -38,7 +50,7 @@ class IntentDecisionEnricherTest {
                 List.of(),
                 "legal_rep"
         );
-        IntentDecision out = enricher.enrich(llm, "戴科彬是哪些主体的法人", false, "llm");
+        IntentDecision out = enricher.enrich(llm, "戴科彬是哪些主体的法人", false, "llm").decision();
         assertEquals("戴科彬", out.personName());
         assertEquals("legal_rep", out.roleFocus());
         assertEquals("person_role_list", out.queryType());
@@ -56,8 +68,26 @@ class IntentDecisionEnricherTest {
                 List.of(),
                 "legal_rep"
         );
-        IntentDecision out = enricher.enrich(llm, "戴科彬是哪些主体的法人", false, "llm");
+        IntentDecision out = enricher.enrich(llm, "戴科彬是哪些主体的法人", false, "llm").decision();
         assertEquals("戴科彬", out.personName());
+    }
+
+    @Test
+    void fillsHonorificPersonWhenLlmMarkedVectorReady() {
+        IntentDecision llm = new IntentDecision(
+                "vector",
+                0.88,
+                "semantic",
+                "semantic",
+                "",
+                List.of(),
+                "any"
+        );
+        IntentDecision out = enricher.enrich(llm, "戴先生是哪些公司的法人", false, "llm").decision();
+        assertEquals("戴科彬", out.personName());
+        assertEquals("person_role_list", out.queryType());
+        assertEquals("legal_rep", out.roleFocus());
+        assertTrue(out.reason().contains("person_resolved"));
     }
 
     @Test
@@ -71,7 +101,7 @@ class IntentDecisionEnricherTest {
                 List.of(),
                 "any"
         );
-        IntentDecision out = enricher.enrich(rule, "戴科彬是哪些主体的法人", false, "rule");
+        IntentDecision out = enricher.enrich(rule, "戴科彬是哪些主体的法人", false, "rule").decision();
         assertEquals("戴科彬", out.personName());
         assertEquals("person_role_list", out.queryType());
         assertEquals("legal_rep", out.roleFocus());

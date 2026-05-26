@@ -1,6 +1,7 @@
 package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.domain.PersonNameParser;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,13 +45,18 @@ public class EmployeeBaseKnowledgeService {
 
     @PostConstruct
     public void init() {
+        reload();
+    }
+
+    /** 重新从业务库加载员工索引（全量同步后可调用）。 */
+    public synchronized void reload() {
         load();
     }
 
     /**
      * 初始化加载员工数据（启动时调用）。
      */
-    public synchronized void load() {
+    private synchronized void load() {
         nameToId.clear();
         anotherNameToId.clear();
         idToRecord.clear();
@@ -112,6 +118,49 @@ public class EmployeeBaseKnowledgeService {
 
         // 再查姓名
         return nameToId.get(key);
+    }
+
+    /**
+     * 将敬称/模糊指称解析为 employee 表中的规范姓名；精确命中或唯一前缀匹配时返回全名，否则返回原串。
+     */
+    public String resolveCanonicalName(String personHint) {
+        if (personHint == null || personHint.isBlank()) {
+            return "";
+        }
+        String trimmed = personHint.trim();
+        Integer exactId = resolveToEmployeeId(trimmed);
+        if (exactId != null) {
+            EmployeeRecord record = getEmployeeById(exactId);
+            if (record != null && record.name() != null && !record.name().isBlank()) {
+                return record.name().trim();
+            }
+        }
+        if (!PersonNameParser.hasHonorificSuffix(trimmed)) {
+            return trimmed;
+        }
+        String core = PersonNameParser.stripHonorific(trimmed);
+        if (core.isBlank() || core.equals(trimmed)) {
+            return trimmed;
+        }
+        List<String> candidates = new ArrayList<>();
+        for (EmployeeRecord record : idToRecord.values()) {
+            String name = record.name();
+            if (name != null && name.startsWith(core)) {
+                candidates.add(name.trim());
+            }
+        }
+        candidates = candidates.stream().distinct().sorted().toList();
+        if (candidates.isEmpty()) {
+            return trimmed;
+        }
+        if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
+        List<String> fullNames = candidates.stream().filter(n -> n.length() > core.length()).toList();
+        if (fullNames.size() == 1) {
+            return fullNames.get(0);
+        }
+        return trimmed;
     }
 
     /**

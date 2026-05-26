@@ -74,6 +74,9 @@ public final class IntentSlots {
             return d.hasPersonFocus() || d.hasCompanyHints();
         }
         if ("vector".equalsIgnoreCase(d.intent()) || "semantic".equalsIgnoreCase(d.queryType())) {
+            if (d.isPersonRoleListQuery()) {
+                return d.hasPersonFocus() && hasRoleFocus(d);
+            }
             return true;
         }
         if ("hybrid".equalsIgnoreCase(d.intent())) {

@@ -29,7 +29,9 @@ src/main/java/com/qa/demo/qa/
 │   └── CompanyCandidate     # 公司候选
 ├── intent/                  # 意图路由
 │   ├── IntentRouterService  # LLM + 规则双层意图判断
-│   └── CompanyClarificationAdvisor  # 公司名消歧
+│   ├── IntentDecisionEnricher / PersonNameResolver  # 槽位补全与敬称→实名（图谱按 roleFocus 消歧）
+│   ├── PersonClarificationAdvisor / CompanyClarificationAdvisor  # 人/公司澄清与沉淀
+│   └── IntentRoutingOutcome  # 意图 + 人名解析一次输出
 ├── retrieval/               # 多源检索
 │   ├── QaRetrievalPipeline  # 检索管道编排
 │   ├── GraphContextService  # Neo4j 图检索
@@ -56,8 +58,9 @@ src/main/java/com/qa/demo/qa/
 │   ├── MiniMaxClient        # MiniMax LLM 客户端
 │   └── QaAnswerFallbackService # 兜底答案服务
 ├── orchestration/           # 编排层
-│   ├── QaAskOrchestrator    # 问答应流程编排
-│   └── QaSseStreamSupport   # SSE 流式输出支持
+│   ├── QaAskFlowService     # 同步/流式共用主流程（澄清、沉淀、召回、生成）
+│   ├── QaAskOrchestrator    # HTTP/SSE 入口
+│   └── QaSseStreamSupport   # SSE 事件封装
 ├── response/                # 对话管理
 │   ├── QaConversationService # 会话管理
 │   └── QaLogService         # 问答日志

@@ -7,8 +7,10 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -28,12 +30,18 @@ public class QaConversationService {
         this.graphContextService = graphContextService;
     }
 
+    private static final Pattern DIGIT_ONLY = Pattern.compile("^\\d{1,2}$");
+
     public record ConversationTurn(
             String turnId,
             String question,
             String answer,
-            List<String> focusCompanyNames
+            List<String> focusCompanyNames,
+            List<String> personCandidates
     ) {
+        public ConversationTurn(String turnId, String question, String answer, List<String> focusCompanyNames) {
+            this(turnId, question, answer, focusCompanyNames, List.of());
+        }
     }
 
     public String resolveConversationId(String clientId) {
@@ -114,17 +122,67 @@ public class QaConversationService {
             String answer,
             List<ContextChunk> evidence
     ) {
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, List.of());
+    }
+
+    public void appendTurn(
+            String conversationId,
+            String scope,
+            String turnId,
+            String question,
+            String answer,
+            List<ContextChunk> evidence,
+            List<String> personCandidates
+    ) {
         Conversation c = store.get(conversationId);
         if (c == null) {
             return;
         }
         List<String> names = extractFocusCompanyNames(evidence);
+        List<String> persons = personCandidates == null ? List.of() : List.copyOf(personCandidates);
         while (c.turns.size() >= MAX_TURNS) {
             c.turns.remove(0);
         }
-        c.turns.add(new ConversationTurn(turnId, question, answer == null ? "" : answer, names));
+        c.turns.add(new ConversationTurn(turnId, question, answer == null ? "" : answer, names, persons));
         touch(conversationId);
         trimConversationsIfNeeded();
+    }
+
+    /**
+     * 上一轮为人物澄清时，解析用户回复的序号或全名。
+     */
+    public Optional<String> resolvePersonFollowUpSelection(String question, List<ConversationTurn> prior) {
+        if (prior == null || prior.isEmpty() || question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+        ConversationTurn last = prior.get(prior.size() - 1);
+        List<String> candidates = last.personCandidates();
+        if (candidates == null || candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        String trimmed = question.trim();
+        if (DIGIT_ONLY.matcher(trimmed).matches()) {
+            int idx = Integer.parseInt(trimmed) - 1;
+            if (idx >= 0 && idx < candidates.size()) {
+                return Optional.of(candidates.get(idx));
+            }
+            return Optional.empty();
+        }
+        for (String name : candidates) {
+            if (name != null && (trimmed.equals(name) || trimmed.contains(name))) {
+                return Optional.of(name);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public boolean priorHasPersonClarification(String conversationId) {
+        List<ConversationTurn> prior = recentTurns(conversationId, 1);
+        if (prior.isEmpty()) {
+            return false;
+        }
+        List<String> c = prior.get(prior.size() - 1).personCandidates();
+        return c != null && !c.isEmpty();
     }
 
     public boolean priorHasCompanyFocus(String conversationId) {

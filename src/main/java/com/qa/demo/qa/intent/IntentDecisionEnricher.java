@@ -1,6 +1,7 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.domain.QuestionEntityExtractor;
 import org.springframework.stereotype.Component;
@@ -8,36 +9,71 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 在意图决策上补全 personName、queryType 等槽位，并将敬称/别名解析为规范姓名；高置信 LLM 可跳过规则覆盖。
+ */
 @Component
 public class IntentDecisionEnricher {
 
     private final QaAssistantProperties properties;
     private final QuestionEntityExtractor entityExtractor;
+    private final PersonNameResolver personNameResolver;
 
-    public IntentDecisionEnricher(QaAssistantProperties properties, QuestionEntityExtractor entityExtractor) {
+    public IntentDecisionEnricher(
+            QaAssistantProperties properties,
+            QuestionEntityExtractor entityExtractor,
+            PersonNameResolver personNameResolver
+    ) {
         this.properties = properties;
         this.entityExtractor = entityExtractor;
+        this.personNameResolver = personNameResolver;
     }
 
-    public IntentDecision enrich(
+    public IntentRoutingOutcome enrich(
             IntentDecision base,
             String question,
             boolean explicitCompanyHint,
             String source
     ) {
-        IntentDecision normalized = IntentSlots.normalize(base);
-        if (shouldSkipRuleEnrich(normalized, source)) {
-            return withSourcePrefix(normalized, source);
-        }
-        return withSourcePrefix(fillMissingSlots(normalized, question, explicitCompanyHint), source);
+        return enrich(base, question, explicitCompanyHint, source, List.of());
     }
 
-    private boolean shouldSkipRuleEnrich(IntentDecision decision, String source) {
+    public IntentRoutingOutcome enrich(
+            IntentDecision base,
+            String question,
+            boolean explicitCompanyHint,
+            String source,
+            List<ContextChunk> learnedForAlias
+    ) {
+        IntentDecision normalized = IntentSlots.normalize(base);
+        IntentDecision working;
+        if (shouldSkipRuleEnrich(normalized, source, question)) {
+            working = withSourcePrefix(normalized, source);
+        } else {
+            working = withSourcePrefix(fillMissingSlots(normalized, question, explicitCompanyHint), source);
+        }
+        return applyCanonicalPersonName(working, learnedForAlias);
+    }
+
+    private boolean shouldSkipRuleEnrich(IntentDecision decision, String source, String question) {
         if (!"llm".equals(source)) {
             return false;
         }
-        return decision.confidence() >= properties.getIntentLlmEnrichMinConfidence()
-                && IntentSlots.isRetrievalReady(decision);
+        if (decision.confidence() < properties.getIntentLlmEnrichMinConfidence()
+                || !IntentSlots.isRetrievalReady(decision)) {
+            return false;
+        }
+        // 问句里能抽到「戴先生」等人名但 LLM 未填 personName 时，仍须规则补槽
+        String rulePerson = entityExtractor.extractPersonName(question);
+        if (rulePerson != null && !rulePerson.isBlank() && !decision.hasPersonFocus()) {
+            return false;
+        }
+        if (entityExtractor.isRoleRelationQuery(question)
+                && !decision.isPersonRoleListQuery()
+                && rulePerson != null) {
+            return false;
+        }
+        return true;
     }
 
     private IntentDecision fillMissingSlots(IntentDecision base, String question, boolean explicitCompanyHint) {
@@ -58,8 +94,13 @@ public class IntentDecisionEnricher {
         if (explicitCompanyHint && companyHints.isEmpty()) {
             companyHints.addAll(entityExtractor.extractCompanyHints(question));
         }
+        String inferredQueryType = entityExtractor.inferQueryType(question, personName);
         if (queryType == null || queryType.isBlank()) {
-            queryType = entityExtractor.inferQueryType(question, personName);
+            queryType = inferredQueryType;
+        } else if (!inferredQueryType.isBlank()
+                && "person_role_list".equals(inferredQueryType)
+                && isWeakQueryTypeForPersonRole(queryType)) {
+            queryType = inferredQueryType;
         }
         if ("any".equalsIgnoreCase(roleFocus)) {
             roleFocus = entityExtractor.inferRoleFocus(question);
@@ -74,6 +115,55 @@ public class IntentDecisionEnricher {
                 List.copyOf(companyHints),
                 roleFocus
         );
+    }
+
+    private static boolean isWeakQueryTypeForPersonRole(String queryType) {
+        if (queryType == null || queryType.isBlank()) {
+            return true;
+        }
+        String q = queryType.trim().toLowerCase();
+        return "semantic".equals(q) || "unknown".equals(q) || "mixed".equals(q);
+    }
+
+    private IntentRoutingOutcome applyCanonicalPersonName(IntentDecision decision, List<ContextChunk> learned) {
+        if (!decision.hasPersonFocus()) {
+            return IntentRoutingOutcome.of(decision, PersonNameResolution.resolved(""));
+        }
+        PersonNameResolution resolution = personNameResolver.resolve(
+                decision.personName(),
+                learned,
+                decision.roleFocus()
+        );
+        String resolved = resolution.canonicalName();
+        if (resolved.isBlank() || resolved.equals(decision.personName())) {
+            if (resolution.needsClarification()) {
+                String reason = decision.reason() == null ? "" : decision.reason();
+                reason = reason + "|person_ambiguous";
+                IntentDecision ambiguous = new IntentDecision(
+                        decision.intent(),
+                        decision.confidence(),
+                        reason,
+                        decision.queryType(),
+                        decision.personName(),
+                        decision.companyHints(),
+                        decision.roleFocus()
+                );
+                return IntentRoutingOutcome.of(ambiguous, resolution);
+            }
+            return IntentRoutingOutcome.of(decision, resolution);
+        }
+        String reason = decision.reason() == null ? "" : decision.reason();
+        reason = reason + "|person_resolved:" + decision.personName() + "->" + resolved;
+        IntentDecision updated = new IntentDecision(
+                decision.intent(),
+                decision.confidence(),
+                reason,
+                decision.queryType(),
+                resolved,
+                decision.companyHints(),
+                decision.roleFocus()
+        );
+        return IntentRoutingOutcome.of(updated, PersonNameResolution.resolved(resolved));
     }
 
     private IntentDecision withSourcePrefix(IntentDecision decision, String source) {

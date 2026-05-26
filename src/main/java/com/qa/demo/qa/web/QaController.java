@@ -196,6 +196,7 @@ public class QaController {
         return body;
     }
 
+    /** 同步问答，响应一次性返回；需要思考过程时间线请用 {@link #askStream(AskRequest, HttpServletResponse)}。 */
     @PostMapping("/ask")
     public Map<String, Object> ask(@Valid @RequestBody AskRequest request) throws IOException {
         return askOrchestrator.buildAskResponse(
@@ -263,6 +264,10 @@ public class QaController {
         );
     }
 
+    /**
+     * 流式问答（推荐）：SSE 推送 thinking / delta / final。
+     * 响应头禁用代理缓冲，否则 Nginx 等会攒包导致「思考中」长时间不刷新。
+     */
     @PostMapping(value = "/ask/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter askStream(@Valid @RequestBody AskRequest request, jakarta.servlet.http.HttpServletResponse response) {
         applySseResponseHeaders(response);
@@ -875,6 +880,13 @@ public class QaController {
         );
     }
 
+    /**
+     * 问答请求体（同步与流式共用）。
+     *
+     * @param scope          {@link QaScopes#ENTERPRISE} 或 personal，空则默认企业库
+     * @param conversationId 多轮会话 ID，空则服务端生成
+     * @param followUp       true 时结合最近轮次改写检索问句；null 时由启发式判断
+     */
     public record AskRequest(
             @NotBlank String question,
             String scope,
@@ -1515,6 +1527,7 @@ public class QaController {
         }
     }
 
+    /** 避免 CDN/反向代理缓冲 SSE，导致 thinking 事件批量到达。 */
     private static void applySseResponseHeaders(jakarta.servlet.http.HttpServletResponse response) {
         if (response == null) {
             return;

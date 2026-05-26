@@ -10,7 +10,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class IntentRouterServiceTest {
 
@@ -24,17 +26,20 @@ class IntentRouterServiceTest {
         QaAssistantProperties props = new QaAssistantProperties();
         props.setIntentLlmEnabled(false);
         props.setApiKey("");
+        PersonNameResolver personNameResolver = mock(PersonNameResolver.class);
+        when(personNameResolver.resolve(any(), any(), any()))
+                .thenAnswer(inv -> PersonNameResolution.resolved(inv.getArgument(0)));
         router = new IntentRouterService(
                 props,
                 mock(IntentLlmClassifier.class),
                 new IntentRuleEngine(lexicon, extractor),
-                new IntentDecisionEnricher(props, extractor)
+                new IntentDecisionEnricher(props, extractor, personNameResolver)
         );
     }
 
     @Test
     void decideUsesRuleFallbackWhenLlmDisabled() {
-        IntentDecision d = router.decide("戴科彬是哪些主体的法人", false);
+        IntentDecision d = router.decide("戴科彬是哪些主体的法人", false).decision();
         assertEquals("graph", d.intent());
         assertTrue(d.hasPersonFocus());
         assertEquals("戴科彬", d.personName());

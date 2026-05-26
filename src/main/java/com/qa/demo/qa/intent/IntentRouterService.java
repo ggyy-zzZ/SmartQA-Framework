@@ -1,14 +1,20 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+/**
+ * 意图路由：优先 MiniMax 槽位抽取，失败或超时则 {@link IntentRuleEngine} 规则兜底，再经 {@link IntentDecisionEnricher} 补全。
+ */
 @Service
 public class IntentRouterService {
 
@@ -29,7 +35,17 @@ public class IntentRouterService {
         this.enricher = enricher;
     }
 
-    public IntentDecision decide(String question, boolean explicitCompanyHint) {
+    /**
+     * @param explicitCompanyHint 问句或改写后的检索句中是否已含明确公司/信用代码，影响澄清与 enrich
+     */
+    public IntentRoutingOutcome decide(String question, boolean explicitCompanyHint) {
+        return decide(question, explicitCompanyHint, List.of());
+    }
+
+    /**
+     * @param learnedForAlias 本轮主动学习命中，用于别名→实名解析
+     */
+    public IntentRoutingOutcome decide(String question, boolean explicitCompanyHint, List<ContextChunk> learnedForAlias) {
         if (properties.isIntentLlmEnabled() && hasMinimaxKey()) {
             try {
                 int timeoutMs = Math.max(5_000, properties.getIntentLlmTimeoutMs());
@@ -45,7 +61,7 @@ public class IntentRouterService {
                         .get();
                 if (IntentSlots.VALID_INTENTS.contains(llmDecision.intent())
                         && !"unknown".equalsIgnoreCase(llmDecision.intent())) {
-                    return enricher.enrich(llmDecision, question, explicitCompanyHint, "llm");
+                    return enricher.enrich(llmDecision, question, explicitCompanyHint, "llm", learnedForAlias);
                 }
             } catch (ExecutionException ex) {
                 if (ex.getCause() instanceof TimeoutException) {
@@ -53,7 +69,8 @@ public class IntentRouterService {
                             ruleEngine.classify(question, explicitCompanyHint, "llm_timeout"),
                             question,
                             explicitCompanyHint,
-                            "rule"
+                            "rule",
+                            learnedForAlias
                     );
                 }
             } catch (Exception ignored) {
@@ -64,7 +81,8 @@ public class IntentRouterService {
                 ruleEngine.classify(question, explicitCompanyHint, llmRouteReasonPrefix()),
                 question,
                 explicitCompanyHint,
-                "rule"
+                "rule",
+                learnedForAlias
         );
     }
 

@@ -33,11 +33,13 @@ public final class KnowledgeAssistantPrompts {
                 + "- mixed: 多形态混合\n"
                 + "- unknown: 无法判断形态\n\n"
                 + "roleFocus（任职类问题时必填具体值，勿填 any）: legal_rep | director | supervisor | shareholder | any\n"
-                + "personName: 问句中的自然人姓名（2-12 个汉字），无则空字符串；勿带「是」「的」等后缀\n"
+                + "personName: 问句中出现的自然人指称（全名、姓+敬称、花名等），照实抽取；无则空字符串；勿带「是」「的」等后缀；"
+                + "敬称归一化由系统解析层完成，不必猜测实名\n"
                 + "companyHints: 问句中的公司/主体名称片段数组，无则 []\n"
                 + "confidence: 槽位齐全且意图明确时建议 >= 0.8；不确定时降低并选 unknown 或 hybrid\n\n"
-                + "示例：「戴科彬是哪些主体的法人」-> intent=graph, queryType=person_role_list, "
-                + "personName=戴科彬, roleFocus=legal_rep, confidence=0.9\n\n"
+                + "示例（结构示意，勿照搬具体人名/公司名）："
+                + "「{某人}是哪些{主体}的法人」-> intent=graph, queryType=person_role_list, "
+                + "personName={问句中的人名指称}, roleFocus=legal_rep, confidence=0.85\n\n"
                 + "输出必须是单行 JSON，字段齐全：\n"
                 + "{\"intent\":\"graph|...\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\","
                 + "\"queryType\":\"person_role_list|...\",\"personName\":\"\",\"companyHints\":[],\"roleFocus\":\"any\"}\n"
@@ -68,7 +70,7 @@ public final class KnowledgeAssistantPrompts {
                 + "请严格遵守：\n"
                 + "1) 只能依据提供的证据回答，不要编造。\n"
                 + "2) 先给结论，再给证据要点。\n"
-                + "3) 若证据不足，明确说“不确定”，并指出缺失信息。\n"
+                + "3) 若证据不足，明确说“不确定”，并指出缺失信息；勿用用户敬称复述，以证据片段中的姓名为准。\n"
                 + "4) 使用简体中文。\n"
                 + "5) 面向提问者回答，语言要自然、友好、简洁。\n"
                 + "6) 默认不要输出技术细节，不要出现 SQL、表名、字段名、检索分数、检索来源、代码片段。\n"
@@ -87,11 +89,13 @@ public final class KnowledgeAssistantPrompts {
 
     /** 流式路径下证据为空时的简短建议 */
     public static String insufficientEvidenceStreamingHint() {
-        return "当前暂未检索到足够依据，无法给出可靠结论。请补充主题、对象名称、时间范围或更具体的关键词后再试。";
+        return "当前暂未检索到足够依据，无法给出可靠结论。请补充更明确的对象全名或关键词后再试；"
+                + "本次问答已记入待学习队列。";
     }
 
     /** 非流式兜底模板前的用户可见建议（与 buildFallbackAnswer 周边一致） */
     public static String insufficientEvidenceGeneralHint() {
-        return "当前未检索到足够证据，暂时无法给出可靠结论。建议补充更明确的主题、对象名称或你关心的信息点。";
+        return "当前未检索到足够证据，暂时无法给出可靠结论。请补充更明确的主题、对象全名或信息点；"
+                + "已记录为待学习条目。";
     }
 }

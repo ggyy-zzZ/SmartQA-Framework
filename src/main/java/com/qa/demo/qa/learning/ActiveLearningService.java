@@ -253,7 +253,20 @@ public class ActiveLearningService {
                 || q.contains("员工")
                 || q.contains("人员")
                 || q.contains("任职")
-                || q.contains("关联");
+                || q.contains("关联")
+                || q.contains("法人")
+                || q.contains("法定代表人");
+    }
+
+    /**
+     * 从主动学习记忆中解析「别名→实名」，供意图层归一化 personName。
+     */
+    public String resolvePersonAlias(String alias, List<ContextChunk> learned) {
+        if (alias == null || alias.isBlank() || learned == null || learned.isEmpty()) {
+            return alias == null ? "" : alias.trim();
+        }
+        String key = alias.trim();
+        return extractAliasPairsFromActiveLearning(learned).getOrDefault(key, key);
     }
 
     private Map<String, String> extractAliasPairsFromActiveLearning(List<ContextChunk> learned) {

@@ -13,10 +13,20 @@ import java.util.Map;
 
 /**
  * SSE 流式事件封装，供编排层复用。
+ * <p>
+ * 事件约定（Playground / 客户端按 name 分发）：
+ * <ul>
+ *   <li>{@code thinking} — 编排进度；payload 含 phase、message、timestamp、可选 details</li>
+ *   <li>{@code meta} — 除 answer 外的完整响应字段（证据、intent、route 等）</li>
+ *   <li>{@code delta} — 答案正文分片（模拟流式，默认约 28 字一块）</li>
+ *   <li>{@code final} — 完整响应体（含 answer）</li>
+ *   <li>{@code done} — 流结束标记 {@code {ok:true}}</li>
+ * </ul>
  */
 @Component
 public class QaSseStreamSupport {
 
+    /** 发送 meta → thinking(result) → 可选 delta 分片 → final → done，并 complete。 */
     public void sendStreamResponse(SseEmitter emitter, Map<String, Object> response, boolean shouldStreamDelta)
             throws IOException {
         String answer = String.valueOf(response.getOrDefault("answer", ""));
@@ -39,7 +49,10 @@ public class QaSseStreamSupport {
     }
 
     /**
-     * @param details 可选结构化字段，供前端展示「可核对」的路由/证据摘要（如 intent、queryType、evidenceCount）
+     * 推送编排进度。常见 phase：start、intent_wait、intent_done、retrieval、retrieval_done、
+     * evidence、audit、generation、model（模型推理片段）、result。
+     *
+     * @param details 可选结构化字段，供前端展示可核对摘要（如 intent、queryType、evidenceCount）
      */
     public void emitThinking(SseEmitter emitter, String phase, String message, Map<String, Object> details) {
         try {

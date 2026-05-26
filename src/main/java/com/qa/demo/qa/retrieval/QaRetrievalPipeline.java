@@ -14,7 +14,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 按意图执行多路检索、融合与主动学习片段合并（原 {@code QaController} 内私有检索逻辑）。
+ * 按意图执行多路检索、融合与主动学习片段合并。
+ * <p>
+ * 企业 scope 且开启统一召回时走 {@link #retrieveUnifiedEnterprise}（并行图/向量/MySQL/SQL + 重排）；
+ * 否则按 {@link IntentDecision#intent()} 选择单路或混合召回。
  */
 @Service
 public class QaRetrievalPipeline {
@@ -77,6 +80,16 @@ public class QaRetrievalPipeline {
         RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
         base = appendSupplementalTables(base, question, plan);
         base = appendEmployeeBaseInfo(base, question, plan);
+        long graphPersonRoles = base.evidence().stream()
+                .filter(c -> c != null && "neo4j-person-role".equals(c.source()))
+                .count();
+        if (plan.personRoleList() && graphPersonRoles >= 3) {
+            return trimEvidence(
+                    base.evidence(),
+                    plan.finalEvidenceTopK(),
+                    "unified_graph_person_role"
+            );
+        }
         List<ContextChunk> reranked = evidenceRerankService.rerank(
                 question, base.evidence(), plan.finalEvidenceTopK());
         String source = "unified_rerank_" + evidenceRerankService.activeProvider();

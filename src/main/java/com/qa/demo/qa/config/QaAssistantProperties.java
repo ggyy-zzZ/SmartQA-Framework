@@ -9,6 +9,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 问答助手运行时配置，前缀 {@code qa.assistant}；密钥类字段优先读环境变量（如 MINIMAX_API_KEY）。
+ */
 @Validated
 @ConfigurationProperties(prefix = "qa.assistant")
 public class QaAssistantProperties {
