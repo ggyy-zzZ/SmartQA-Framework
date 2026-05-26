@@ -69,7 +69,8 @@ def main() -> None:
                 session,
                 """
                 MATCH (n)
-                WHERE n:Company OR n:Person OR n:Shareholder OR n:Certificate OR n:ProductLine OR n:BankAccount
+                WHERE n:Company OR n:Person OR n:Shareholder OR n:Certificate OR n:Seal
+                   OR n:ProductLine OR n:BankAccount
                 DETACH DELETE n
                 """,
             )
@@ -83,6 +84,10 @@ def main() -> None:
         run_query(
             session,
             "CREATE CONSTRAINT cert_key IF NOT EXISTS FOR (c:Certificate) REQUIRE c.certKey IS UNIQUE",
+        )
+        run_query(
+            session,
+            "CREATE CONSTRAINT seal_key IF NOT EXISTS FOR (s:Seal) REQUIRE s.sealKey IS UNIQUE",
         )
         run_query(
             session,
@@ -231,6 +236,27 @@ def main() -> None:
                 {"rows": batch},
             )
 
+            run_query(
+                session,
+                """
+                UNWIND $rows AS row
+                UNWIND coalesce(row.seals, []) AS seal
+                WITH row, seal
+                WHERE seal.seal_id IS NOT NULL AND trim(seal.seal_id) <> ''
+                MATCH (c:Company {companyId: row.company_id})
+                MERGE (s:Seal {sealKey: row.company_id + '|' + seal.seal_id})
+                SET s.sealId = seal.seal_id,
+                    s.sealType = seal.seal_type,
+                    s.sealCategory = seal.seal_category,
+                    s.custodyDepartment = seal.custody_department,
+                    s.supplier = seal.supplier,
+                    s.supplierSealCode = seal.supplier_seal_code,
+                    s.status = seal.status
+                MERGE (c)-[:HAS_SEAL]->(s)
+                """,
+                {"rows": batch},
+            )
+
         counts = session.run(
             """
             RETURN
@@ -239,6 +265,7 @@ def main() -> None:
               count { MATCH (:ProductLine) } AS products,
               count { MATCH (:Shareholder) } AS shareholders,
               count { MATCH (:Certificate) } AS certificates,
+              count { MATCH (:Seal) } AS seals,
               count { MATCH (:BankAccount) } AS bankAccounts
             """
         ).single()
@@ -258,6 +285,7 @@ def main() -> None:
                     "products": counts["products"],
                     "shareholders": counts["shareholders"],
                     "certificates": counts["certificates"],
+                    "seals": counts["seals"],
                     "bankAccounts": counts["bankAccounts"],
                 },
             },

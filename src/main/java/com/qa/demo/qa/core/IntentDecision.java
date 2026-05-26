@@ -9,7 +9,7 @@ public record IntentDecision(
         String intent,
         double confidence,
         String reason,
-        /** person_role_list | company_profile | shareholder | relation | aggregate | policy | semantic | mixed | unknown */
+        /** person_role_list | company_profile | company_certificate | company_seal | shareholder | relation | aggregate | policy | semantic | mixed | unknown */
         String queryType,
         String personName,
         List<String> companyHints,
@@ -30,5 +30,10 @@ public record IntentDecision(
 
     public boolean isPersonRoleListQuery() {
         return "person_role_list".equalsIgnoreCase(queryType);
+    }
+
+    public boolean isCompanyComplianceQuery() {
+        return "company_certificate".equalsIgnoreCase(queryType)
+                || "company_seal".equalsIgnoreCase(queryType);
     }
 }

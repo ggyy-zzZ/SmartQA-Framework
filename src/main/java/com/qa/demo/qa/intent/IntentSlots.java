@@ -18,8 +18,8 @@ public final class IntentSlots {
             "graph", "document", "vector", "mysql", "sql", "hybrid", "unknown"
     );
     static final Set<String> VALID_QUERY_TYPES = Set.of(
-            "person_role_list", "company_profile", "shareholder", "relation",
-            "aggregate", "policy", "semantic", "mixed", "unknown"
+            "person_role_list", "company_profile", "company_certificate", "company_seal",
+            "shareholder", "relation", "aggregate", "policy", "semantic", "mixed", "unknown"
     );
     static final Set<String> VALID_ROLE_FOCUS = Set.of(
             "legal_rep", "director", "supervisor", "shareholder", "any"
@@ -56,7 +56,9 @@ public final class IntentSlots {
         if (d.isPersonRoleListQuery()) {
             return d.hasPersonFocus() && hasRoleFocus(d);
         }
-        if ("company_profile".equalsIgnoreCase(d.queryType())) {
+        if ("company_profile".equalsIgnoreCase(d.queryType())
+                || "company_certificate".equalsIgnoreCase(d.queryType())
+                || "company_seal".equalsIgnoreCase(d.queryType())) {
             return d.hasCompanyHints();
         }
         if ("shareholder".equalsIgnoreCase(d.queryType()) || "relation".equalsIgnoreCase(d.queryType())) {

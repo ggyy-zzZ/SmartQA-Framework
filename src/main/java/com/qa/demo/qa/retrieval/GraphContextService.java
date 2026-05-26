@@ -179,10 +179,14 @@ public class GraphContextService {
                 OPTIONAL MATCH (c)<-[roleRel:HAS_ROLE_IN]-(p:Person)
                 OPTIONAL MATCH (s:Shareholder)-[shareRel:HOLDS_SHARES_IN]->(c)
                 OPTIONAL MATCH (c)-[prodRel:BELONGS_TO_PRODUCT]->(pl:ProductLine)
+                OPTIONAL MATCH (c)-[:HAS_CERTIFICATE]->(cert:Certificate)
+                OPTIONAL MATCH (c)-[:HAS_SEAL]->(seal:Seal)
                 WITH c,
-                     collect(DISTINCT roleRel.role + ":" + p.name)[0..3] AS roles,
+                     collect(DISTINCT roleRel.role + ":" + p.name)[0..6] AS roles,
                      collect(DISTINCT s.name + "(" + coalesce(shareRel.ratio, "?") + ")")[0..3] AS shareholders,
-                     collect(DISTINCT pl.line + "(" + coalesce(prodRel.relation, "") + ")")[0..3] AS productLines
+                     collect(DISTINCT pl.line + "(" + coalesce(prodRel.relation, "") + ")")[0..3] AS productLines,
+                     collect(DISTINCT coalesce(cert.certType, '') + ':' + coalesce(cert.status, ''))[0..10] AS certificates,
+                     collect(DISTINCT coalesce(seal.sealType, '') + '/' + coalesce(seal.sealCategory, '') + '(' + coalesce(seal.status, '') + ')')[0..8] AS seals
                 RETURN c.companyId AS companyId,
                        c.name AS companyName,
                        c.status AS status,
@@ -192,7 +196,9 @@ public class GraphContextService {
                        c.businessScope AS businessScope,
                        roles AS roles,
                        shareholders AS shareholders,
-                       productLines AS productLines
+                       productLines AS productLines,
+                       certificates AS certificates,
+                       seals AS seals
                 LIMIT $topK
                 """,
                 org.neo4j.driver.Values.parameters("hints", companyHints, "topK", topK)
@@ -208,7 +214,9 @@ public class GraphContextService {
                     + "; 地址=" + safeString(record, "registeredAddress")
                     + "; 产品线=" + safeList(record, "productLines")
                     + "; 股东=" + safeList(record, "shareholders")
-                    + "; 关键人=" + safeList(record, "roles");
+                    + "; 关键人=" + safeList(record, "roles")
+                    + "; 证照=" + safeList(record, "certificates")
+                    + "; 印章=" + safeList(record, "seals");
             double score = 18.0 + Math.min(4.0, companyName.length() / 10.0);
             chunks.add(new ContextChunk(
                     safeString(record, "companyId"),

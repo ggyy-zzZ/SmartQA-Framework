@@ -327,25 +327,41 @@ def query_directors_supervisors(conn, schema: str) -> list[dict[str, Any]]:
 def query_certificate_management(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "certificate_management"):
         return []
-    sql = """
-    SELECT
-      id,
-      company_id,
-      certificate_type,
-      issue_date,
-      valid_from,
-      valid_to,
-      annual_inspection_date,
-      supervisors,
-      certification_keepers,
-      executors,
-      status
-    FROM `certificate_management`
-    WHERE deleteflag = 0
-    """
+    cols = table_columns(conn, schema, "certificate_management")
+    code_col = choose_first(
+        cols,
+        [
+            "certificate_no",
+            "cert_no",
+            "certificate_code",
+            "license_no",
+            "licence_no",
+            "cert_number",
+        ],
+    )
+    selected = [
+        "id",
+        "company_id",
+        "certificate_type",
+        "issue_date",
+        "valid_from",
+        "valid_to",
+        "annual_inspection_date",
+        "supervisors",
+        "certification_keepers",
+        "executors",
+        "status",
+    ]
+    if code_col:
+        selected.append(code_col)
+    sql = f"SELECT {', '.join(selected)} FROM `certificate_management` WHERE deleteflag = 0"
     with conn.cursor() as cur:
         cur.execute(sql)
-        return cur.fetchall()
+        rows = cur.fetchall()
+    if code_col:
+        for row in rows:
+            row["certificate_code"] = row_value(row, code_col, "")
+    return rows
 
 
 def query_seal_management(conn, schema: str) -> list[dict[str, Any]]:
@@ -619,13 +635,19 @@ def build_company_rows(
             supervisors = parse_id_list(cert.get("supervisors"))
             keepers = parse_id_list(cert.get("certification_keepers"))
             executors = parse_id_list(cert.get("executors"))
+            cert_code = str(
+                cert.get("certificate_code")
+                or cert.get("certificate_no")
+                or cert.get("cert_no")
+                or ""
+            ).strip()
             certificates_payload.append(
                 {
                     "cert_type": enum_label(
                         cert.get("certificate_type"), CERTIFICATE_TYPE_LABELS, "证照类型"
                     ),
                     "status": normalize_status(cert.get("status")),
-                    "code": "",
+                    "code": cert_code,
                     "issue_date": str(cert.get("issue_date") or ""),
                     "expire_date": str(cert.get("valid_to") or ""),
                     "valid_from": str(cert.get("valid_from") or ""),
@@ -776,6 +798,44 @@ def build_company_rows(
     return rows
 
 
+def _format_certificate_for_text(cert: dict[str, Any]) -> str:
+    parts = [
+        f"类型:{cert.get('cert_type')}",
+        f"状态:{cert.get('status')}",
+    ]
+    if cert.get("code"):
+        parts.append(f"编号:{cert.get('code')}")
+    if cert.get("valid_from") or cert.get("expire_date"):
+        parts.append(f"有效期:{cert.get('valid_from') or '?'}-{cert.get('expire_date') or '?'}")
+    keepers = ",".join(cert.get("certification_keepers", []) or [])
+    supervisors = ",".join(cert.get("supervisors", []) or [])
+    executors = ",".join(cert.get("executors", []) or [])
+    if supervisors:
+        parts.append(f"监管人:{supervisors}")
+    if keepers:
+        parts.append(f"保管人:{keepers}")
+    if executors:
+        parts.append(f"执行人:{executors}")
+    return " ".join(parts)
+
+
+def _format_seal_for_text(seal: dict[str, Any]) -> str:
+    parts = [
+        f"印章类型:{seal.get('seal_type')}",
+        f"分类:{seal.get('seal_category')}",
+        f"保管部门:{seal.get('custody_department')}",
+        f"状态:{seal.get('status')}",
+    ]
+    persons = seal.get("persons") or []
+    if persons:
+        role_names = ",".join(
+            f"{p.get('role_type') or '角色'}:{p.get('account_name') or p.get('user_id')}"
+            for p in persons
+        )
+        parts.append(f"相关人员:{role_names}")
+    return " ".join(p for p in parts if p and not p.endswith(":"))
+
+
 def build_compiled_text(rows: list[dict[str, Any]]) -> str:
     blocks: list[str] = []
     for row in rows:
@@ -789,13 +849,9 @@ def build_compiled_text(rows: list[dict[str, Any]]) -> str:
             for x in row.get("directors_supervisors", [])
         )
         certs = "；".join(
-            f"类型:{x.get('cert_type')} 状态:{x.get('status')} 保管人:{','.join(x.get('certification_keepers', []))}"
-            for x in row.get("certificates", [])
+            _format_certificate_for_text(x) for x in row.get("certificates", [])
         )
-        seals = "；".join(
-            f"印章类型:{x.get('seal_type')} 分类:{x.get('seal_category')} 保管部门:{x.get('custody_department')}"
-            for x in row.get("seals", [])
-        )
+        seals = "；".join(_format_seal_for_text(x) for x in row.get("seals", []))
         summary = f"来源=mysql.tdcomp; 银行账户数={len(row.get('bank_accounts', []))}; 关键人数量={len(row.get('key_people', []))}"
         product_lines = "；".join(
             f"{x.get('module')}/{x.get('line')}/{x.get('relation')}" for x in row.get("product_lines", [])

@@ -28,6 +28,22 @@ python scripts/enterprise_pipeline/build_knowledge_from_mysql.py \
 - `data/knowledge/enterprise_mysql_compiled.txt`
 - `data/knowledge/enterprise_mysql_stats.json`
 
+### 学习范围（结构化）
+
+从业务库导出并写入三库时，默认包含：
+
+| 类别 | 来源表 | 写入内容 |
+|------|--------|----------|
+| 主体公司 | `company` | 基本信息、地址、经营范围等 |
+| 关键人员 | `company` 角色列 + 董监高 | 法人、监事、财务、证照/印章角色等 |
+| 资质证照 | `certificate_management` | 类型、状态、有效期、证号（若表中有）、监管/保管/执行人 |
+| 印章 | `seal_management` + `seal_person_detail` | 印章类型、保管部门、用印相关人员 |
+| 股东/产品线/银行账户 | 对应业务表 | 与主体关联的结构化摘要 |
+
+编译文本中含 **「证照信息」「印章信息」「关键人员」** 段落；向量文档含证照/印章字段；Neo4j 含 `Certificate`、`Seal` 节点及 `HAS_CERTIFICATE`、`HAS_SEAL` 关系。
+
+> 证照扫描件表 `certificate_attachment` 默认不导出（仅元数据学习）。全量同步后需 **重建 Neo4j + Qdrant** 才能生效。
+
 ## 3) 同步知识图谱
 
 ### 本地 Neo4j 免鉴权模式

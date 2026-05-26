@@ -31,4 +31,15 @@ class QuestionEntityExtractorTest {
     void extractsCompanyHintBySuffix() {
         assertNotNull(extractor.extractCompanyHints("万仕道（北京）管理咨询有限责任公司 的股东"));
     }
+
+    @Test
+    void infersCompanyCertificateQueryType() {
+        String type = extractor.inferQueryType("万仕道公司有哪些证照", "万仕道");
+        assertEquals("company_certificate", type);
+    }
+
+    @Test
+    void infersCompanySealQueryType() {
+        assertEquals("company_seal", extractor.inferQueryType("同道精英的印章由谁保管", ""));
+    }
 }

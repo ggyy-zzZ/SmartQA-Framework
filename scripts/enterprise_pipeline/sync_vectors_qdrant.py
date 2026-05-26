@@ -72,7 +72,10 @@ def build_document(row: dict[str, Any]) -> str:
         f"{x.get('holder_name', '')}({x.get('ratio', '')})" for x in row.get("shareholders", [])
     )
     certificates = ", ".join(
-        f"{x.get('cert_type', '')}:{x.get('status', '')}" for x in row.get("certificates", [])
+        f"{x.get('cert_type', '')}:{x.get('status', '')}"
+        + (f"/编号:{x.get('code')}" if x.get("code") else "")
+        + (f"/至:{x.get('expire_date')}" if x.get("expire_date") else "")
+        for x in row.get("certificates", [])
     )
     bank_accounts = ", ".join(
         f"{x.get('account_type', '')}/{x.get('bank_name', '')}/{x.get('account_name', '')}/状态:{x.get('status', '')}"
