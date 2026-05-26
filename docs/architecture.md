@@ -506,6 +506,7 @@ curl http://localhost:6333/collections
 
 ## 12. 相关文档
 
+- [人物证照问答方案（设计计划）](./person-certificate-qa-plan.md) - 人物×证照意图、检索视图与实施阶段（待 P0 落地）
 - [openspec/AGENTS.md](../../openspec/AGENTS.md) - 开发规范
 - [openspec/project.md](../../openspec/project.md) - 项目架构详情
 - [openspec/specs/knowledge-assistant/spec.md](../../openspec/specs/knowledge-assistant/spec.md) - 技术规格

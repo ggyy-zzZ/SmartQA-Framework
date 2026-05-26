@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -56,6 +58,31 @@ public class CertificateSealEnumCatalog {
 
     public String resolveSealLabel(String raw) {
         return resolve(raw, sealLabels);
+    }
+
+    /** 问句中出现的证照类型中文名（用于图谱按类型检索）。 */
+    public List<String> certificateLabelsMentionedIn(String question) {
+        return labelsMentionedIn(question, certificateLabels);
+    }
+
+    public List<String> sealLabelsMentionedIn(String question) {
+        return labelsMentionedIn(question, sealLabels);
+    }
+
+    private static List<String> labelsMentionedIn(String question, Map<String, String> labels) {
+        if (question == null || question.isBlank()) {
+            return List.of();
+        }
+        List<String> hits = new ArrayList<>();
+        for (String label : labels.values()) {
+            if (label == null || label.length() < 2) {
+                continue;
+            }
+            if (question.contains(label) && !hits.contains(label)) {
+                hits.add(label);
+            }
+        }
+        return List.copyOf(hits);
     }
 
     /**

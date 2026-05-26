@@ -42,6 +42,16 @@ public class QaAnswerGateService {
                 && "unknown".equalsIgnoreCase(intent.intent())) {
             return new GateDecision(false, false, "unknown_intent");
         }
+        if (intent != null && intent.isPersonCertificateListQuery()) {
+            boolean hasPersonCert = evidence.stream().anyMatch(c ->
+                    c != null
+                            && "mysql-person-certificate".equals(c.source())
+                            && c.snippet() != null
+                            && c.snippet().contains("证照类型="));
+            if (!hasPersonCert) {
+                return new GateDecision(false, false, "person_certificate_no_evidence");
+            }
+        }
         if (evidence.size() < properties.getAnswerGateMinEvidenceCount()) {
             return new GateDecision(false, false, "evidence_count_below_min");
         }

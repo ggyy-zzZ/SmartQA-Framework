@@ -233,7 +233,8 @@ public class QaAskFlowService {
             enqueueDeposit(turnId, question, intentDecision.intent(), retrievalSource,
                     unknownIntent ? "unknown_intent" : nullToEmpty(gate.rejectReason(), "insufficient_evidence"), evidence);
         }
-        conversationService.appendTurn(convId, scope, turnId, question, answer, evidence);
+        String focusPerson = intentDecision.hasPersonFocus() ? intentDecision.personName().trim() : "";
+        conversationService.appendTurn(convId, scope, turnId, question, answer, evidence, List.of(), focusPerson);
         return response;
     }
 

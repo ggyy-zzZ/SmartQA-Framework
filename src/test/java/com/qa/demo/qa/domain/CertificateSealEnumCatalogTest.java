@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CertificateSealEnumCatalogTest {
 
@@ -25,5 +26,12 @@ class CertificateSealEnumCatalogTest {
     void resolvesSealCode() {
         assertEquals("合同专用章2", catalog.resolveSealLabel("11"));
         assertEquals("法人手签章", catalog.resolveSealLabel("legal_signature"));
+    }
+
+    @Test
+    void findsCertificateLabelsInQuestion() {
+        var hits = catalog.certificateLabelsMentionedIn("万仕道有哪些ICP备案和ISO9001");
+        assertTrue(hits.contains("ICP备案"));
+        assertTrue(hits.contains("ISO9001"));
     }
 }

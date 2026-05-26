@@ -59,6 +59,9 @@ public class GraphContextService {
         int limitedTopK = plan.personRoleList()
                 ? Math.max(1, plan.graphRecallTopK())
                 : Math.max(1, Math.min(plan.graphRecallTopK(), 10));
+        if (intent != null && intent.isPersonCertificateListQuery() && intent.hasPersonFocus()) {
+            return List.of();
+        }
         List<String> companyHints = resolveCompanyHints(question, intent);
         List<ContextChunk> chunks = new ArrayList<>();
         try (Session session = neo4jDriver.session()) {
@@ -75,7 +78,87 @@ public class GraphContextService {
                 chunks.addAll(queryByCompanyHints(session, question, intent, companyHints, limitedTopK));
                 return chunks;
             }
-            chunks.addAll(queryByIntentKeywords(session, question, limitedTopK));
+            if (shouldQueryCertificates(question, intent)) {
+                chunks.addAll(queryByCertificateIntent(session, question, intent, limitedTopK));
+                if (!chunks.isEmpty()) {
+                    return chunks;
+                }
+            }
+            chunks.addAll(queryByIntentKeywords(session, question, intent, limitedTopK));
+        }
+        return chunks;
+    }
+
+    private boolean shouldQueryCertificates(String question, IntentDecision intent) {
+        if (intent != null && "company_certificate".equalsIgnoreCase(intent.queryType())) {
+            return true;
+        }
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        if (question.contains("证照") || question.contains("许可证") || question.contains("备案")) {
+            return true;
+        }
+        return !certificateSealEnumCatalog.certificateLabelsMentionedIn(question).isEmpty();
+    }
+
+    private List<ContextChunk> queryByCertificateIntent(
+            Session session,
+            String question,
+            IntentDecision intent,
+            int topK
+    ) {
+        List<String> certLabels = certificateSealEnumCatalog.certificateLabelsMentionedIn(question);
+        String certLabel = certLabels.isEmpty() ? "" : certLabels.getFirst();
+        Result result = session.run(
+                """
+                MATCH (c:Company)-[:HAS_CERTIFICATE]->(ct:Certificate)
+                WHERE ($certLabel = '' OR toLower(ct.certType) CONTAINS toLower($certLabel))
+                OPTIONAL MATCH (c)<-[roleRel:HAS_ROLE_IN]-(p:Person)
+                OPTIONAL MATCH (s:Shareholder)-[shareRel:HOLDS_SHARES_IN]->(c)
+                OPTIONAL MATCH (c)-[prodRel:BELONGS_TO_PRODUCT]->(pl:ProductLine)
+                WITH c, ct,
+                     collect(DISTINCT roleRel.role + ":" + p.name)[0..4] AS roles,
+                     collect(DISTINCT s.name + "(" + coalesce(shareRel.ratio, "?") + ")")[0..2] AS shareholders,
+                     collect(DISTINCT pl.line + "(" + coalesce(prodRel.relation, "") + ")")[0..2] AS productLines
+                WITH c,
+                     collect(DISTINCT coalesce(ct.certType, '') + ':' + coalesce(ct.status, ''))[0..12] AS certificates,
+                     roles, shareholders, productLines
+                WHERE size(certificates) > 0
+                RETURN c.companyId AS companyId,
+                       c.name AS companyName,
+                       c.status AS status,
+                       c.entityType AS entityType,
+                       c.entityCategory AS entityCategory,
+                       c.registeredAddress AS registeredAddress,
+                       c.businessScope AS businessScope,
+                       certificates AS certificates,
+                       roles AS roles,
+                       shareholders AS shareholders,
+                       productLines AS productLines,
+                       [] AS seals
+                ORDER BY size(certificates) DESC
+                LIMIT $topK
+                """,
+                org.neo4j.driver.Values.parameters("certLabel", certLabel, "topK", topK)
+        );
+        List<ContextChunk> chunks = new ArrayList<>();
+        String field = "资质与许可";
+        while (result.hasNext()) {
+            Record record = result.next();
+            String snippet = GraphCompanySnippetBuilder.buildSnippet(
+                    record, intent, companyFacetCatalog, certificateSealEnumCatalog);
+            if (snippet.isBlank()) {
+                snippet = "证照=" + safeList(record, "certificates");
+            }
+            chunks.add(new ContextChunk(
+                    safeString(record, "companyId"),
+                    safeString(record, "companyName"),
+                    field,
+                    snippet,
+                    20.0 + Math.min(6.0, safeList(record, "certificates").length() / 40.0),
+                    "neo4j-certificate"
+            ));
         }
         return chunks;
     }
@@ -255,42 +338,86 @@ public class GraphContextService {
         return chunks;
     }
 
-    private List<ContextChunk> queryByIntentKeywords(Session session, String question, int topK) {
+    private List<ContextChunk> queryByIntentKeywords(
+            Session session,
+            String question,
+            IntentDecision intent,
+            int topK
+    ) {
         List<String> labels = lexicon.graphFieldLabels(question);
         if (labels.isEmpty()) {
             return List.of();
         }
-        Result result = session.run(
-                """
-                MATCH (c:Company)
-                WHERE c.status IS NOT NULL
-                OPTIONAL MATCH (c)-[prodRel:BELONGS_TO_PRODUCT]->(pl:ProductLine)
-                WITH c, collect(DISTINCT pl.line)[0..2] AS productLines
-                RETURN c.companyId AS companyId,
-                       c.name AS companyName,
-                       c.status AS status,
-                       c.entityType AS entityType,
-                       c.entityCategory AS entityCategory,
-                       productLines AS productLines
-                LIMIT $topK
-                """,
-                org.neo4j.driver.Values.parameters("topK", topK)
-        );
+        boolean certificateFocus = labels.stream().anyMatch(l -> l.contains("资质") || l.contains("许可"));
+        Result result;
+        if (certificateFocus) {
+            result = session.run(
+                    """
+                    MATCH (c:Company)-[:HAS_CERTIFICATE]->(ct:Certificate)
+                    WITH c, collect(DISTINCT coalesce(ct.certType, '') + ':' + coalesce(ct.status, ''))[0..10] AS certificates
+                    WHERE size(certificates) > 0
+                    RETURN c.companyId AS companyId,
+                           c.name AS companyName,
+                           c.status AS status,
+                           c.entityType AS entityType,
+                           c.entityCategory AS entityCategory,
+                           c.registeredAddress AS registeredAddress,
+                           c.businessScope AS businessScope,
+                           certificates AS certificates,
+                           [] AS roles,
+                           [] AS shareholders,
+                           [] AS productLines,
+                           [] AS seals
+                    ORDER BY size(certificates) DESC
+                    LIMIT $topK
+                    """,
+                    org.neo4j.driver.Values.parameters("topK", topK)
+            );
+        } else {
+            result = session.run(
+                    """
+                    MATCH (c:Company)
+                    WHERE c.status IS NOT NULL
+                    OPTIONAL MATCH (c)-[prodRel:BELONGS_TO_PRODUCT]->(pl:ProductLine)
+                    WITH c, collect(DISTINCT pl.line)[0..2] AS productLines
+                    RETURN c.companyId AS companyId,
+                           c.name AS companyName,
+                           c.status AS status,
+                           c.entityType AS entityType,
+                           c.entityCategory AS entityCategory,
+                           c.registeredAddress AS registeredAddress,
+                           c.businessScope AS businessScope,
+                           [] AS certificates,
+                           [] AS roles,
+                           [] AS shareholders,
+                           productLines AS productLines,
+                           [] AS seals
+                    LIMIT $topK
+                    """,
+                    org.neo4j.driver.Values.parameters("topK", topK)
+            );
+        }
         List<ContextChunk> chunks = new ArrayList<>();
         String field = String.join("/", labels);
         while (result.hasNext()) {
             Record record = result.next();
-            String snippet = "状态=" + safeString(record, "status")
-                    + "; 类型=" + safeString(record, "entityType")
-                    + "; 分类=" + safeString(record, "entityCategory")
-                    + "; 产品线=" + safeList(record, "productLines");
+            String snippet = certificateFocus
+                    ? GraphCompanySnippetBuilder.buildSnippet(
+                            record, intent, companyFacetCatalog, certificateSealEnumCatalog)
+                    : "状态=" + safeString(record, "status")
+                            + "; 类型=" + safeString(record, "entityType")
+                            + "; 分类=" + safeString(record, "entityCategory")
+                            + "; 产品线=" + safeList(record, "productLines");
+            if (snippet.isBlank()) {
+                snippet = "状态=" + safeString(record, "status");
+            }
             chunks.add(new ContextChunk(
                     safeString(record, "companyId"),
                     safeString(record, "companyName"),
                     field,
                     snippet,
-                    8.0,
-                    "neo4j-intent"
+                    certificateFocus ? 14.0 : 8.0,
+                    certificateFocus ? "neo4j-intent-certificate" : "neo4j-intent"
             ));
         }
         return chunks;

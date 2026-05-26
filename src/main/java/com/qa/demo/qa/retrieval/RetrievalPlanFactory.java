@@ -16,10 +16,11 @@ public class RetrievalPlanFactory {
 
     public RetrievalPlan from(IntentDecision intent) {
         boolean personRoleList = intent != null && intent.isPersonRoleListQuery();
+        boolean personCertificateList = intent != null && intent.isPersonCertificateListQuery();
         int graphTopK = personRoleList
                 ? Math.max(properties.getRecallGraphTopK(), properties.getRecallGraphPersonRoleTopK())
                 : properties.getRecallGraphTopK();
-        int evidenceTopK = personRoleList
+        int evidenceTopK = personRoleList || personCertificateList
                 ? Math.max(properties.getRetrievalTopK(), properties.getRecallGraphPersonRoleTopK())
                 : properties.getRetrievalTopK();
         return RetrievalPlan.of(intent, graphTopK, evidenceTopK);

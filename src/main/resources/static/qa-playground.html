@@ -509,8 +509,10 @@
                 <label><input type="radio" name="scope" value="personal"> 个人记忆</label>
             </div>
             <button type="button" id="askBtn" class="primary-lg">发送</button>
+            <button type="button" id="newConversationBtn" class="secondary" title="清空会话上下文，开始新话题">新对话</button>
             <span id="statusText" class="status">就绪</span>
         </div>
+        <p class="hint" id="conversationHint" style="margin-top:8px;">连续追问（如「具体是哪些证照？」）会自动带上上一轮上下文；换话题请点「新对话」。</p>
     </section>
 
     <!-- 回答 -->
@@ -616,12 +618,17 @@
     const questionEl = document.getElementById("question");
     const scopeModeEl = () => document.querySelector('input[name="scope"]:checked')?.value || "enterprise";
     const askBtnEl = document.getElementById("askBtn");
+    const newConversationBtnEl = document.getElementById("newConversationBtn");
+    const conversationHintEl = document.getElementById("conversationHint");
     const statusTextEl = document.getElementById("statusText");
     const thinkingEl = document.getElementById("thinking");
     const thinkingStepLabelEl = document.getElementById("thinkingStepLabel");
     const thinkingProgressBarEl = document.getElementById("thinkingProgressBar");
     const showThinkingDetailEl = document.getElementById("showThinkingDetail");
     const answerEl = document.getElementById("answer");
+
+    /** 多轮会话 ID：同页连续提问时由服务端返回并回传 */
+    let qaConversationId = sessionStorage.getItem("qaConversationId") || null;
 
     const learnTextTitleEl = document.getElementById("learnTextTitle");
     const learnTextBodyEl = document.getElementById("learnTextBody");
@@ -791,6 +798,15 @@
         if (Array.isArray(data.evidence)) {
             details.evidenceCount = data.evidence.length;
         }
+        if (data.conversationId) {
+            qaConversationId = data.conversationId;
+            sessionStorage.setItem("qaConversationId", qaConversationId);
+            details.conversationId = qaConversationId;
+            updateConversationHint();
+        }
+        if (data.followUpApplied === true) {
+            details.followUpApplied = true;
+        }
         const msg = label + (details.evidenceCount != null ? "，证据 " + details.evidenceCount + " 条" : "");
         addThinkingStep("meta", msg, details, data.timestamp);
     }
@@ -863,10 +879,14 @@
     }
 
     async function consumeAskStream(question, scope, signal) {
+        const payload = {question, scope};
+        if (qaConversationId) {
+            payload.conversationId = qaConversationId;
+        }
         const resp = await fetch("/qa/ask/stream", {
             method: "POST",
             headers: {"Content-Type": "application/json; charset=utf-8", "Accept": "text/event-stream"},
-            body: JSON.stringify({question, scope}),
+            body: JSON.stringify(payload),
             signal
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
@@ -926,6 +946,22 @@
         renderThinkingLive(false);
         renderAnswer(state.answerBuffer || "暂时无法根据现有知识回答该问题。", false);
     }
+
+    function updateConversationHint() {
+        if (!conversationHintEl) return;
+        conversationHintEl.textContent = qaConversationId
+            ? "已接续会话（ID 前 8 位：" + qaConversationId.substring(0, 8) + "…）。追问会结合上一轮；换话题请点「新对话」。"
+            : "连续追问（如「具体是哪些证照？」）会自动带上上一轮上下文；换话题请点「新对话」。";
+    }
+
+    newConversationBtnEl.addEventListener("click", () => {
+        qaConversationId = null;
+        sessionStorage.removeItem("qaConversationId");
+        updateConversationHint();
+        setStatus("已开启新对话", null);
+    });
+
+    updateConversationHint();
 
     askBtnEl.addEventListener("click", async () => {
         const question = questionEl.value.trim();

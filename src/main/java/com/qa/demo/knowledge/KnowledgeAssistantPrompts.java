@@ -22,6 +22,7 @@ public final class KnowledgeAssistantPrompts {
                 + "- unknown: 缺关键信息或明显超范围\n\n"
                 + "可选 queryType（查询形态，与 intent 独立）:\n"
                 + "- person_role_list: 某人担任哪些主体/公司的法人、董事、监事等（列表型）\n"
+                + "- person_certificate_list: 某人负责/管理哪些证照（跨公司，需输出证照类型+公司+角色，非主体类型）\n"
                 + "- company_profile: 某一公司/主体的概况、状态、地址、经营范围等\n"
                 + "- company_certificate: 某公司有哪些证照/许可证、有效期、保管人/监管人\n"
                 + "- company_seal: 某公司印章类型、保管部门、用印相关人员\n"
@@ -38,8 +39,11 @@ public final class KnowledgeAssistantPrompts {
                 + "companyHints: 问句中的公司/主体名称片段数组，无则 []\n"
                 + "confidence: 槽位齐全且意图明确时建议 >= 0.8；不确定时降低并选 unknown 或 hybrid\n\n"
                 + "示例（结构示意，勿照搬具体人名/公司名）："
-                + "「{某人}是哪些{主体}的法人」-> intent=graph, queryType=person_role_list, "
-                + "personName={问句中的人名指称}, roleFocus=legal_rep, confidence=0.85\n\n"
+                + "「{某人}是哪些{主体}的法人」-> intent=hybrid, queryType=person_role_list, "
+                + "personName={问句中的人名指称}, roleFocus=legal_rep, confidence=0.85\n"
+                + "「{某人}负责哪些证照」-> intent=mysql, queryType=person_certificate_list, "
+                + "personName={人名}, roleFocus=any, confidence=0.88\n"
+                + "追问「类型有哪些」且上文为证照主题时 -> 仍 person_certificate_list，指证照类型名，非公司主体类型\n\n"
                 + "输出必须是单行 JSON，字段齐全：\n"
                 + "{\"intent\":\"graph|...\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\","
                 + "\"queryType\":\"person_role_list|...\",\"personName\":\"\",\"companyHints\":[],\"roleFocus\":\"any\"}\n"
@@ -79,7 +83,15 @@ public final class KnowledgeAssistantPrompts {
                 + "9) 不要默认用户在使用某一特定商业软件；只根据证据与问题作答。\n"
                 + "10) 若问题是「某人担任哪些主体/公司的法人、董事等」且证据含多家公司，"
                 + "须逐条列出证据中的全部主体，不得只列其中一部分；可先给总数再列清单。\n"
-                + "11) 结论中的家数/条数须与证据条数一致，勿凭记忆多写或少写。";
+                + "11) 结论中的家数/条数须与证据条数一致，勿凭记忆多写或少写。\n"
+                + "12) 若 queryType 为人物证照（证据含「证照类型=」「角色=证照执行人/保管人/监管人」），"
+                + "须按行列出：证照类型、所属公司、在该证上的角色、状态；"
+                + "禁止用公司「主体类型/有限责任公司/运营主体」代替证照类型；"
+                + "追问「类型有哪些」时只列证照类型名称（可去重），勿答主体类型。";
+    }
+
+    public static String personCertificateQueryHint() {
+        return "【人物证照查询】请仅依据证据中的「证照类型」「公司」「角色」字段作答，勿编造。";
     }
 
     /** 模型判定为 unknown 且无证据时的用户可见说明 */

@@ -91,6 +91,25 @@ class IntentDecisionEnricherTest {
     }
 
     @Test
+    void forcesPersonCertificateListAndMysqlIntent() {
+        when(personNameResolver.resolve(eq("张雁雯"), any(), any()))
+                .thenReturn(PersonNameResolution.resolved("张雁雯"));
+        IntentDecision rule = new IntentDecision(
+                "hybrid",
+                0.7,
+                "rule_hybrid",
+                "",
+                "",
+                List.of(),
+                "any"
+        );
+        IntentDecision out = enricher.enrich(rule, "张雁雯负责哪些证照", false, "rule").decision();
+        assertEquals("张雁雯", out.personName());
+        assertEquals("person_certificate_list", out.queryType());
+        assertEquals("mysql", out.intent());
+    }
+
+    @Test
     void ruleSourceAlwaysFillsMissingSlots() {
         IntentDecision rule = new IntentDecision(
                 "graph",

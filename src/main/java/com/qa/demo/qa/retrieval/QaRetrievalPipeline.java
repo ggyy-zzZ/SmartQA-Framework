@@ -5,6 +5,7 @@ import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
 import com.qa.demo.qa.learning.ActiveLearningService;
+import com.qa.demo.qa.retrieval.personcert.PersonCertificateQueryService;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -34,6 +35,7 @@ public class QaRetrievalPipeline {
     private final EvidenceRerankService evidenceRerankService;
     private final RetrievalPlanFactory retrievalPlanFactory;
     private final SqlTopKResolver sqlTopKResolver;
+    private final PersonCertificateQueryService personCertificateQueryService;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -47,7 +49,8 @@ public class QaRetrievalPipeline {
             EmployeeBaseKnowledgeService employeeBaseKnowledge,
             EvidenceRerankService evidenceRerankService,
             RetrievalPlanFactory retrievalPlanFactory,
-            SqlTopKResolver sqlTopKResolver
+            SqlTopKResolver sqlTopKResolver,
+            PersonCertificateQueryService personCertificateQueryService
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -61,6 +64,7 @@ public class QaRetrievalPipeline {
         this.evidenceRerankService = evidenceRerankService;
         this.retrievalPlanFactory = retrievalPlanFactory;
         this.sqlTopKResolver = sqlTopKResolver;
+        this.personCertificateQueryService = personCertificateQueryService;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -90,6 +94,16 @@ public class QaRetrievalPipeline {
                     "unified_graph_person_role"
             );
         }
+        long personCertRows = base.evidence().stream()
+                .filter(c -> c != null && "mysql-person-certificate".equals(c.source()))
+                .count();
+        if (plan.personCertificateList() && personCertRows >= 1) {
+            return trimEvidence(
+                    base.evidence(),
+                    plan.finalEvidenceTopK(),
+                    "unified_person_certificate"
+            );
+        }
         List<ContextChunk> reranked = evidenceRerankService.rerank(
                 question, base.evidence(), plan.finalEvidenceTopK());
         String source = "unified_rerank_" + evidenceRerankService.activeProvider();
@@ -114,7 +128,8 @@ public class QaRetrievalPipeline {
             case "unknown" -> new RetrievalResult("unknown", List.of());
             default -> retrieveHybrid(question, plan);
         };
-        RetrievalResult withSupplemental = appendSupplementalTables(base, question, plan);
+        RetrievalResult withPersonCert = appendPersonCertificateIfNeeded(base, plan);
+        RetrievalResult withSupplemental = appendSupplementalTables(withPersonCert, question, plan);
         return appendEmployeeBaseInfo(withSupplemental, question, plan);
     }
 
@@ -425,6 +440,7 @@ public class QaRetrievalPipeline {
 
     private List<ContextChunk> collectHybridCandidatesExpanded(String question, RetrievalPlan plan) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
+        appendPersonCertificateEvidence(merged, plan);
         List<ContextChunk> graph = safeGraphRetrieve(question, plan);
         appendUnique(merged, graph);
         if (plan.preferGraphOnly() && !graph.isEmpty()) {
@@ -433,12 +449,10 @@ public class QaRetrievalPipeline {
         appendUnique(merged, vectorContextService.retrieveTopChunks(question, properties.getRecallVectorTopK()));
         appendUnique(merged, safeMysqlRetrieve(question));
         appendUnique(merged, safeSqlRetrieve(question, plan));
-        if (merged.isEmpty()) {
-            return documentContextService.retrieveTopChunks(
-                    question,
-                    properties.getDocsDir(),
-                    properties.getRetrievalTopK()
-            );
+        if (shouldIncludeCompiledDocs(plan, question)) {
+            appendUnique(merged, safeDocumentRetrieve(question));
+        } else if (merged.isEmpty()) {
+            return safeDocumentRetrieve(question);
         }
         return merged;
     }
@@ -541,6 +555,62 @@ public class QaRetrievalPipeline {
     private List<ContextChunk> safeGraphRetrieve(String question, RetrievalPlan plan) {
         try {
             return graphContextService.retrieveTopChunks(question, plan);
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private RetrievalResult appendPersonCertificateIfNeeded(RetrievalResult base, RetrievalPlan plan) {
+        if (!plan.personCertificateList()) {
+            return base;
+        }
+        List<ContextChunk> merged = new ArrayList<>(base.evidence());
+        appendPersonCertificateEvidence(merged, plan);
+        long personCertRows = merged.stream()
+                .filter(c -> c != null && "mysql-person-certificate".equals(c.source()))
+                .count();
+        if (personCertRows >= 1) {
+            return trimEvidence(merged, plan.finalEvidenceTopK(), "person_certificate_" + base.retrievalSource());
+        }
+        if (merged.size() == base.evidence().size()) {
+            return base;
+        }
+        return new RetrievalResult("person_certificate_partial_" + base.retrievalSource(), merged);
+    }
+
+    private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan) {
+        IntentDecision intent = plan.intent();
+        if (intent == null || !intent.isPersonCertificateListQuery() || !intent.hasPersonFocus()) {
+            return;
+        }
+        int maxRows = Math.max(properties.getRecallGraphTopK() * 8, 64);
+        appendUnique(merged, personCertificateQueryService.retrieve(intent.personName(), maxRows));
+    }
+
+    private boolean shouldIncludeCompiledDocs(RetrievalPlan plan, String question) {
+        if (plan.intent() != null && plan.intent().isPersonCertificateListQuery()) {
+            return true;
+        }
+        if (plan.intent() != null && plan.intent().isCompanyComplianceQuery()) {
+            return true;
+        }
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        return question.contains("证照")
+                || question.contains("许可证")
+                || question.contains("备案")
+                || question.contains("印章")
+                || question.contains("公章");
+    }
+
+    private List<ContextChunk> safeDocumentRetrieve(String question) {
+        try {
+            return documentContextService.retrieveTopChunks(
+                    question,
+                    properties.getDocsDir(),
+                    properties.getRetrievalTopK()
+            );
         } catch (Exception ignored) {
             return List.of();
         }

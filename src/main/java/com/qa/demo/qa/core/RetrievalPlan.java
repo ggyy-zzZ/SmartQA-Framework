@@ -8,18 +8,21 @@ public record RetrievalPlan(
         int graphRecallTopK,
         int finalEvidenceTopK,
         boolean personRoleList,
+        boolean personCertificateList,
         boolean preferGraphOnly,
         boolean skipEmployeeBaseAppend
 ) {
     public static RetrievalPlan of(IntentDecision intent, int graphRecallTopK, int finalEvidenceTopK) {
         boolean personRoleList = intent != null && intent.isPersonRoleListQuery();
+        boolean personCertificateList = intent != null && intent.isPersonCertificateListQuery();
         return new RetrievalPlan(
                 intent,
                 graphRecallTopK,
                 finalEvidenceTopK,
                 personRoleList,
+                personCertificateList,
                 personRoleList,
-                personRoleList
+                personRoleList || personCertificateList
         );
     }
 }

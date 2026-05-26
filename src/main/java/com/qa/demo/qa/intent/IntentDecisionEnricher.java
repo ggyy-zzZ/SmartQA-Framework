@@ -3,6 +3,7 @@ package com.qa.demo.qa.intent;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.PersonCertificateIntentHeuristics;
 import com.qa.demo.qa.domain.QuestionEntityExtractor;
 import org.springframework.stereotype.Component;
 
@@ -70,7 +71,12 @@ public class IntentDecisionEnricher {
         }
         if (entityExtractor.isRoleRelationQuery(question)
                 && !decision.isPersonRoleListQuery()
+                && !decision.isPersonCertificateListQuery()
                 && rulePerson != null) {
+            return false;
+        }
+        if (PersonCertificateIntentHeuristics.isPersonCertificateListQuestion(question, decision.personName())
+                && !decision.isPersonCertificateListQuery()) {
             return false;
         }
         return true;
@@ -86,6 +92,9 @@ public class IntentDecisionEnricher {
 
         if (personName == null || personName.isBlank()) {
             String rulePerson = entityExtractor.extractPersonName(question);
+            if (rulePerson == null || rulePerson.isBlank()) {
+                rulePerson = PersonCertificateIntentHeuristics.extractPersonNameFromQuestion(question);
+            }
             personName = rulePerson == null ? "" : rulePerson;
         }
         if (companyHints.isEmpty()) {
@@ -95,19 +104,29 @@ public class IntentDecisionEnricher {
             companyHints.addAll(entityExtractor.extractCompanyHints(question));
         }
         String inferredQueryType = entityExtractor.inferQueryType(question, personName);
-        if (queryType == null || queryType.isBlank()) {
+        if (PersonCertificateIntentHeuristics.isPersonCertificateListQuestion(question, personName)) {
+            queryType = "person_certificate_list";
+        } else if (queryType == null || queryType.isBlank()) {
             queryType = inferredQueryType;
         } else if (!inferredQueryType.isBlank()
                 && "person_role_list".equals(inferredQueryType)
                 && isWeakQueryTypeForPersonRole(queryType)) {
+            queryType = inferredQueryType;
+        } else if (!inferredQueryType.isBlank()
+                && "person_certificate_list".equals(inferredQueryType)
+                && isWeakQueryTypeForPersonCertificate(queryType)) {
             queryType = inferredQueryType;
         }
         if ("any".equalsIgnoreCase(roleFocus)) {
             roleFocus = entityExtractor.inferRoleFocus(question);
         }
 
+        String intent = base.intent();
+        if ("person_certificate_list".equalsIgnoreCase(queryType)) {
+            intent = "mysql";
+        }
         return new IntentDecision(
-                base.intent(),
+                intent,
                 base.confidence(),
                 base.reason(),
                 queryType == null ? "" : queryType,
@@ -123,6 +142,18 @@ public class IntentDecisionEnricher {
         }
         String q = queryType.trim().toLowerCase();
         return "semantic".equals(q) || "unknown".equals(q) || "mixed".equals(q);
+    }
+
+    private static boolean isWeakQueryTypeForPersonCertificate(String queryType) {
+        if (queryType == null || queryType.isBlank()) {
+            return true;
+        }
+        String q = queryType.trim().toLowerCase();
+        return "company_certificate".equals(q)
+                || "company_profile".equals(q)
+                || "semantic".equals(q)
+                || "unknown".equals(q)
+                || "mixed".equals(q);
     }
 
     private IntentRoutingOutcome applyCanonicalPersonName(IntentDecision decision, List<ContextChunk> learned) {

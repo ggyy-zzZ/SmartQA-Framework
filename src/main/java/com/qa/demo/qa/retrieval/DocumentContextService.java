@@ -29,13 +29,17 @@ public class DocumentContextService {
             Charset.forName("GB18030"),
             Charset.forName("GBK")
     );
-    private static final Map<String, List<String>> FIELD_KEYWORDS = Map.of(
-            "经营状态", List.of("经营状态", "存续", "注销", "在业"),
-            "股权结构", List.of("股东", "持股", "认缴", "实缴", "股权"),
-            "地域与地址", List.of("地址", "地区", "办公", "注册地", "城市"),
-            "证照资质", List.of("证照", "许可证", "执照", "资质"),
-            "管理层", List.of("法定代表人", "经理", "财务负责人", "联系人"),
-            "产品线", List.of("产品线", "模块", "关系")
+    private static final Map<String, List<String>> FIELD_KEYWORDS = Map.ofEntries(
+            Map.entry("经营状态", List.of("经营状态", "存续", "注销", "在业")),
+            Map.entry("股权结构", List.of("股东", "持股", "认缴", "实缴", "股权")),
+            Map.entry("地域与地址", List.of("地址", "地区", "办公", "注册地", "城市")),
+            Map.entry("证照信息", List.of(
+                    "证照", "许可证", "执照", "资质", "备案", "icp", "iso", "营业执照",
+                    "人力资源", "劳务派遣", "高新", "增值电信", "广播电视"
+            )),
+            Map.entry("印章信息", List.of("印章", "公章", "合同章", "财务章", "印鉴", "用印")),
+            Map.entry("管理层", List.of("法定代表人", "经理", "财务负责人", "联系人")),
+            Map.entry("产品线", List.of("产品线", "模块", "关系"))
     );
 
     public String buildContext(String docsPath) throws IOException {
@@ -200,9 +204,16 @@ public class DocumentContextService {
 
         for (Map.Entry<String, List<String>> entry : FIELD_KEYWORDS.entrySet()) {
             long hit = entry.getValue().stream().filter(q::contains).count();
-            if (hit > 0 && block.contains(entry.getKey().toLowerCase(Locale.ROOT))) {
+            String sectionKey = entry.getKey() + "：";
+            if (hit > 0 && block.contains(sectionKey.toLowerCase(Locale.ROOT))) {
                 score += 5 + hit;
+                if ("证照信息".equals(entry.getKey()) && block.contains("类型:")) {
+                    score += 6;
+                }
             }
+        }
+        if (block.contains("企业证照与印章类型字典") && (q.contains("证照类型") || q.contains("有哪些证照") || q.contains("证照种类"))) {
+            score += 15;
         }
 
         int tokenHit = 0;
@@ -249,9 +260,18 @@ public class DocumentContextService {
             if (l.isBlank()) {
                 continue;
             }
-            if (l.toLowerCase(Locale.ROOT).contains("公司名称：")
-                    || l.toLowerCase(Locale.ROOT).contains("经营状态：")
-                    || l.toLowerCase(Locale.ROOT).contains("主体类型：")) {
+            if (l.startsWith("公司名称：")
+                    || l.startsWith("经营状态：")
+                    || l.startsWith("主体类型：")) {
+                matched.add(l);
+                continue;
+            }
+            if (lowerQuestion.contains("证照") && l.startsWith("证照信息：") && l.length() > "证照信息：".length()) {
+                matched.add(l);
+                continue;
+            }
+            if ((lowerQuestion.contains("印章") || lowerQuestion.contains("公章"))
+                    && l.startsWith("印章信息：") && l.length() > "印章信息：".length()) {
                 matched.add(l);
                 continue;
             }

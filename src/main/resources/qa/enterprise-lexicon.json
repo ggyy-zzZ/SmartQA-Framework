@@ -16,6 +16,11 @@
     "shareholder": ["股东", "股权", "持股"]
   },
   "queryTypeRules": {
+    "person_certificate_list": {
+      "requiresPerson": true,
+      "anyKeywords": ["证照", "许可证", "执照", "资质", "备案", "证书"],
+      "listKeywords": ["哪些", "负责", "管", "列出", "多少", "什么", "涉及"]
+    },
     "person_role_list": {
       "requiresPerson": true,
       "anyKeywords": ["法人", "董事", "监事", "任职", "担任"],
@@ -23,7 +28,11 @@
     },
     "shareholder": { "anyKeywords": ["股东", "股权", "持股"] },
     "company_certificate": {
-      "anyKeywords": ["证照", "许可证", "执照", "资质", "营业照", "人力资源服务许可", "icp"]
+      "anyKeywords": [
+        "证照", "许可证", "执照", "资质", "营业照", "营业执照", "备案",
+        "人力资源服务许可", "人力资源服务备案", "劳务派遣", "增值电信", "高新",
+        "icp", "iso9001", "iso27001", "iso14001", "iso45001", "cmmi", "网络安全等级保护"
+      ]
     },
     "company_seal": {
       "anyKeywords": ["印章", "公章", "合同章", "财务章", "印鉴", "用印"]
