@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--password", default="")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--wipe", action="store_true")
-    parser.add_argument("--with-vector", action="store_true")
+    parser.add_argument("--with-vector", action="store_true", help="同步后写入 Qdrant（企业问答向量召回依赖此步）")
     parser.add_argument("--qdrant-host", default="localhost")
     parser.add_argument("--qdrant-port", type=int, default=6333)
     parser.add_argument("--qdrant-collection", default="enterprise_knowledge_v2")
@@ -130,6 +130,8 @@ def main() -> None:
         run(vector_cmd)
     print(f"Pipeline done in: {root}")
     print(f"Compiled docs: {compiled_text_output}")
+    if not args.with_vector:
+        print("提示: 未加 --with-vector 时 Qdrant 不会更新，Playground 证照问答可能仅靠图谱/编译文本。")
 
 
 if __name__ == "__main__":

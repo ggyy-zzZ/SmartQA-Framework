@@ -361,7 +361,7 @@ public class QaConversationService {
             if (c == null) {
                 continue;
             }
-            String name = c.companyName();
+            String name = c.displayLabel();
             if (name == null || name.isBlank()) {
                 continue;
             }

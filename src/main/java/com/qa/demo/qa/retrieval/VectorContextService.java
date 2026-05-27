@@ -80,7 +80,7 @@ public class VectorContextService {
                 String status = payload.path("status").asText("");
                 String text = payload.path("text").asText("");
                 double score = point.path("score").asDouble(0.0) * 20.0;
-                chunks.add(new ContextChunk(
+                chunks.add(ContextChunk.ofCompany(
                         companyId,
                         companyName,
                         "向量检索",

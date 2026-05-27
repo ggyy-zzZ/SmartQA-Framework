@@ -3,6 +3,9 @@ package com.qa.demo.knowledge;
 /**
  * 知识库问答助手：与大模型相关的 system / 兜底文案集中在此，避免与某一部署侧业务系统名强耦合。
  * 需求与模块边界见 {@code openspec/specs/knowledge-assistant/spec.md}。
+ * <p>
+ * 通用生成原则在本类；按 queryType 的「输出契约」见 {@link AnswerOutputContractRegistry} 与
+ * {@code classpath:qa/answer-output-contracts.json}，不在此硬编码业务字段或问法模板。
  */
 public final class KnowledgeAssistantPrompts {
 
@@ -66,6 +69,8 @@ public final class KnowledgeAssistantPrompts {
     }
 
     /**
+     * 证据作答的通用 system prompt（不含业务 queryType 契约；契约由 {@link AnswerOutputContractRegistry} 追加）。
+     *
      * @param assistantName 来自配置的助手称谓，用于首句角色锚定
      */
     public static String minimaxEvidenceSystemPrompt(String assistantName) {
@@ -74,24 +79,16 @@ public final class KnowledgeAssistantPrompts {
                 + "请严格遵守：\n"
                 + "1) 只能依据提供的证据回答，不要编造。\n"
                 + "2) 先给结论，再给证据要点。\n"
-                + "3) 若证据不足，明确说“不确定”，并指出缺失信息；勿用用户敬称复述，以证据片段中的姓名为准。\n"
+                + "3) 若证据不足，明确说“不确定”，并指出缺失的信息维度；称谓以证据片段中的写法为准。\n"
                 + "4) 使用简体中文。\n"
                 + "5) 面向提问者回答，语言要自然、友好、简洁。\n"
                 + "6) 默认不要输出技术细节，不要出现 SQL、表名、字段名、检索分数、检索来源、代码片段。\n"
                 + "7) 除非用户明确要求，否则不要展示内部编号或敏感标识。\n"
                 + "8) 若提供了对话上下文，可据此理解指代与省略，但不得用上下文替代证据编造事实。\n"
                 + "9) 不要默认用户在使用某一特定商业软件；只根据证据与问题作答。\n"
-                + "10) 若问题是「某人担任哪些主体/公司的法人、董事等」且证据含多家公司，"
-                + "须逐条列出证据中的全部主体，不得只列其中一部分；可先给总数再列清单。\n"
-                + "11) 结论中的家数/条数须与证据条数一致，勿凭记忆多写或少写。\n"
-                + "12) 若 queryType 为人物证照（证据含「证照类型=」「角色=证照执行人/保管人/监管人」），"
-                + "须按行列出：证照类型、所属公司、在该证上的角色、状态；"
-                + "禁止用公司「主体类型/有限责任公司/运营主体」代替证照类型；"
-                + "追问「类型有哪些」时只列证照类型名称（可去重），勿答主体类型。";
-    }
-
-    public static String personCertificateQueryHint() {
-        return "【人物证照查询】请仅依据证据中的「证照类型」「公司」「角色」字段作答，勿编造。";
+                + "10) 结论中的数量须与证据可核对条数一致，勿凭记忆多写或少写。\n"
+                + "11) 证据片段若为「属性名=取值」形式，仅使用片段中出现的属性名；勿引入片段未出现的维度。\n"
+                + "12) 若下文附有「输出契约」，仅在该契约范围内补充格式与列全要求，且不得违反前述原则。";
     }
 
     /** 模型判定为 unknown 且无证据时的用户可见说明 */

@@ -1,0 +1,23 @@
+{
+  "schemas": {
+    "person_certificate_v1": {
+      "fields": {
+        "certType": "证照类型",
+        "organization": "公司",
+        "stewardRole": "角色",
+        "status": "状态"
+      }
+    },
+    "employee_identity_v1": {
+      "fields": {
+        "legalName": "姓名",
+        "alias": "花名"
+      }
+    }
+  },
+  "sourceToSchema": {
+    "mysql-person-certificate": "person_certificate_v1",
+    "employee_identity": "employee_identity_v1",
+    "employee_base": "employee_identity_v1"
+  }
+}

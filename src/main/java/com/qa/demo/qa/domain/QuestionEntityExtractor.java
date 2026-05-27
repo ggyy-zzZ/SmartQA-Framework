@@ -1,6 +1,7 @@
 package com.qa.demo.qa.domain;
 
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.retrieval.EmployeeBaseKnowledgeService;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -28,9 +29,11 @@ public class QuestionEntityExtractor {
     );
 
     private final EnterpriseLexicon lexicon;
+    private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
 
-    public QuestionEntityExtractor(EnterpriseLexicon lexicon) {
+    public QuestionEntityExtractor(EnterpriseLexicon lexicon, EmployeeBaseKnowledgeService employeeBaseKnowledge) {
         this.lexicon = lexicon;
+        this.employeeBaseKnowledge = employeeBaseKnowledge;
     }
 
     public String resolvePersonName(String question, IntentDecision intent) {
@@ -61,6 +64,10 @@ public class QuestionEntityExtractor {
             if (whichIdx > 1) {
                 return personNameBefore(q, whichIdx);
             }
+        }
+        String fromIdentity = PersonAliasIdentityParser.resolveCanonicalPerson(q, employeeBaseKnowledge);
+        if (!fromIdentity.isBlank()) {
+            return fromIdentity;
         }
         Matcher resignMatcher = PERSON_BEFORE_RESIGN.matcher(q);
         if (resignMatcher.find()) {

@@ -229,7 +229,7 @@ public class MysqlContextService {
                     }
                     String snippet = buildSnippet(row);
                     double score = 5.0 + hitCount * 1.4;
-                    ContextChunk chunk = new ContextChunk(
+                    ContextChunk chunk = ContextChunk.ofCompany(
                             companyId,
                             companyName,
                             "mysql_table:" + table.name(),
@@ -433,7 +433,7 @@ public class MysqlContextService {
                         }
                         String snippet = buildSnippet(row);
                         double score = 8.0 + hitCount * 1.5;
-                        ContextChunk chunk = new ContextChunk(
+                        ContextChunk chunk = ContextChunk.ofCompany(
                                 companyId,
                                 companyName,
                                 "supplemental:" + tableName,

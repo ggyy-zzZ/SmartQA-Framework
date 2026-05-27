@@ -55,7 +55,7 @@ public final class GraphPersonRoleQuery {
             Record record = result.next();
             String snippet = "状态=" + safeString(record, "status")
                     + "; 关键人=" + safeString(record, "personName") + "(" + safeString(record, "role") + ")";
-            chunks.add(new ContextChunk(
+            chunks.add(ContextChunk.ofCompany(
                     safeString(record, "companyId"),
                     safeString(record, "companyName"),
                     fieldLabel,

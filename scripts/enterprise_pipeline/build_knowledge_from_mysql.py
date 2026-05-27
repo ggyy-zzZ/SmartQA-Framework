@@ -837,8 +837,22 @@ def _format_seal_for_text(seal: dict[str, Any]) -> str:
     return " ".join(p for p in parts if p and not p.endswith(":"))
 
 
+def build_enum_dictionary_block() -> str:
+    """业务证照/印章类型枚举字典，写入编译文本供文档召回与问答对照。"""
+    cert_types = [CERTIFICATE_TYPE_LABELS[k] for k in CERTIFICATE_TYPE_LABELS if str(k).isdigit()]
+    seal_types = [SEAL_TYPE_LABELS[k] for k in SEAL_TYPE_LABELS if str(k).isdigit()]
+    cert_line = "；".join(f"类型:{t}" for t in cert_types)
+    seal_line = "；".join(f"印章类型:{t}" for t in seal_types)
+    return (
+        "{companyId=enum-dict, companyName=企业证照与印章类型字典, summary=来源=业务枚举CertificateType/SealType}\n"
+        "公司名称：企业证照与印章类型字典\n"
+        f"证照信息：{cert_line}\n"
+        f"印章信息：{seal_line}\n"
+    )
+
+
 def build_compiled_text(rows: list[dict[str, Any]]) -> str:
-    blocks: list[str] = []
+    blocks: list[str] = [build_enum_dictionary_block()]
     for row in rows:
         people = "；".join(f"{p.get('role')}:{p.get('name')}(ID:{p.get('person_id')})" for p in row.get("key_people", []))
         banks = "；".join(

@@ -1,8 +1,10 @@
 package com.qa.demo.qa.answer;
 
+import com.qa.demo.knowledge.EvidenceSchemaRegistry;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.retrieval.personcert.PersonCertificateStewardship;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,9 +26,11 @@ public class QaAnswerGateService {
     }
 
     private final QaAssistantProperties properties;
+    private final EvidenceSchemaRegistry evidenceSchemas;
 
-    public QaAnswerGateService(QaAssistantProperties properties) {
+    public QaAnswerGateService(QaAssistantProperties properties, EvidenceSchemaRegistry evidenceSchemas) {
         this.properties = properties;
+        this.evidenceSchemas = evidenceSchemas;
     }
 
     public GateDecision evaluate(IntentDecision intent, List<ContextChunk> evidence) {
@@ -43,12 +47,7 @@ public class QaAnswerGateService {
             return new GateDecision(false, false, "unknown_intent");
         }
         if (intent != null && intent.isPersonCertificateListQuery()) {
-            boolean hasPersonCert = evidence.stream().anyMatch(c ->
-                    c != null
-                            && "mysql-person-certificate".equals(c.source())
-                            && c.snippet() != null
-                            && c.snippet().contains("证照类型="));
-            if (!hasPersonCert) {
+            if (!hasEvidenceForSchema(evidence, PersonCertificateStewardship.SCHEMA_ID)) {
                 return new GateDecision(false, false, "person_certificate_no_evidence");
             }
         }
@@ -60,5 +59,17 @@ public class QaAnswerGateService {
             return new GateDecision(false, false, "top_score_below_min");
         }
         return GateDecision.allow();
+    }
+
+    private boolean hasEvidenceForSchema(List<ContextChunk> evidence, String schemaId) {
+        if (schemaId == null || schemaId.isBlank()) {
+            return false;
+        }
+        return evidence.stream().anyMatch(c ->
+                c != null
+                        && schemaId.equals(c.evidenceSchema())
+                        && c.snippet() != null
+                        && !c.snippet().isBlank()
+        );
     }
 }

@@ -53,7 +53,7 @@ public class IntentDecisionEnricher {
         } else {
             working = withSourcePrefix(fillMissingSlots(normalized, question, explicitCompanyHint), source);
         }
-        return applyCanonicalPersonName(working, learnedForAlias);
+        return applyCanonicalPersonName(working, learnedForAlias, question);
     }
 
     private boolean shouldSkipRuleEnrich(IntentDecision decision, String source, String question) {
@@ -162,14 +162,19 @@ public class IntentDecisionEnricher {
                 || "mixed".equals(q);
     }
 
-    private IntentRoutingOutcome applyCanonicalPersonName(IntentDecision decision, List<ContextChunk> learned) {
+    private IntentRoutingOutcome applyCanonicalPersonName(
+            IntentDecision decision,
+            List<ContextChunk> learned,
+            String question
+    ) {
         if (!decision.hasPersonFocus()) {
             return IntentRoutingOutcome.of(decision, PersonNameResolution.resolved(""));
         }
         PersonNameResolution resolution = personNameResolver.resolve(
                 decision.personName(),
                 learned,
-                decision.roleFocus()
+                decision.roleFocus(),
+                question
         );
         String resolved = resolution.canonicalName();
         String displayName = resolved.isBlank() ? decision.personName() : resolved;

@@ -26,10 +26,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-
 @Component
-public class MiniMaxClient {
+public class DeepSeekClient {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -37,14 +35,14 @@ public class MiniMaxClient {
     private final AnswerOutputContractRegistry outputContracts;
     private final HttpClient httpClient;
 
-    public MiniMaxClient(
+    public DeepSeekClient(
             ObjectMapper objectMapper,
             QaAssistantProperties properties,
             AnswerOutputContractRegistry outputContracts
     ) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(properties.getMinimaxTimeoutMs());
-        factory.setReadTimeout(properties.getMinimaxTimeoutMs());
+        factory.setConnectTimeout(properties.getDeepseekTimeoutMs());
+        factory.setReadTimeout(properties.getDeepseekTimeoutMs());
         this.restClient = RestClient.builder()
                 .requestFactory(factory)
                 .build();
@@ -52,7 +50,7 @@ public class MiniMaxClient {
         this.properties = properties;
         this.outputContracts = outputContracts;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(properties.getMinimaxTimeoutMs()))
+                .connectTimeout(Duration.ofMillis(properties.getDeepseekTimeoutMs()))
                 .build();
     }
 
@@ -69,9 +67,6 @@ public class MiniMaxClient {
         return askWithEvidence(contextBlock, question, chunks, null);
     }
 
-    /**
-     * @param contextBlock 多轮对话上文（可为空）；question 为用户本轮原话；intent 用于挂载输出契约附录。
-     */
     public String askWithEvidence(
             String contextBlock,
             String question,
@@ -82,16 +77,16 @@ public class MiniMaxClient {
         String userContent = buildEvidenceUserContent(contextBlock, question, chunks);
 
         Map<String, Object> body = Map.of(
-                "model", properties.getModel(),
+                "model", properties.getDeepseekModel(),
                 "messages", List.of(
-                        Map.of("role", "system", "name", "MiniMax AI", "content", systemPrompt),
+                        Map.of("role", "system", "name", "DeepSeek AI", "content", systemPrompt),
                         Map.of("role", "user", "name", "User", "content", userContent)
                 )
         );
 
         String response = restClient.post()
-                .uri(properties.getApiUrl())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                .uri(properties.getDeepseekApiUrl())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getDeepseekApiKey())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
@@ -105,16 +100,16 @@ public class MiniMaxClient {
      */
     public String completeChat(String systemPrompt, String userMessage) {
         Map<String, Object> body = Map.of(
-                "model", properties.getModel(),
+                "model", properties.getDeepseekModel(),
                 "messages", List.of(
-                        Map.of("role", "system", "name", "MiniMax AI", "content", systemPrompt),
+                        Map.of("role", "system", "name", "DeepSeek AI", "content", systemPrompt),
                         Map.of("role", "user", "name", "User", "content", userMessage)
                 )
         );
         try {
             String response = restClient.post()
-                    .uri(properties.getApiUrl())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                    .uri(properties.getDeepseekApiUrl())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getDeepseekApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
@@ -123,7 +118,7 @@ public class MiniMaxClient {
         } catch (RestClientResponseException e) {
             String bodySnippet = abbreviateForError(e.getResponseBodyAsString());
             throw new IllegalStateException(
-                    "MiniMax HTTP " + e.getStatusCode().value() + (bodySnippet.isBlank() ? "" : ": " + bodySnippet),
+                    "DeepSeek HTTP " + e.getStatusCode().value() + (bodySnippet.isBlank() ? "" : ": " + bodySnippet),
                     e
             );
         }
@@ -132,17 +127,16 @@ public class MiniMaxClient {
     private String parseNonStreamAssistantContent(String response) {
         try {
             JsonNode root = objectMapper.readTree(response);
-            JsonNode statusMsgNode = root.path("base_resp").path("status_msg");
-            if (statusMsgNode.isTextual() && !statusMsgNode.asText().isBlank()
-                    && !"success".equalsIgnoreCase(statusMsgNode.asText())) {
-                throw new IllegalStateException("MiniMax API error: " + statusMsgNode.asText());
+            JsonNode errorNode = root.path("error");
+            if (errorNode.has("message")) {
+                throw new IllegalStateException("DeepSeek API error: " + errorNode.path("message").asText());
             }
             JsonNode messageNode = root.path("choices").path(0).path("message");
             JsonNode contentNode = messageNode.path("content");
             if (contentNode.isTextual() && !contentNode.asText().isBlank()) {
                 return contentNode.asText();
             }
-            // 部分推理模型先填 reasoning_content，content 可能暂空；评估等非流式场景合并取用
+            // DeepSeek reasoning content
             String reasoning = messageNode.path("reasoning_content").asText("").trim();
             if (!reasoning.isBlank()) {
                 String contentFallback = contentNode.isTextual() ? contentNode.asText().trim() : "";
@@ -150,18 +144,6 @@ public class MiniMaxClient {
                     return reasoning + "\n\n" + contentFallback;
                 }
                 return reasoning;
-            }
-            JsonNode choiceText = root.path("choices").path(0).path("text");
-            if (choiceText.isTextual() && !choiceText.asText().isBlank()) {
-                return choiceText.asText();
-            }
-            JsonNode replyNode = root.path("reply");
-            if (replyNode.isTextual() && !replyNode.asText().isBlank()) {
-                return replyNode.asText();
-            }
-            JsonNode outputTextNode = root.path("output_text");
-            if (outputTextNode.isTextual() && !outputTextNode.asText().isBlank()) {
-                return outputTextNode.asText();
             }
             throw new IllegalStateException("Model returned empty content: " + abbreviateForError(response));
         } catch (IllegalStateException e) {
@@ -210,11 +192,10 @@ public class MiniMaxClient {
         String userContent = buildEvidenceUserContent(contextBlock, question, chunks);
 
         Map<String, Object> body = Map.of(
-                "model", properties.getModel(),
+                "model", properties.getDeepseekModel(),
                 "stream", true,
-                "stream_options", Map.of("include_usage", true),
                 "messages", List.of(
-                        Map.of("role", "system", "name", "MiniMax AI", "content", systemPrompt),
+                        Map.of("role", "system", "name", "DeepSeek AI", "content", systemPrompt),
                         Map.of("role", "user", "name", "User", "content", userContent)
                 )
         );
@@ -222,19 +203,19 @@ public class MiniMaxClient {
         try {
             String payload = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(properties.getApiUrl()))
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                    .uri(URI.create(properties.getDeepseekApiUrl()))
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getDeepseekApiKey())
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
                     .build();
 
             HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("MiniMax stream failed, status=" + response.statusCode());
+                throw new IllegalStateException("DeepSeek stream failed, status=" + response.statusCode());
             }
             return parseStreamBody(response.body(), listener);
         } catch (Exception ex) {
-            throw new IllegalStateException("MiniMax stream call failed: " + ex.getMessage(), ex);
+            throw new IllegalStateException("DeepSeek stream call failed: " + ex.getMessage(), ex);
         }
     }
 
@@ -252,10 +233,9 @@ public class MiniMaxClient {
                 continue;
             }
             JsonNode chunk = objectMapper.readTree(data);
-            JsonNode statusMsg = chunk.path("base_resp").path("status_msg");
-            if (statusMsg.isTextual() && !statusMsg.asText().isBlank()
-                    && !"success".equalsIgnoreCase(statusMsg.asText())) {
-                throw new IllegalStateException("MiniMax stream error: " + statusMsg.asText());
+            JsonNode errorNode = chunk.path("error");
+            if (errorNode.has("message")) {
+                throw new IllegalStateException("DeepSeek stream error: " + errorNode.path("message").asText());
             }
             JsonNode delta = chunk.path("choices").path(0).path("delta");
             if (!delta.isMissingNode()) {

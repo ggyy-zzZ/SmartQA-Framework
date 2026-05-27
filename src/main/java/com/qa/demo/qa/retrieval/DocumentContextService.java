@@ -116,9 +116,9 @@ public class DocumentContextService {
             CompanyRecord record = item.record();
             String field = detectField(record.rawBlock(), question);
             String snippet = buildSnippet(record.rawBlock(), question);
-            result.add(new ContextChunk(
-                    record.companyId(),
-                    record.companyName(),
+            result.add(ContextChunk.ofCompany(
+                    record.anchorId(),
+                    record.displayLabel(),
                     field,
                     snippet,
                     item.score(),
@@ -195,10 +195,10 @@ public class DocumentContextService {
         String block = record.rawBlock().toLowerCase(Locale.ROOT);
         double score = 0;
 
-        if (q.contains(record.companyName().toLowerCase(Locale.ROOT))) {
+        if (q.contains(record.displayLabel().toLowerCase(Locale.ROOT))) {
             score += 12;
         }
-        if (q.contains(record.companyId().toLowerCase(Locale.ROOT))) {
+        if (q.contains(record.anchorId().toLowerCase(Locale.ROOT))) {
             score += 12;
         }
 
@@ -313,7 +313,7 @@ public class DocumentContextService {
         return text.substring(from, endIdx);
     }
 
-    private record CompanyRecord(String companyId, String companyName, String rawBlock) {
+    private record CompanyRecord(String anchorId, String displayLabel, String rawBlock) {
     }
 
     private record ScoredRecord(CompanyRecord record, double score) {

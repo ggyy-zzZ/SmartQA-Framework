@@ -1,5 +1,7 @@
 package com.qa.demo.qa.retrieval;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qa.demo.knowledge.EvidenceSchemaRegistry;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,7 +17,7 @@ class EmployeeBaseKnowledgeServiceResolveTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new EmployeeBaseKnowledgeService(new QaAssistantProperties());
+        service = new EmployeeBaseKnowledgeService(new QaAssistantProperties(), new EvidenceSchemaRegistry(new ObjectMapper()));
         index(1, "戴科彬", null);
         index(2, "戴小明", null);
     }

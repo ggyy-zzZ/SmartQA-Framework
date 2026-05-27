@@ -51,7 +51,7 @@ public class EvidenceAlignmentService {
             if (c == null) {
                 continue;
             }
-            corpus.append(c.companyName()).append(' ');
+            corpus.append(c.displayLabel()).append(' ');
             corpus.append(c.snippet()).append(' ');
             corpus.append(c.field()).append(' ');
         }

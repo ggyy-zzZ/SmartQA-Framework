@@ -4,6 +4,7 @@ import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
+import com.qa.demo.qa.domain.PersonAliasIdentityParser;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.retrieval.personcert.PersonCertificateQueryService;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -84,6 +86,7 @@ public class QaRetrievalPipeline {
         RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
         base = appendSupplementalTables(base, question, plan);
         base = appendEmployeeBaseInfo(base, question, plan);
+        base = appendPersonIdentityEvidence(base, question, intent);
         long graphPersonRoles = base.evidence().stream()
                 .filter(c -> c != null && "neo4j-person-role".equals(c.source()))
                 .count();
@@ -130,7 +133,8 @@ public class QaRetrievalPipeline {
         };
         RetrievalResult withPersonCert = appendPersonCertificateIfNeeded(base, plan);
         RetrievalResult withSupplemental = appendSupplementalTables(withPersonCert, question, plan);
-        return appendEmployeeBaseInfo(withSupplemental, question, plan);
+        RetrievalResult withEmployee = appendEmployeeBaseInfo(withSupplemental, question, plan);
+        return appendPersonIdentityEvidence(withEmployee, question, intent);
     }
 
     /**
@@ -144,13 +148,13 @@ public class QaRetrievalPipeline {
         List<ContextChunk> merged = new ArrayList<>(base.evidence());
         Set<String> seen = new HashSet<>();
         for (ContextChunk c : base.evidence()) {
-            seen.add(c.source() + "|" + c.companyId());
+            seen.add(c.source() + "|" + c.anchorId());
         }
         int supplementalLimit = Math.max(1, properties.getMysqlTopK());
         for (String table : supplementalTables) {
             List<ContextChunk> supplemental = mysqlContextService.querySupplementalTable(table, question, supplementalLimit);
             for (ContextChunk c : supplemental) {
-                String key = c.source() + "|" + c.companyId();
+                String key = c.source() + "|" + c.anchorId();
                 if (seen.add(key)) {
                     merged.add(c);
                 }
@@ -177,7 +181,7 @@ public class QaRetrievalPipeline {
         List<ContextChunk> merged = new ArrayList<>(base.evidence());
         Set<String> seen = new HashSet<>();
         for (ContextChunk c : base.evidence()) {
-            seen.add(c.source() + "|" + c.companyId());
+            seen.add(c.source() + "|" + c.anchorId());
         }
         for (String name : potentialNames) {
             Integer employeeId = employeeBaseKnowledge.resolveToEmployeeId(name);
@@ -188,24 +192,94 @@ public class QaRetrievalPipeline {
             if (record == null) {
                 continue;
             }
-            String snippet = String.format("员工ID=%d, 姓名=%s, 花名=%s",
-                    record.id(),
-                    record.name() != null ? record.name() : "",
-                    record.anotherName() != null ? record.anotherName() : "");
-            ContextChunk chunk = new ContextChunk(
+            String snippet = employeeBaseKnowledge.formatIdentityEvidence(record);
+            if (snippet.isBlank()) {
+                continue;
+            }
+            ContextChunk chunk = ContextChunk.ofEmployee(
                     String.valueOf(employeeId),
                     record.name() != null ? record.name() : "",
                     "employee_base",
                     snippet,
                     10.0,
-                    "employee_base"
+                    "employee_base",
+                    "employee_identity_v1"
             );
-            String key = chunk.source() + "|" + chunk.companyId();
+            String key = chunk.source() + "|" + chunk.anchorId();
             if (seen.add(key)) {
                 merged.add(chunk);
             }
         }
         return trimEvidence(merged, plan.finalEvidenceTopK(), "employee_base_appended_" + base.retrievalSource());
+    }
+
+    /**
+     * 追加员工身份证据（姓名/花名对照），人物任职类检索也会执行，避免 skipEmployeeBaseAppend 时丢失别名依据。
+     */
+    private RetrievalResult appendPersonIdentityEvidence(
+            RetrievalResult base,
+            String question,
+            IntentDecision intent
+    ) {
+        if (employeeBaseKnowledge.size() == 0) {
+            return base;
+        }
+        Set<Integer> employeeIds = new LinkedHashSet<>();
+        if (intent != null && intent.hasPersonEmployeeId()) {
+            employeeIds.add(intent.personEmployeeId());
+        }
+        if (intent != null && intent.hasPersonFocus()) {
+            Integer id = employeeBaseKnowledge.resolveToEmployeeId(intent.personName());
+            if (id != null) {
+                employeeIds.add(id);
+            }
+        }
+        if (question != null && !question.isBlank()) {
+            for (String token : PersonAliasIdentityParser.extractMentionedPersonTokens(question)) {
+                Integer id = employeeBaseKnowledge.resolveToEmployeeId(token);
+                if (id != null) {
+                    employeeIds.add(id);
+                }
+            }
+            for (String name : extractPotentialNames(question)) {
+                Integer id = employeeBaseKnowledge.resolveToEmployeeId(name);
+                if (id != null) {
+                    employeeIds.add(id);
+                }
+            }
+        }
+        if (employeeIds.isEmpty()) {
+            return base;
+        }
+        List<ContextChunk> merged = new ArrayList<>(base.evidence());
+        Set<String> seen = new HashSet<>();
+        for (ContextChunk c : base.evidence()) {
+            seen.add(c.source() + "|" + c.anchorId());
+        }
+        for (Integer employeeId : employeeIds) {
+            EmployeeBaseKnowledgeService.EmployeeRecord record = employeeBaseKnowledge.getEmployeeById(employeeId);
+            if (record == null) {
+                continue;
+            }
+            String snippet = employeeBaseKnowledge.formatIdentityEvidence(record);
+            if (snippet.isBlank()) {
+                continue;
+            }
+            ContextChunk chunk = ContextChunk.ofEmployee(
+                    String.valueOf(employeeId),
+                    record.name() != null ? record.name() : "",
+                    "员工身份",
+                    snippet,
+                    18.0,
+                    "employee_identity",
+                    "employee_identity_v1"
+            );
+            String key = chunk.source() + "|" + chunk.anchorId();
+            if (seen.add(key)) {
+                merged.add(0, chunk);
+            }
+        }
+        return new RetrievalResult("employee_identity_appended_" + base.retrievalSource(), merged);
     }
 
     private RetrievalResult trimEvidence(List<ContextChunk> merged, int cap, String retrievalSource) {
@@ -300,13 +374,13 @@ public class QaRetrievalPipeline {
         Set<String> seen = new HashSet<>();
         List<ContextChunk> merged = new ArrayList<>();
         for (ContextChunk c : prefix) {
-            String key = c.companyId() + "|" + c.source();
+            String key = c.anchorId() + "|" + c.source();
             if (seen.add(key)) {
                 merged.add(c);
             }
         }
         for (ContextChunk c : base.evidence()) {
-            String key = c.companyId() + "|" + c.source();
+            String key = c.anchorId() + "|" + c.source();
             if (seen.add(key)) {
                 merged.add(c);
             }
@@ -435,7 +509,7 @@ public class QaRetrievalPipeline {
     }
 
     private static String dedupeKey(ContextChunk c) {
-        return c.source() + "|" + c.companyId() + "|" + c.companyName() + "|" + c.field();
+        return c.source() + "|" + c.anchorId() + "|" + c.displayLabel() + "|" + c.field();
     }
 
     private List<ContextChunk> collectHybridCandidatesExpanded(String question, RetrievalPlan plan) throws IOException {
@@ -507,7 +581,7 @@ public class QaRetrievalPipeline {
         if (!vector.isEmpty()) {
             for (ContextChunk item : vector) {
                 boolean exists = merged.stream().anyMatch(
-                        x -> x.companyId().equals(item.companyId()) && x.source().equals(item.source())
+                        x -> x.anchorId().equals(item.anchorId()) && x.source().equals(item.source())
                 );
                 if (!exists) {
                     merged.add(item);
@@ -518,7 +592,7 @@ public class QaRetrievalPipeline {
         if (!mysql.isEmpty()) {
             for (ContextChunk item : mysql) {
                 boolean exists = merged.stream().anyMatch(
-                        x -> x.companyId().equals(item.companyId()) && x.source().equals(item.source())
+                        x -> x.anchorId().equals(item.anchorId()) && x.source().equals(item.source())
                 );
                 if (!exists) {
                     merged.add(item);
@@ -529,7 +603,7 @@ public class QaRetrievalPipeline {
         if (!sql.isEmpty()) {
             for (ContextChunk item : sql) {
                 boolean exists = merged.stream().anyMatch(
-                        x -> x.companyId().equals(item.companyId()) && x.source().equals(item.source())
+                        x -> x.anchorId().equals(item.anchorId()) && x.source().equals(item.source())
                 );
                 if (!exists) {
                     merged.add(item);

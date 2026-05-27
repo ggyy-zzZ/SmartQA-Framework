@@ -68,7 +68,7 @@ public class CompanyClarificationAdvisor {
             CompanyCandidate c = candidates.get(i);
             lines.add(String.format(
                     "%d) %s（ID:%s，状态:%s）",
-                    i + 1, c.companyName(), c.companyId(), c.status()
+                    i + 1, c.displayLabel(), c.anchorId(), c.status()
             ));
         }
         return String.join("\n", lines);

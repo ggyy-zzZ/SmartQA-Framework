@@ -1,5 +1,6 @@
 package com.qa.demo.qa.retrieval;
 
+import com.qa.demo.knowledge.EvidenceSchemaRegistry;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.domain.PersonNameParser;
 import jakarta.annotation.PostConstruct;
@@ -23,6 +24,7 @@ public class EmployeeBaseKnowledgeService {
     private static final Logger log = LoggerFactory.getLogger(EmployeeBaseKnowledgeService.class);
 
     private final QaAssistantProperties properties;
+    private final EvidenceSchemaRegistry evidenceSchemas;
 
     /**
      * name → employee id
@@ -39,8 +41,9 @@ public class EmployeeBaseKnowledgeService {
      */
     private final Map<Integer, EmployeeRecord> idToRecord = new HashMap<>();
 
-    public EmployeeBaseKnowledgeService(QaAssistantProperties properties) {
+    public EmployeeBaseKnowledgeService(QaAssistantProperties properties, EvidenceSchemaRegistry evidenceSchemas) {
         this.properties = properties;
+        this.evidenceSchemas = evidenceSchemas;
     }
 
     @PostConstruct
@@ -190,6 +193,16 @@ public class EmployeeBaseKnowledgeService {
                 properties.getBusinessMysqlUsername(),
                 properties.getBusinessMysqlPassword()
         );
+    }
+
+  /**
+     * 面向生成的员工身份证据（字段名由 evidence schema 定义，不含内部 ID）。
+     */
+    public String formatIdentityEvidence(EmployeeRecord record) {
+        if (record == null) {
+            return "";
+        }
+        return evidenceSchemas.formatEmployeeIdentity(record.name(), record.anotherName());
     }
 
     public record EmployeeRecord(int id, String name, String anotherName) {

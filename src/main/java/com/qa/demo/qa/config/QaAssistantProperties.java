@@ -194,10 +194,15 @@ public class QaAssistantProperties {
      */
     private String structuredIngestJobLogPath = "";
 
-    /**
-     * 外部服务超时（毫秒）：Neo4j 连接。
-     */
     private int neo4jConnectTimeoutMs = 5000;
+
+    /**
+     * DeepSeek API 配置（备用模型）
+     */
+    private String deepseekApiUrl = "https://api.deepseek.com/v1/chat/completions";
+    private String deepseekApiKey = "";
+    private String deepseekModel = "deepseek-chat";
+    private int deepseekTimeoutMs = 60000;
 
     /**
      * 外部服务超时（毫秒）：Neo4j 查询。
@@ -780,5 +785,37 @@ public class QaAssistantProperties {
 
     public void setEnableScheduledSync(boolean enableScheduledSync) {
         this.enableScheduledSync = enableScheduledSync;
+    }
+
+    public String getDeepseekApiUrl() {
+        return deepseekApiUrl;
+    }
+
+    public void setDeepseekApiUrl(String deepseekApiUrl) {
+        this.deepseekApiUrl = deepseekApiUrl;
+    }
+
+    public String getDeepseekApiKey() {
+        return deepseekApiKey;
+    }
+
+    public void setDeepseekApiKey(String deepseekApiKey) {
+        this.deepseekApiKey = deepseekApiKey == null ? "" : deepseekApiKey.trim();
+    }
+
+    public String getDeepseekModel() {
+        return deepseekModel;
+    }
+
+    public void setDeepseekModel(String deepseekModel) {
+        this.deepseekModel = deepseekModel;
+    }
+
+    public int getDeepseekTimeoutMs() {
+        return deepseekTimeoutMs;
+    }
+
+    public void setDeepseekTimeoutMs(int deepseekTimeoutMs) {
+        this.deepseekTimeoutMs = deepseekTimeoutMs;
     }
 }

@@ -138,7 +138,7 @@ public class SqlPersonRoleRetriever {
                     String personId = safe(rs.getString("person_id"));
                     String person = personNameById.getOrDefault(parseIntSafe(personId), personName);
                     String snippet = "人员=" + person + "; 角色=" + roleName + "; 人员ID=" + personId;
-                    chunks.add(new ContextChunk(
+                    chunks.add(ContextChunk.ofCompany(
                             companyId.isBlank() ? "unknown" : companyId,
                             companyName.isBlank() ? "unknown" : companyName,
                             "person_role",
@@ -328,20 +328,13 @@ public class SqlPersonRoleRetriever {
     private ContextChunk buildEmployeeNotFoundChunk(String personName) {
         String et = personRoleEmployeeTablePhysical();
         String snippet = "表「" + et + "」未匹配到人员：" + personName + "。建议确认姓名是否准确，或提供工号/别名。";
-        return new ContextChunk("employee_not_found", et, "person_lookup", snippet, 18.0, "mysql-employee-precheck");
+        return ContextChunk.ofSystem("employee_not_found", "person_lookup", snippet, 18.0, "mysql-employee-precheck");
     }
 
     private ContextChunk buildNoRoleHitChunk(String personName) {
         String et = personRoleEmployeeTablePhysical();
         String snippet = "已在表「" + et + "」命中人员：" + personName + "，但在公司内部角色字段未查到关联记录。";
-        return new ContextChunk(
-                "person_role_empty",
-                personRoleCompanyTablePhysical(),
-                "person_role",
-                snippet,
-                17.0,
-                "mysql-person-role-empty"
-        );
+        return ContextChunk.ofSystem("person_role_empty", "person_role", snippet, 17.0, "mysql-person-role-empty");
     }
 
     private String buildPlaceholders(int size) {

@@ -33,7 +33,7 @@ public class QaAnswerFallbackService {
         lines.add("已找到与问题相关的知识片段，要点如下：");
         for (int i = 0; i < Math.min(evidence.size(), 4); i++) {
             ContextChunk c = evidence.get(i);
-            lines.add(String.format("%d) %s：已命中相关片段。", i + 1, c.companyName()));
+            lines.add(String.format("%d) %s：已命中相关片段。", i + 1, c.displayLabel()));
         }
         lines.add("提示：稍后重试可获取更完整、可读性更高的说明。");
         return String.join("\n", lines);

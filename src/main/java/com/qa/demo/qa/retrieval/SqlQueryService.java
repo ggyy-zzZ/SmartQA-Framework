@@ -253,7 +253,7 @@ public class SqlQueryService {
                     }
                     String snippet = "row=" + flattenRow(row);
                     double score = 20.0 - rowIndex * 0.5;
-                    chunks.add(new ContextChunk(
+                    chunks.add(ContextChunk.ofCompany(
                             companyId,
                             companyName,
                             "sql_query",

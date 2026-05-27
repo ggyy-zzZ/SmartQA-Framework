@@ -1,5 +1,7 @@
 package com.qa.demo.qa.answer;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qa.demo.knowledge.EvidenceSchemaRegistry;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
@@ -15,7 +17,7 @@ class QaAnswerGateServiceTest {
     @Test
     void rejectsEmptyEvidence() {
         QaAssistantProperties props = baseProps();
-        QaAnswerGateService gate = new QaAnswerGateService(props);
+        QaAnswerGateService gate = new QaAnswerGateService(props, schemas());
         var decision = gate.evaluate(new IntentDecision("vector", 0.9, "test"), List.of());
         assertFalse(decision.allowGenerate());
         assertFalse(decision.canAnswer());
@@ -24,8 +26,8 @@ class QaAnswerGateServiceTest {
     @Test
     void allowsWhenScoreAboveThreshold() {
         QaAssistantProperties props = baseProps();
-        QaAnswerGateService gate = new QaAnswerGateService(props);
-        var evidence = List.of(new ContextChunk("1", "A公司", "字段", "片段", 5.0, "test"));
+        QaAnswerGateService gate = new QaAnswerGateService(props, schemas());
+        var evidence = List.of(ContextChunk.ofCompany("1", "A公司", "字段", "片段", 5.0, "test"));
         var decision = gate.evaluate(new IntentDecision("vector", 0.9, "test"), evidence);
         assertTrue(decision.allowGenerate());
         assertTrue(decision.canAnswer());
@@ -35,10 +37,14 @@ class QaAnswerGateServiceTest {
     void rejectsLowTopScore() {
         QaAssistantProperties props = baseProps();
         props.setAnswerGateMinTopScore(10.0);
-        QaAnswerGateService gate = new QaAnswerGateService(props);
-        var evidence = List.of(new ContextChunk("1", "A公司", "字段", "片段", 2.0, "test"));
+        QaAnswerGateService gate = new QaAnswerGateService(props, schemas());
+        var evidence = List.of(ContextChunk.ofCompany("1", "A公司", "字段", "片段", 2.0, "test"));
         var decision = gate.evaluate(new IntentDecision("vector", 0.9, "test"), evidence);
         assertFalse(decision.allowGenerate());
+    }
+
+    private static EvidenceSchemaRegistry schemas() {
+        return new EvidenceSchemaRegistry(new ObjectMapper());
     }
 
     private static QaAssistantProperties baseProps() {

@@ -79,7 +79,7 @@ public class PersonClarificationAdvisor {
         if (chunk == null) {
             return false;
         }
-        return "employee_not_found".equals(chunk.companyId())
+        return "employee_not_found".equals(chunk.anchorId())
                 || (chunk.snippet() != null && chunk.snippet().contains("未匹配到人员"));
     }
 }

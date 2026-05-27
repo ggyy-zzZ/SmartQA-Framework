@@ -1,6 +1,7 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.domain.PersonAliasIdentityParser;
 import com.qa.demo.qa.domain.PersonNameParser;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.retrieval.EmployeeBaseKnowledgeService;
@@ -34,10 +35,41 @@ public class PersonNameResolver {
     }
 
     public PersonNameResolution resolve(String rawPersonName, List<ContextChunk> learned, String roleFocus) {
-        if (rawPersonName == null || rawPersonName.isBlank()) {
+        return resolve(rawPersonName, learned, roleFocus, null);
+    }
+
+    public PersonNameResolution resolve(
+            String rawPersonName,
+            List<ContextChunk> learned,
+            String roleFocus,
+            String question
+    ) {
+        String seed = rawPersonName == null ? "" : rawPersonName.trim();
+        if (question != null && !question.isBlank()) {
+            String fromIdentity = PersonAliasIdentityParser.resolveCanonicalPerson(question, employeeBaseKnowledge);
+            if (!fromIdentity.isBlank()) {
+                seed = fromIdentity;
+            }
+        }
+        if (seed.isBlank()) {
             return PersonNameResolution.resolved("");
         }
-        String trimmed = rawPersonName.trim();
+        String trimmed = seed;
+        if (question != null && !question.isBlank()) {
+            for (String token : PersonAliasIdentityParser.extractMentionedPersonTokens(question)) {
+                String aliasResolved = activeLearningService.resolvePersonAlias(token, learned);
+                if (!aliasResolved.equals(token)) {
+                    return withEmployeeId(aliasResolved);
+                }
+                Integer id = employeeBaseKnowledge.resolveToEmployeeId(token);
+                if (id != null) {
+                    EmployeeBaseKnowledgeService.EmployeeRecord record = employeeBaseKnowledge.getEmployeeById(id);
+                    if (record != null && record.name() != null && !record.name().isBlank()) {
+                        return withEmployeeId(record.name().trim());
+                    }
+                }
+            }
+        }
         String fromLearning = activeLearningService.resolvePersonAlias(trimmed, learned);
         if (!fromLearning.equals(trimmed)) {
             return withEmployeeId(fromLearning);

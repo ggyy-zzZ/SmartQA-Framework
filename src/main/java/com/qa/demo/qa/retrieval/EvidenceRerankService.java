@@ -129,12 +129,14 @@ public class EvidenceRerankService {
             ContextChunk original = candidates.get(index);
             double score = Math.max(relevance * 25.0, original.score());
             reranked.add(new ContextChunk(
-                    original.companyId(),
-                    original.companyName(),
+                    original.anchorId(),
+                    original.displayLabel(),
+                    original.entityKind(),
                     original.field(),
                     original.snippet(),
                     score,
-                    original.source() + "+rerank"
+                    original.source() + "+rerank",
+                    original.evidenceSchema()
             ));
         }
         if (reranked.isEmpty()) {
@@ -145,8 +147,8 @@ public class EvidenceRerankService {
 
     private static String buildDocumentText(ContextChunk chunk) {
         StringBuilder sb = new StringBuilder();
-        if (chunk.companyName() != null && !chunk.companyName().isBlank()) {
-            sb.append("公司:").append(chunk.companyName()).append("\n");
+        if (chunk.displayLabel() != null && !chunk.displayLabel().isBlank()) {
+            sb.append("公司:").append(chunk.displayLabel()).append("\n");
         }
         if (chunk.field() != null && !chunk.field().isBlank()) {
             sb.append("字段:").append(chunk.field()).append("\n");

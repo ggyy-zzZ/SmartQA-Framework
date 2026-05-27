@@ -151,7 +151,7 @@ public class GraphContextService {
             if (snippet.isBlank()) {
                 snippet = "证照=" + safeList(record, "certificates");
             }
-            chunks.add(new ContextChunk(
+            chunks.add(ContextChunk.ofCompany(
                     safeString(record, "companyId"),
                     safeString(record, "companyName"),
                     field,
@@ -326,7 +326,7 @@ public class GraphContextService {
                 snippet = "状态=" + safeString(record, "status");
             }
             double score = 18.0 + Math.min(4.0, companyName.length() / 10.0);
-            chunks.add(new ContextChunk(
+            chunks.add(ContextChunk.ofCompany(
                     safeString(record, "companyId"),
                     companyName,
                     field,
@@ -411,7 +411,7 @@ public class GraphContextService {
             if (snippet.isBlank()) {
                 snippet = "状态=" + safeString(record, "status");
             }
-            chunks.add(new ContextChunk(
+            chunks.add(ContextChunk.ofCompany(
                     safeString(record, "companyId"),
                     safeString(record, "companyName"),
                     field,

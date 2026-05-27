@@ -177,7 +177,7 @@ public class ActiveLearningService {
                         if (score <= 0.0) {
                             continue;
                         }
-                        ContextChunk chunk = new ContextChunk(
+                        ContextChunk chunk = ContextChunk.ofCompany(
                                 knowledgeId == null ? "" : knowledgeId,
                                 title == null || title.isBlank() ? "主动学习知识" : title,
                                 "scope=" + normalizeScope(rowScope) + ";type=" + (sourceType == null ? "active_learning" : sourceType),
@@ -197,7 +197,7 @@ public class ActiveLearningService {
         Set<String> dedupe = new HashSet<>();
         for (ScoredChunk item : scored) {
             ContextChunk chunk = item.chunk();
-            String key = chunk.companyId() + "|" + chunk.snippet();
+            String key = chunk.anchorId() + "|" + chunk.snippet();
             if (dedupe.contains(key)) {
                 continue;
             }
@@ -275,7 +275,7 @@ public class ActiveLearningService {
             if (c == null || !"active_learning".equals(c.source())) {
                 continue;
             }
-            String blob = joinNonBlank(c.snippet(), c.companyName());
+            String blob = joinNonBlank(c.snippet(), c.displayLabel());
             if (blob.isBlank()) {
                 continue;
             }

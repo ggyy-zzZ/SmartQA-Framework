@@ -180,7 +180,7 @@ public class QaAskFlowService {
         if (QaScopes.ENTERPRISE.equals(scope) && retrievalPlan.appliedLearningRewrite()) {
             evidence.removeIf(c ->
                     "mysql-employee-precheck".equals(c.source())
-                            && "employee_not_found".equals(c.companyId())
+                            && "employee_not_found".equals(c.anchorId())
             );
         }
 
@@ -213,7 +213,7 @@ public class QaAskFlowService {
         } else {
             progress.onThinking("generation", "开始调用模型生成。", null);
             try {
-                answer = miniMaxClient.askWithEvidence(modelContextBlock, question, evidence);
+                answer = miniMaxClient.askWithEvidence(modelContextBlock, question, evidence, intentDecision);
                 route = retrievalSource + "_generate_llm";
             } catch (Exception ex) {
                 degraded = true;
