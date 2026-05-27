@@ -1,0 +1,209 @@
+{
+  "intentRules": {
+    "personNamePatterns": {
+      "beforeAction": [
+        "([\\u4e00-\\u9fa5]{2,4})\\s*(负责|管|监管|保管|执行)"
+      ],
+      "beforeResign": [
+        "([\\u4e00-\\u9fa5]{2,4})\\s*离职"
+      ],
+      "leadingName": [
+        "^([\\u4e00-\\u9fa5]{2,3})(?=[，,。；;：:？?！!、\\s]|离职|负责|管|是|在|的|有)"
+      ],
+      "pronounBlocklist": [
+        "她", "他", "它", "其", "这", "那", "谁", "哪", "啥", "什"
+      ],
+      "honorificSuffixes": [
+        "先生", "女士", "小姐", "老师", "经理", "总监", "总裁", "董事", "总", "工"
+      ]
+    },
+    "queryTypeConditions": [
+      {
+        "id": "person_certificate_list",
+        "description": "人物证照列表查询",
+        "keywords": [
+          "证照", "许可证", "执照", "资质", "备案", "证书",
+          "哪些", "负责", "管", "列出", "多少", "什么", "啥", "涉及"
+        ],
+        "queryType": "person_certificate_list",
+        "requiresPerson": true,
+        "weakQueryTypes": [
+          "company_certificate",
+          "company_profile",
+          "semantic",
+          "unknown",
+          "mixed"
+        ]
+      },
+      {
+        "id": "person_role_list",
+        "description": "人物角色列表查询",
+        "keywords": [
+          "任职", "担任", "职位", "角色", "负责", "管", "监管"
+        ],
+        "queryType": "person_role_list",
+        "requiresPerson": true,
+        "weakQueryTypes": [
+          "semantic",
+          "unknown",
+          "mixed"
+        ]
+      },
+      {
+        "id": "company_certificate",
+        "description": "企业证照查询",
+        "keywords": [
+          "证照", "许可证", "执照", "资质", "备案", "证书", "印章", "公章"
+        ],
+        "queryType": "company_certificate",
+        "requiresPerson": false,
+        "weakQueryTypes": [
+          "semantic",
+          "unknown",
+          "mixed"
+        ]
+      },
+      {
+        "id": "company_profile",
+        "description": "企业概况查询",
+        "keywords": [
+          "总部", "母公司", "总公司", "简介", "概况", "基本情况"
+        ],
+        "queryType": "company_profile",
+        "requiresPerson": false,
+        "weakQueryTypes": [
+          "semantic",
+          "unknown",
+          "mixed"
+        ]
+      },
+      {
+        "id": "entity_correction",
+        "description": "实体纠偏查询",
+        "keywords": [
+          "不对", "不是", "错了", "错啦", "说错了",
+          "你搞错了", "搞错了", "纠正一下", "更正",
+          "应该是", "其实是", "正确是", "应当是"
+        ],
+        "queryType": "entity_correction",
+        "requiresPerson": false
+      }
+    ]
+  },
+  "dataSources": {
+    "structuredQueries": [
+      {
+        "id": "person_stewardship",
+        "description": "人物职责查询 - 从业务库查询人员的监管/保管/执行角色",
+        "table": "certificate_management",
+        "deleteflagColumn": "deleteflag",
+        "entityIdColumn": "id",
+        "displayNameColumns": ["company_name"],
+        "roleColumns": [
+          {
+            "column": "supervisors",
+            "label": "监管人",
+            "type": "comma_separated_ids"
+          },
+          {
+            "column": "certification_keepers",
+            "label": "保管人",
+            "type": "comma_separated_ids"
+          },
+          {
+            "column": "executors",
+            "label": "执行人",
+            "type": "comma_separated_ids"
+          }
+        ],
+        "enumMappings": {
+          "cert_type": "certificate_type"
+        },
+        "statusNormalization": {
+          "0": "有效",
+          "1": "失效",
+          "有效": "有效",
+          "无效": "失效",
+          "失效": "失效"
+        },
+        "supplementalTables": ["company", "employee"]
+      },
+      {
+        "id": "company_info",
+        "description": "公司信息查询",
+        "table": "company",
+        "deleteflagColumn": "deleteflag",
+        "entityIdColumn": "company_id",
+        "displayNameColumns": ["company_name"],
+        "roleColumns": [],
+        "enumMappings": {},
+        "statusNormalization": {},
+        "supplementalTables": []
+      },
+      {
+        "id": "employee_info",
+        "description": "员工信息查询",
+        "table": "employee",
+        "deleteflagColumn": "deleteflag",
+        "entityIdColumn": "id",
+        "displayNameColumns": ["name"],
+        "roleColumns": [],
+        "enumMappings": {},
+        "statusNormalization": {},
+        "supplementalTables": ["company"]
+      }
+    ]
+  },
+  "correctionRules": [
+    {
+      "id": "company_correction",
+      "description": "公司纠偏 - 用户纠正公司名称时过滤到精确匹配",
+      "prefixPatterns": [
+        "^不对", "^不是", "^错了", "^错啦", "^说错了",
+        "^你搞错了", "^搞错了", "^纠正一下", "^更正",
+        "^应该是", "^其实是", "^正确是", "^应当是"
+      ],
+      "entityPattern": "(?:总部|母公司|总公司|主体)(?:是|为|：|:)?\\s*([^，,。；;？?！!\\n]+(?:有限公司|有限责任公司|股份有限公司|分公司|公司))",
+      "entityType": "company",
+      "suffixes": [
+        "有限公司",
+        "有限责任公司",
+        "股份有限公司",
+        "分公司",
+        "公司"
+      ],
+      "relatedKeywords": [
+        "分公司", "子公司", "下属",
+        "有哪些公司", "哪些主体", "分支机构"
+      ]
+    }
+  ],
+  "retrievalThresholds": {
+    "sourceThresholds": [
+      {
+        "source": "mysql-person-certificate",
+        "queryType": "person_certificate_list",
+        "minCount": 1,
+        "description": "MySQL证照记录>=1时截断"
+      },
+      {
+        "source": "mysql-structured-person_stewardship",
+        "queryType": "person_certificate_list",
+        "minCount": 1,
+        "description": "配置化结构化查询返回>=1时截断"
+      }
+    ]
+  },
+  "outputContracts": {
+    "default": "当证据为多条并列记录时，须列全证据中的条目，结论中的条数须与证据条数一致；仅使用证据片段里已出现的属性名与取值作答。",
+    "list_query": "【输出契约 list_query】证据为多条记录时：须列全全部条目，可先给总数再列清单；结论条数与证据条数一致。",
+    "structured_row": "【输出契约 structured_row】证据为结构化键值行时：按行逐条列出片段中的各属性；不得用证据未出现的维度作答；若用户追问「类型」且上下文为相关主题，仅列类型名称（可去重）。",
+    "identity_resolution": "【输出契约 identity_resolution】当证据片段呈现同一实体的身份属性对照时，可据该片段回答不同称呼是否指同一实体；已有对照时勿称「证据未包含」。",
+    "entity_correction": "【输出契约 entity_correction】用户在否定上一轮并给出正确主体/事实时：先简短确认纠偏（勿用「是的」附和错误前提）；仅回答用户本轮关心的维度；未明确要求时不要罗列关联主体；不得从分支状态推断主体状态。",
+    "canonical_fact": "【输出契约 canonical_fact】证据来源为 canonical 时：可据片段中的属性直接作答；勿与结构化库字段矛盾；若仅有常识而无其它明细，说明「常识层已确认，详细字段需另查」。",
+    "person_certificate_list": "【输出契约 person_certificate_list】证据为结构化键值行时：按行逐条列出片段中的各属性（如类型、所属组织、职责角色、状态等）；不得用证据未出现的维度作答；若用户追问「类型」且上下文为证照主题，仅列类型名称（可去重）。",
+    "person_role_list": "【输出契约 person_role_list】证据为多条任职/角色记录时：须列全全部主体或角色归属，可先给总数再列清单；结论条数与证据条数一致。",
+    "company_certificate": "【输出契约 company_certificate】证据为公司证照记录时：须列全全部证照类型及状态；结论条数与证据条数一致。",
+    "company_profile": "【输出契约 company_profile】证据为公司概况时：按问句关心的维度回答；不得罗列无关属性。"
+  }
+}

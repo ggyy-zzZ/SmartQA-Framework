@@ -42,7 +42,7 @@ public class QaAskOrchestrator {
 
     private void runStream(SseEmitter emitter, String question, String scope, String conversationId, Boolean followUpFlag) {
         try {
-            sseStreamSupport.emitThinking(emitter, "start", "请求已接收，开始处理问题。");
+            sseStreamSupport.emitThinking(emitter, "start", "已接收问题，开始分析。");
             QaAskProgress progress = (phase, message, details) ->
                     sseStreamSupport.emitThinking(emitter, phase, message, details);
             Map<String, Object> response = qaAskFlowService.run(question, scope, conversationId, followUpFlag, progress);

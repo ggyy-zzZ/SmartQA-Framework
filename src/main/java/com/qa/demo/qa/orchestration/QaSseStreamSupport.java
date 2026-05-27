@@ -33,7 +33,7 @@ public class QaSseStreamSupport {
         Map<String, Object> meta = new HashMap<>(response);
         meta.remove("answer");
         emitter.send(SseEmitter.event().name("meta").data(meta));
-        emitThinking(emitter, "result", "已生成结果，开始流式返回。");
+        emitThinking(emitter, "result", "分析完成，开始输出回答。");
         if (shouldStreamDelta && !answer.isBlank()) {
             for (String chunk : splitAnswer(answer, 28)) {
                 emitter.send(SseEmitter.event().name("delta").data(chunk));

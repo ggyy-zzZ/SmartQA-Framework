@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Business Rules Configuration",
+  "description": "业务规则配置 - 将硬编码的业务逻辑外置到配置文件",
+  "type": "object",
+  "required": ["intentRules", "dataSources", "outputContracts"],
+  "properties": {
+    "intentRules": {
+      "description": "意图识别规则配置",
+      "type": "object",
+      "properties": {
+        "personNamePatterns": {
+          "description": "人名提取正则模式",
+          "type": "object",
+          "properties": {
+            "beforeAction": {
+              "description": "人名+动作词模式 (e.g., '张三负责')",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "beforeResign": {
+              "description": "人名+离职模式 (e.g., '张三离职')",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "leadingName": {
+              "description": "问句开头人名模式",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "pronounBlocklist": {
+              "description": "代词/通用词黑名单 - 不应被识别为人名",
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "queryTypeConditions": {
+          "description": "查询类型推断条件",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "keywords": {
+                "description": "话术关键词",
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "queryType": { "type": "string" },
+              "requiresPerson": { "type": "boolean" },
+              "weakQueryTypes": {
+                "description": "弱查询类型 - 匹配时会被覆盖",
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dataSources": {
+      "description": "数据源配置 - 表结构、字段映射、查询逻辑",
+      "type": "object",
+      "properties": {
+        "structuredQueries": {
+          "description": "结构化数据查询配置",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "table": { "type": "string" },
+              "deleteflagColumn": { "type": "string" },
+              "entityIdColumn": { "type": "string" },
+              "displayNameColumn": { "type": "string" },
+              "roleColumns": {
+                "description": "角色列配置",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": { "type": "string" },
+                    "label": { "type": "string" },
+                    "type": { "type": "string" }
+                  }
+                }
+              },
+              "enumMappings": {
+                "description": "枚举值映射 (type -> label)",
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              },
+              "statusNormalization": {
+                "description": "状态值归一化",
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              },
+              "supplementalTables": {
+                "description": "补充查询的关联表",
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "correctionRules": {
+      "description": "纠偏规则配置",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "prefixPatterns": {
+            "description": "纠偏前缀模式",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "entityPattern": {
+            "description": "实体提取模式",
+            "type": "string"
+          },
+          "entityType": {
+            "description": "实体类型: company, person, etc.",
+            "type": "string"
+          },
+          "suffixes": {
+            "description": "公司名后缀",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "relatedKeywords": {
+            "description": "关联主体关键词 - 有这些词时不收窄",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "retrievalThresholds": {
+      "description": "检索截断阈值配置",
+      "type": "object",
+      "properties": {
+        "sourceThresholds": {
+          "description": "按数据源配置截断阈值",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" },
+              "queryType": { "type": "string" },
+              "minCount": { "type": "integer" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "outputContracts": {
+      "description": "输出契约配置",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -11,8 +11,6 @@ SmartQA-Framework is a knowledge base Q&A assistant system built with Spring Boo
 ```bash
 ./mvnw.cmd clean                    # Clean build artifacts
 ./mvnw.cmd compile                 # Compile the project
-./mvnw.cmd test                     # Run unit tests
-./mvnw.cmd test -Dtest=ClassName    # Run single test class
 ./mvnw.cmd package                 # Build JAR
 ./mvnw.cmd spring-boot:run         # Run application (port 8080)
 ./mvnw.cmd spring-boot:run -Dspring-boot.run.arguments="--server.port=8081"  # Run on custom port

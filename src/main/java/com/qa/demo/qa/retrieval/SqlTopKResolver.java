@@ -19,7 +19,7 @@ public class SqlTopKResolver {
     public int resolve(String question, RetrievalPlan plan) {
         int base = Math.max(1, properties.getMysqlTopK());
         if (plan != null && plan.personRoleList()) {
-            return Math.min(Math.max(base, plan.finalEvidenceTopK()), 20);
+            return Math.max(base, plan.finalEvidenceTopK());
         }
         if (question == null || question.isBlank()) {
             return base;

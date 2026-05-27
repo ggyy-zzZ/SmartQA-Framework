@@ -21,7 +21,7 @@ public record RetrievalPlan(
                 finalEvidenceTopK,
                 personRoleList,
                 personCertificateList,
-                personRoleList,
+                false,
                 personRoleList || personCertificateList
         );
     }

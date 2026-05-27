@@ -9,6 +9,6 @@
   "product_lines": 43,
   "shareholders": 223,
   "legal_rep_roles": 253,
-  "output_jsonl": "D:\\project\\ai\\demo\\data\\knowledge\\enterprise_mysql_clean.jsonl",
-  "output_text": "D:\\project\\ai\\demo\\data\\knowledge\\enterprise_mysql_compiled.txt"
+  "output_jsonl": "data\\knowledge\\enterprise_mysql_clean.jsonl",
+  "output_text": "data\\knowledge\\enterprise_mysql_compiled.txt"
 }

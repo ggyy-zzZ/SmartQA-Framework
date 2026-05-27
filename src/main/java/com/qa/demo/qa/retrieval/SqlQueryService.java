@@ -72,10 +72,27 @@ public class SqlQueryService {
         if (personRoleRetriever.skipForPlan(plan)) {
             return List.of();
         }
-        int limitedTopK = Math.max(1, Math.min(sqlTopKResolver.resolve(question, plan), 20));
+        int limitedTopK = Math.max(1, sqlTopKResolver.resolve(question, plan));
         String cacheKey = question + ":" + limitedTopK + ":" + planKey(plan);
         IntentDecision intent = plan != null ? plan.intent() : null;
         return retrieveTopChunksCached(cacheKey, question, limitedTopK, intent);
+    }
+
+    private List<ContextChunk> retrievePersonRoleFromBusinessDb(
+            String question,
+            IntentDecision intent,
+            int topK
+    ) {
+        try (Connection connection = DriverManager.getConnection(
+                properties.getBusinessMysqlUrl(),
+                properties.getBusinessMysqlUsername(),
+                properties.getBusinessMysqlPassword())
+        ) {
+            return personRoleRetriever.retrieve(connection, question, intent, topK);
+        } catch (Exception e) {
+            log.debug("retrievePersonRoleFromBusinessDb failed: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     private static String planKey(RetrievalPlan plan) {
@@ -88,16 +105,16 @@ public class SqlQueryService {
 
     @Cacheable(value = CacheConfig.RETRIEVAL_CACHE, key = "#root.method.name + ':' + #key")
     public List<ContextChunk> retrieveTopChunksCached(String key, String question, int topK, IntentDecision intent) {
-        int limitedTopK = Math.max(1, Math.min(topK, 20));
+        int limitedTopK = Math.max(1, Math.min(topK, 64));
+        List<ContextChunk> roleChunks = retrievePersonRoleFromBusinessDb(question, intent, limitedTopK);
+        if (!roleChunks.isEmpty()) {
+            return roleChunks;
+        }
         try (Connection connection = DriverManager.getConnection(
                 properties.getMysqlUrl(),
                 properties.getMysqlUsername(),
                 properties.getMysqlPassword())
         ) {
-            List<ContextChunk> roleChunks = personRoleRetriever.retrieve(connection, question, intent, limitedTopK);
-            if (!roleChunks.isEmpty()) {
-                return roleChunks;
-            }
             String schemaSummary = loadSchemaSummary(connection, properties.getMysqlSchema(), 18);
             if (schemaSummary.isBlank()) {
                 return List.of();

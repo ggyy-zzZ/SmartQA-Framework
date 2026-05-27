@@ -4,6 +4,8 @@ import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
+import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
+import com.qa.demo.qa.domain.ScenarioRuleEngine;
 import com.qa.demo.qa.domain.PersonAliasIdentityParser;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.retrieval.personcert.PersonCertificateQueryService;
@@ -14,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -37,6 +40,7 @@ public class QaRetrievalPipeline {
     private final EvidenceRerankService evidenceRerankService;
     private final RetrievalPlanFactory retrievalPlanFactory;
     private final SqlTopKResolver sqlTopKResolver;
+    private final ScenarioRuleEngine ruleEngine;
     private final PersonCertificateQueryService personCertificateQueryService;
 
     public QaRetrievalPipeline(
@@ -52,6 +56,7 @@ public class QaRetrievalPipeline {
             EvidenceRerankService evidenceRerankService,
             RetrievalPlanFactory retrievalPlanFactory,
             SqlTopKResolver sqlTopKResolver,
+            ScenarioRuleEngine ruleEngine,
             PersonCertificateQueryService personCertificateQueryService
     ) {
         this.graphContextService = graphContextService;
@@ -66,6 +71,7 @@ public class QaRetrievalPipeline {
         this.evidenceRerankService = evidenceRerankService;
         this.retrievalPlanFactory = retrievalPlanFactory;
         this.sqlTopKResolver = sqlTopKResolver;
+        this.ruleEngine = ruleEngine;
         this.personCertificateQueryService = personCertificateQueryService;
     }
 
@@ -87,30 +93,45 @@ public class QaRetrievalPipeline {
         base = appendSupplementalTables(base, question, plan);
         base = appendEmployeeBaseInfo(base, question, plan);
         base = appendPersonIdentityEvidence(base, question, intent);
-        long graphPersonRoles = base.evidence().stream()
-                .filter(c -> c != null && "neo4j-person-role".equals(c.source()))
-                .count();
-        if (plan.personRoleList() && graphPersonRoles >= 3) {
-            return trimEvidence(
-                    base.evidence(),
-                    plan.finalEvidenceTopK(),
-                    "unified_graph_person_role"
-            );
-        }
-        long personCertRows = base.evidence().stream()
-                .filter(c -> c != null && "mysql-person-certificate".equals(c.source()))
-                .count();
-        if (plan.personCertificateList() && personCertRows >= 1) {
-            return trimEvidence(
-                    base.evidence(),
-                    plan.finalEvidenceTopK(),
-                    "unified_person_certificate"
-            );
-        }
+
+        // 使用配置化的截断阈值
+        String queryType = intent != null ? intent.queryType() : "";
+        base = applyConfigDrivenTruncation(base, queryType);
+
+        List<ContextChunk> forRerank = applyCorrectionNarrow(question, base.evidence(), "company");
         List<ContextChunk> reranked = evidenceRerankService.rerank(
-                question, base.evidence(), plan.finalEvidenceTopK());
+                question, forRerank, plan.finalEvidenceTopK());
         String source = "unified_rerank_" + evidenceRerankService.activeProvider();
         return new RetrievalResult(source, reranked);
+    }
+
+    private RetrievalResult applyConfigDrivenTruncation(RetrievalResult base, String queryType) {
+        if ("person_role_list".equalsIgnoreCase(queryType)) {
+            return base;
+        }
+        List<ContextChunk> evidence = base.evidence();
+        int topK = 20; // default
+
+        // 按数据源检查是否需要截断
+        java.util.Map<String, Long> sourceCounts = new java.util.HashMap<>();
+        for (ContextChunk c : evidence) {
+            if (c != null && c.source() != null) {
+                sourceCounts.merge(c.source(), 1L, Long::sum);
+            }
+        }
+
+        for (java.util.Map.Entry<String, Long> entry : sourceCounts.entrySet()) {
+            String source = entry.getKey();
+            long count = entry.getValue();
+            if (ruleEngine.shouldTruncate(source, queryType, count)) {
+                int threshold = ruleEngine.getTruncationThreshold(source, queryType);
+                if (evidence.size() > threshold) {
+                    evidence = new ArrayList<>(evidence.subList(0, (int) threshold));
+                    return new RetrievalResult("truncated_" + base.retrievalSource(), evidence);
+                }
+            }
+        }
+        return base;
     }
 
     public RetrievalResult retrieveByIntent(String intent, String question) throws IOException {
@@ -134,7 +155,65 @@ public class QaRetrievalPipeline {
         RetrievalResult withPersonCert = appendPersonCertificateIfNeeded(base, plan);
         RetrievalResult withSupplemental = appendSupplementalTables(withPersonCert, question, plan);
         RetrievalResult withEmployee = appendEmployeeBaseInfo(withSupplemental, question, plan);
-        return appendPersonIdentityEvidence(withEmployee, question, intent);
+        RetrievalResult withIdentity = appendPersonIdentityEvidence(withEmployee, question, intent);
+        List<ContextChunk> narrowed = applyCorrectionNarrow(question, withIdentity.evidence(), "company");
+        if (narrowed == withIdentity.evidence()) {
+            return withIdentity;
+        }
+        return new RetrievalResult(withIdentity.retrievalSource() + "+correction_narrow", narrowed);
+    }
+
+    /**
+     * 配置化的纠偏收窄。
+     */
+    private List<ContextChunk> applyCorrectionNarrow(String question, List<ContextChunk> evidence, String entityType) {
+        if (evidence == null || evidence.isEmpty()) {
+            return evidence;
+        }
+        if (!ruleEngine.isCorrectionQuestion(question)) {
+            return evidence;
+        }
+        if (ruleEngine.asksRelatedEntities(question, entityType)) {
+            return evidence;
+        }
+        String target = ruleEngine.extractCorrectedEntityName(question, entityType);
+        if (target == null || target.isBlank()) {
+            return evidence;
+        }
+        if (target.contains("分公司")) {
+            return evidence;
+        }
+        List<ContextChunk> exact = new ArrayList<>();
+        for (ContextChunk chunk : evidence) {
+            if (chunk == null || !ContextChunk.KIND_COMPANY.equals(chunk.entityKind())) {
+                continue;
+            }
+            String label = canonicalCompanyLabel(chunk.displayLabel());
+            if (label.equals(target) || normalizeSpaces(label).equals(normalizeSpaces(target))) {
+                exact.add(chunk);
+            }
+        }
+        return exact.isEmpty() ? evidence : exact;
+    }
+
+    private static String canonicalCompanyLabel(String displayLabel) {
+        if (displayLabel == null || displayLabel.isBlank()) {
+            return "";
+        }
+        String s = displayLabel.trim();
+        int idIdx = s.indexOf("（ID ");
+        if (idIdx > 0) {
+            s = s.substring(0, idIdx).trim();
+        }
+        int asciiIdIdx = s.indexOf("(ID ");
+        if (asciiIdIdx > 0) {
+            s = s.substring(0, asciiIdIdx).trim();
+        }
+        return s;
+    }
+
+    private static String normalizeSpaces(String s) {
+        return s == null ? "" : s.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -345,7 +424,9 @@ public class QaRetrievalPipeline {
                 || lower.contains("记得");
         double maxLearned = learned.stream().mapToDouble(ContextChunk::score).max().orElse(0);
         boolean strongLearnedHit = maxLearned >= 2.5;
-        return shortQuestion || memoryLike || strongLearnedHit;
+        boolean hasCanonical = learned.stream()
+                .anyMatch(c -> c != null && EnterpriseCanonicalFactsRegistry.SOURCE.equals(c.source()));
+        return shortQuestion || memoryLike || strongLearnedHit || hasCanonical;
     }
 
     /**
@@ -531,6 +612,37 @@ public class QaRetrievalPipeline {
         return merged;
     }
 
+    private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan) {
+        IntentDecision intent = plan.intent();
+        if (intent == null || !intent.isPersonCertificateListQuery() || !intent.hasPersonFocus()) {
+            return;
+        }
+        int maxRows = Math.max(properties.getRecallGraphTopK() * 8, 64);
+        appendUnique(merged, personCertificateQueryService.retrieve(
+                intent.personEmployeeId(),
+                intent.personName(),
+                maxRows
+        ));
+    }
+
+    private RetrievalResult appendPersonCertificateIfNeeded(RetrievalResult base, RetrievalPlan plan) {
+        if (!plan.personCertificateList()) {
+            return base;
+        }
+        List<ContextChunk> merged = new ArrayList<>(base.evidence());
+        appendPersonCertificateEvidence(merged, plan);
+        long personCertRows = merged.stream()
+                .filter(c -> c != null && "mysql-person-certificate".equals(c.source()))
+                .count();
+        if (personCertRows >= 1) {
+            return trimEvidence(merged, plan.finalEvidenceTopK(), "person_certificate_" + base.retrievalSource());
+        }
+        if (merged.size() == base.evidence().size()) {
+            return base;
+        }
+        return new RetrievalResult("person_certificate_partial_" + base.retrievalSource(), merged);
+    }
+
     private static void appendUnique(List<ContextChunk> merged, List<ContextChunk> items) {
         if (items == null || items.isEmpty()) {
             return;
@@ -634,38 +746,8 @@ public class QaRetrievalPipeline {
         }
     }
 
-    private RetrievalResult appendPersonCertificateIfNeeded(RetrievalResult base, RetrievalPlan plan) {
-        if (!plan.personCertificateList()) {
-            return base;
-        }
-        List<ContextChunk> merged = new ArrayList<>(base.evidence());
-        appendPersonCertificateEvidence(merged, plan);
-        long personCertRows = merged.stream()
-                .filter(c -> c != null && "mysql-person-certificate".equals(c.source()))
-                .count();
-        if (personCertRows >= 1) {
-            return trimEvidence(merged, plan.finalEvidenceTopK(), "person_certificate_" + base.retrievalSource());
-        }
-        if (merged.size() == base.evidence().size()) {
-            return base;
-        }
-        return new RetrievalResult("person_certificate_partial_" + base.retrievalSource(), merged);
-    }
-
-    private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan) {
-        IntentDecision intent = plan.intent();
-        if (intent == null || !intent.isPersonCertificateListQuery() || !intent.hasPersonFocus()) {
-            return;
-        }
-        int maxRows = Math.max(properties.getRecallGraphTopK() * 8, 64);
-        appendUnique(merged, personCertificateQueryService.retrieve(
-                intent.personEmployeeId(),
-                intent.personName(),
-                maxRows
-        ));
-    }
-
     private boolean shouldIncludeCompiledDocs(RetrievalPlan plan, String question) {
+        // 配置化判断：证照/印章相关查询时包含文档
         if (plan.intent() != null && plan.intent().isPersonCertificateListQuery()) {
             return true;
         }
@@ -675,11 +757,11 @@ public class QaRetrievalPipeline {
         if (question == null || question.isBlank()) {
             return false;
         }
-        return question.contains("证照")
-                || question.contains("许可证")
-                || question.contains("备案")
-                || question.contains("印章")
-                || question.contains("公章");
+        // 使用配置化的规则引擎判断
+        return ruleEngine.isQueryType(question, null, "person_certificate_list") ||
+               ruleEngine.isQueryType(question, null, "company_certificate") ||
+               question.contains("证照") || question.contains("许可证") ||
+               question.contains("备案") || question.contains("印章") || question.contains("公章");
     }
 
     private List<ContextChunk> safeDocumentRetrieve(String question) {

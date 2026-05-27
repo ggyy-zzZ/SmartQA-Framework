@@ -1,6 +1,9 @@
 package com.qa.demo.qa.response;
 
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.ScenarioRuleEngine;
+import com.qa.demo.qa.domain.ConversationSessionSupport;
 import com.qa.demo.qa.retrieval.GraphContextService;
 import org.springframework.stereotype.Service;
 
@@ -25,9 +28,11 @@ public class QaConversationService {
 
     private final ConcurrentHashMap<String, Conversation> store = new ConcurrentHashMap<>();
     private final GraphContextService graphContextService;
+    private final ScenarioRuleEngine ruleEngine;
 
-    public QaConversationService(GraphContextService graphContextService) {
+    public QaConversationService(GraphContextService graphContextService, ScenarioRuleEngine ruleEngine) {
         this.graphContextService = graphContextService;
+        this.ruleEngine = ruleEngine;
     }
 
     private static final Pattern DIGIT_ONLY = Pattern.compile("^\\d{1,2}$");
@@ -39,10 +44,12 @@ public class QaConversationService {
             String answer,
             List<String> focusCompanyNames,
             List<String> personCandidates,
-            String focusPersonName
+            String focusPersonName,
+            String lastQueryType,
+            String lastIntent
     ) {
         public ConversationTurn(String turnId, String question, String answer, List<String> focusCompanyNames) {
-            this(turnId, question, answer, focusCompanyNames, List.of(), "");
+            this(turnId, question, answer, focusCompanyNames, List.of(), "", "", "");
         }
 
         public ConversationTurn(
@@ -52,7 +59,18 @@ public class QaConversationService {
                 List<String> focusCompanyNames,
                 List<String> personCandidates
         ) {
-            this(turnId, question, answer, focusCompanyNames, personCandidates, "");
+            this(turnId, question, answer, focusCompanyNames, personCandidates, "", "", "");
+        }
+
+        public ConversationTurn(
+                String turnId,
+                String question,
+                String answer,
+                List<String> focusCompanyNames,
+                List<String> personCandidates,
+                String focusPersonName
+        ) {
+            this(turnId, question, answer, focusCompanyNames, personCandidates, focusPersonName, "", "");
         }
     }
 
@@ -88,95 +106,87 @@ public class QaConversationService {
         return guessFollowUp(question, prior);
     }
 
+    /**
+     * 多轮追问时的检索问句：保留用户原问，并附上最近对话摘要，由意图/检索层理解指代，不做业务模板改写。
+     */
     public String buildRetrievalQuestion(String rawQuestion, List<ConversationTurn> prior, boolean followUp) {
         if (rawQuestion == null || rawQuestion.isBlank() || !followUp || prior.isEmpty()) {
             return rawQuestion == null ? "" : rawQuestion.trim();
         }
-        ConversationTurn last = prior.get(prior.size() - 1);
-        String trimmed = rawQuestion.trim();
-
-        if ((isCertificateFollowUpQuestion(trimmed) || isCertificateTypeOnlyFollowUp(trimmed))
-                && isPersonCentricQuestion(last.question())) {
-            String person = resolveFocusPerson(last);
-            if (!person.isBlank()) {
-                return person + " 负责的资质证照具体有哪些（含证照类型名称）";
-            }
-            return "[上文] 用户："
-                    + truncateOneLine(last.question(), 220)
-                    + "\n助手："
-                    + truncateOneLine(last.answer(), 400)
-                    + "\n[追问] "
-                    + trimmed;
-        }
-
-        if (last.focusCompanyNames() != null && !last.focusCompanyNames().isEmpty()
-                && !(isCertificateFollowUpQuestion(trimmed) && isPersonCentricQuestion(last.question()))) {
-            StringBuilder sb = new StringBuilder(trimmed);
-            for (String name : last.focusCompanyNames()) {
-                if (name != null && !name.isBlank()) {
-                    sb.append(' ').append(name.trim());
-                }
-            }
-            return sb.toString();
-        }
-        return "[上文] 用户："
-                + truncateOneLine(last.question(), 220)
-                + "\n助手："
-                + truncateOneLine(last.answer(), 400)
-                + "\n[追问] "
-                + trimmed;
+        return formatRetrievalWithDialogContext(rawQuestion.trim(), prior);
     }
 
-    /** 追问「类型有哪些」等，承接上一轮人物证照主题（问句可能不含「证照」二字）。 */
-    public boolean isCertificateTypeOnlyFollowUp(String question) {
-        if (question == null || question.isBlank()) {
-            return false;
+    private String formatRetrievalWithDialogContext(String followUpQuestion, List<ConversationTurn> prior) {
+        int start = Math.max(0, prior.size() - 2);
+        StringBuilder sb = new StringBuilder();
+        for (int i = start; i < prior.size(); i++) {
+            ConversationTurn turn = prior.get(i);
+            sb.append("[上文] 用户：").append(truncateOneLine(turn.question(), 220)).append('\n');
+            sb.append("助手：").append(truncateOneLine(turn.answer(), 400)).append('\n');
         }
-        String t = question.strip();
-        if (t.length() > 20) {
-            return false;
-        }
-        return containsAny(t, "类型", "哪些", "什么", "啥", "具体", "涉及")
-                && !containsAny(t, "主体", "实体类型", "有限责任公司");
+        sb.append("[追问] ").append(followUpQuestion);
+        appendSessionAnchorsIfPresent(sb, prior.get(prior.size() - 1));
+        return sb.toString();
     }
 
-    public boolean isCertificateFollowUpQuestion(String question) {
-        if (question == null || question.isBlank()) {
-            return false;
+    private void appendSessionAnchorsIfPresent(StringBuilder sb, ConversationTurn last) {
+        if (last == null) {
+            return;
         }
-        String t = question.strip();
-        boolean mentionsCert = containsAny(t, "证照", "许可证", "执照", "资质", "证书", "备案");
-        boolean detailAsk = containsAny(t, "具体", "详细", "分别", "列举", "哪些", "什么", "啥");
-        return mentionsCert && (detailAsk || t.length() <= 18);
-    }
-
-    public boolean isPersonCentricQuestion(String question) {
-        if (question == null || question.isBlank()) {
-            return false;
+        String person = resolveFocusPerson(last);
+        String company = ConversationSessionSupport.primaryCompanyFocus(last.focusCompanyNames());
+        if (person.isBlank() && company.isBlank()) {
+            return;
         }
-        String t = question.strip();
-        return containsAny(t, "管", "负责", "保管", "监管", "执行")
-                && (containsAny(t, "证照", "许可证", "执照", "资质", "印章")
-                || PERSON_BEFORE_GUAN.matcher(t).find());
+        sb.append('\n');
+        if (!company.isBlank()) {
+            sb.append("[会话锚点] 主体：").append(company).append('\n');
+        }
+        if (!person.isBlank()) {
+            sb.append("[会话锚点] 人物：").append(person).append('\n');
+        }
     }
 
     public String buildModelContextBlock(List<ConversationTurn> prior, boolean followUp) {
+        return buildModelContextBlock(prior, followUp, "");
+    }
+
+    public String buildModelContextBlock(List<ConversationTurn> prior, boolean followUp, String currentQuestion) {
         if (!followUp || prior.isEmpty()) {
             return "";
         }
-        ConversationTurn last = prior.get(prior.size() - 1);
+        int start = Math.max(0, prior.size() - 2);
         StringBuilder sb = new StringBuilder();
         sb.append("[对话上下文]\n");
-        sb.append("上一轮用户问：").append(truncateOneLine(last.question(), 300)).append('\n');
-        sb.append("上一轮助手答：").append(truncateOneLine(last.answer(), 500)).append('\n');
-        if (last.focusCompanyNames() != null && !last.focusCompanyNames().isEmpty()) {
-            sb.append("上一轮涉及对象（名称）：").append(String.join("、", last.focusCompanyNames())).append('\n');
+        for (int i = start; i < prior.size(); i++) {
+            ConversationTurn turn = prior.get(i);
+            int n = i - start + 1;
+            sb.append("第").append(n).append("轮用户问：").append(truncateOneLine(turn.question(), 260)).append('\n');
+            sb.append("第").append(n).append("轮助手答：").append(truncateOneLine(turn.answer(), 380)).append('\n');
+        }
+        ConversationTurn last = prior.get(prior.size() - 1);
+        String primaryCompany = ConversationSessionSupport.primaryCompanyFocus(last.focusCompanyNames());
+        if (!primaryCompany.isBlank()) {
+            sb.append("会话关注主体：").append(primaryCompany).append('\n');
         }
         String person = resolveFocusPerson(last);
         if (!person.isBlank()) {
-            sb.append("上一轮关注人物：").append(person).append('\n');
+            sb.append("会话关注人物：").append(person).append('\n');
         }
-        sb.append("说明：当前为接续追问，请结合上文理解指代（如「它」「这家」「上面」「具体是哪些证照」等），仍只依据本轮证据作答；若追问证照明细，应延续上一轮人物/主题，勿改答无关公司列表。\n");
+        if (last.lastQueryType() != null && !last.lastQueryType().isBlank()) {
+            sb.append("上一轮查询形态：").append(last.lastQueryType()).append('\n');
+        }
+        if (ruleEngine.isCorrectionQuestion(currentQuestion)) {
+            String correctedName = ruleEngine.extractCorrectedEntityName(currentQuestion, "company");
+            if (correctedName != null && !correctedName.isBlank()) {
+                sb.append("本轮用户纠偏：请以「").append(correctedName).append("」为正确主体，否定上一轮错误指代。\n");
+            }
+            sb.append("说明：用户在纠正上一轮的对象或事实，勿用「是的」开头附和；先简短确认纠偏，再仅就用户本轮关心的维度、且仅依据证据作答；"
+                    + "若用户未问分公司/下属清单，不要展开罗列关联主体。\n");
+        } else {
+            sb.append("说明：当前为接续追问，请结合上文理解指代（如「它」「这家」「上面」「这些主体」等），"
+                    + "仍只依据本轮证据作答，勿脱离上文范围改答无关对象。\n");
+        }
         return sb.toString();
     }
 
@@ -200,7 +210,7 @@ public class QaConversationService {
             List<ContextChunk> evidence,
             List<String> personCandidates
     ) {
-        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, "");
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, "", "", "");
     }
 
     public void appendTurn(
@@ -212,6 +222,21 @@ public class QaConversationService {
             List<ContextChunk> evidence,
             List<String> personCandidates,
             String focusPersonName
+    ) {
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, focusPersonName, "", "");
+    }
+
+    public void appendTurn(
+            String conversationId,
+            String scope,
+            String turnId,
+            String question,
+            String answer,
+            List<ContextChunk> evidence,
+            List<String> personCandidates,
+            String focusPersonName,
+            String lastIntent,
+            String lastQueryType
     ) {
         Conversation c = store.get(conversationId);
         if (c == null) {
@@ -232,7 +257,9 @@ public class QaConversationService {
                 answer == null ? "" : answer,
                 names,
                 persons,
-                person
+                person,
+                lastQueryType == null ? "" : lastQueryType.trim(),
+                lastIntent == null ? "" : lastIntent.trim()
         ));
         touch(conversationId);
         trimConversationsIfNeeded();
@@ -292,8 +319,15 @@ public class QaConversationService {
         if (t.isEmpty()) {
             return false;
         }
-        if (graphContextService.hasExplicitCompanyHint(t)) {
+        if (ruleEngine.isCorrectionQuestion(t) && !prior.isEmpty()) {
+            return true;
+        }
+        if (graphContextService.hasExplicitCompanyHint(t)
+                && !ConversationSessionSupport.shouldTreatAsFollowUpDespiteCompanyHint(t, true, ruleEngine.isCorrectionQuestion(t))) {
             return false;
+        }
+        if (ConversationSessionSupport.isContinuationUtterance(t)) {
+            return true;
         }
         boolean pronounLike = containsAny(t,
                 "它", "其", "该", "这家", "那家", "上面", "刚才", "之前", "接着", "继续", "再", "还有", "同样",
@@ -301,21 +335,6 @@ public class QaConversationService {
                 "啥", "呢", "吗", "嘛", "多少", "几个", "哪边", "那边", "这边");
         if (pronounLike) {
             return true;
-        }
-        if (isCertificateFollowUpQuestion(t)) {
-            for (int i = prior.size() - 1; i >= 0; i--) {
-                String pq = prior.get(i).question();
-                if (isPersonCentricQuestion(pq) || containsAny(pq, "证照", "许可证", "执照", "资质")) {
-                    return true;
-                }
-            }
-        }
-        if (isCertificateTypeOnlyFollowUp(t)) {
-            for (int i = prior.size() - 1; i >= 0; i--) {
-                if (isPersonCentricQuestion(prior.get(i).question())) {
-                    return true;
-                }
-            }
         }
         boolean shortWithoutEntity = t.length() <= 22 && !graphContextService.hasExplicitCompanyHint(t);
         return shortWithoutEntity && priorHasCompanyNames(prior);
@@ -352,6 +371,25 @@ public class QaConversationService {
         return false;
     }
 
+    public IntentDecision enrichIntentForFollowUp(
+            IntentDecision current,
+            List<ConversationTurn> prior,
+            boolean followUp,
+            String question
+    ) {
+        if (!followUp || prior.isEmpty() || current == null) {
+            return current;
+        }
+        ConversationTurn last = prior.get(prior.size() - 1);
+        return ConversationSessionSupport.inheritIntentSlots(
+                current,
+                question,
+                last.question(),
+                last.lastQueryType(),
+                resolveFocusPerson(last)
+        );
+    }
+
     private static List<String> extractFocusCompanyNames(List<ContextChunk> evidence) {
         if (evidence == null || evidence.isEmpty()) {
             return List.of();
@@ -365,16 +403,28 @@ public class QaConversationService {
             if (name == null || name.isBlank()) {
                 continue;
             }
-            String trimmed = name.trim();
+            String trimmed = ConversationSessionSupport.stripCompanyIdSuffix(name.trim());
             if (trimmed.equalsIgnoreCase("unknown") || trimmed.equals("employee")) {
                 continue;
             }
             seen.add(trimmed);
-            if (seen.size() >= 4) {
+            if (seen.size() >= 6) {
                 break;
             }
         }
-        return new ArrayList<>(seen);
+        List<String> parents = new ArrayList<>();
+        List<String> branches = new ArrayList<>();
+        for (String n : seen) {
+            if (n.contains("分公司")) {
+                branches.add(n);
+            } else {
+                parents.add(n);
+            }
+        }
+        if (!parents.isEmpty()) {
+            return parents.size() > 2 ? parents.subList(0, 2) : parents;
+        }
+        return branches.isEmpty() ? List.of() : branches.subList(0, Math.min(2, branches.size()));
     }
 
     private void touch(String id) {

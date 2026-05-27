@@ -1,6 +1,7 @@
 package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import org.springframework.stereotype.Service;
 
@@ -18,9 +19,14 @@ import java.util.List;
 public class QaRetrievalOrchestrator {
 
     private final ActiveLearningService activeLearningService;
+    private final EnterpriseCanonicalFactsRegistry canonicalFactsRegistry;
 
-    public QaRetrievalOrchestrator(ActiveLearningService activeLearningService) {
+    public QaRetrievalOrchestrator(
+            ActiveLearningService activeLearningService,
+            EnterpriseCanonicalFactsRegistry canonicalFactsRegistry
+    ) {
         this.activeLearningService = activeLearningService;
+        this.canonicalFactsRegistry = canonicalFactsRegistry;
     }
 
     /**
@@ -33,6 +39,7 @@ public class QaRetrievalOrchestrator {
                 userQuestion,
                 learnedFromUserQuery
         );
+        augmented = canonicalFactsRegistry.augmentQuestionForStructuredRetrieval(augmented, learnedFromUserQuery);
         if (augmented == null) {
             augmented = base;
         }

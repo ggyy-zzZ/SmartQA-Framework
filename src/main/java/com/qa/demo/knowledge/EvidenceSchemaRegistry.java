@@ -106,4 +106,3 @@ public class EvidenceSchemaRegistry {
     private record Loaded(Map<String, Map<String, String>> schemaFields, Map<String, String> sourceToSchema) {
     }
 }
-WWWWWWWWWWWW

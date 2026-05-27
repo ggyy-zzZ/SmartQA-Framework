@@ -13,11 +13,22 @@
         "legalName": "姓名",
         "alias": "花名"
       }
+    },
+    "enterprise_fact_v1": {
+      "fields": {
+        "factType": "事实类型",
+        "subject": "主体",
+        "value": "说明",
+        "legalName": "姓名",
+        "alias": "别称",
+        "role": "角色"
+      }
     }
   },
   "sourceToSchema": {
     "mysql-person-certificate": "person_certificate_v1",
     "employee_identity": "employee_identity_v1",
-    "employee_base": "employee_identity_v1"
+    "employee_base": "employee_identity_v1",
+    "enterprise_canonical": "enterprise_fact_v1"
   }
 }

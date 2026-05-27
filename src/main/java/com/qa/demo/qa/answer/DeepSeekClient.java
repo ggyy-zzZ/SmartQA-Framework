@@ -73,7 +73,7 @@ public class DeepSeekClient {
             List<ContextChunk> chunks,
             IntentDecision intent
     ) {
-        String systemPrompt = buildEvidenceSystemPrompt(intent, chunks);
+        String systemPrompt = buildEvidenceSystemPrompt(intent, chunks, question);
         String userContent = buildEvidenceUserContent(contextBlock, question, chunks);
 
         Map<String, Object> body = Map.of(
@@ -153,9 +153,9 @@ public class DeepSeekClient {
         }
     }
 
-    private String buildEvidenceSystemPrompt(IntentDecision intent, List<ContextChunk> chunks) {
+    private String buildEvidenceSystemPrompt(IntentDecision intent, List<ContextChunk> chunks, String question) {
         String base = KnowledgeAssistantPrompts.minimaxEvidenceSystemPrompt(properties.getAssistantName());
-        return outputContracts.composeSystemPrompt(base, intent, chunks);
+        return outputContracts.composeSystemPrompt(base, intent, chunks, question);
     }
 
     private static String buildEvidenceUserContent(String contextBlock, String question, List<ContextChunk> chunks) {
@@ -188,7 +188,7 @@ public class DeepSeekClient {
             IntentDecision intent,
             StreamListener listener
     ) {
-        String systemPrompt = buildEvidenceSystemPrompt(intent, chunks);
+        String systemPrompt = buildEvidenceSystemPrompt(intent, chunks, question);
         String userContent = buildEvidenceUserContent(contextBlock, question, chunks);
 
         Map<String, Object> body = Map.of(

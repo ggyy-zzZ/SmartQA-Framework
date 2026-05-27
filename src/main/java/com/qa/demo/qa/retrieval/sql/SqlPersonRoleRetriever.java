@@ -55,7 +55,7 @@ public class SqlPersonRoleRetriever {
     }
 
     public boolean skipForPlan(RetrievalPlan plan) {
-        return plan != null && plan.personRoleList();
+        return false;
     }
 
     public List<ContextChunk> retrieve(
@@ -67,18 +67,19 @@ public class SqlPersonRoleRetriever {
         if (!isPersonRoleQuestion(question, intent)) {
             return List.of();
         }
+        String roleFocus = intent != null && intent.roleFocus() != null && !intent.roleFocus().isBlank()
+                ? intent.roleFocus().toLowerCase(Locale.ROOT)
+                : "any";
+        List<EmployeeHit> employees = resolveEmployees(connection, question, intent);
         String personName = entityExtractor.resolvePersonName(question, intent);
         if (personName.isBlank()) {
             personName = extractPersonNameRegexFallback(question);
         }
-        if (personName.isBlank()) {
-            return List.of();
-        }
-        List<EmployeeHit> employees = findEmployeesByName(connection, personName, 20);
         if (employees.isEmpty()) {
             return List.of(buildEmployeeNotFoundChunk(personName));
         }
-        Map<String, String> existingRoleColumns = loadExistingRoleColumns(connection);
+        Map<String, String> existingRoleColumns = filterColumnsByRoleFocus(
+                loadExistingRoleColumns(connection), roleFocus);
         if (existingRoleColumns.isEmpty()) {
             return List.of();
         }
@@ -163,7 +164,7 @@ public class SqlPersonRoleRetriever {
             return false;
         }
         if (intent != null && intent.isPersonRoleListQuery()) {
-            return false;
+            return intent.hasPersonFocus() || intent.hasPersonEmployeeId();
         }
         if (!lexicon.containsAny(question, lexicon.sqlPersonRoleKeywords())) {
             return false;
@@ -254,6 +255,65 @@ public class SqlPersonRoleRetriever {
         return idx;
     }
 
+    private List<EmployeeHit> resolveEmployees(Connection connection, String question, IntentDecision intent) {
+        if (intent != null && intent.hasPersonEmployeeId()) {
+            int id = intent.personEmployeeId();
+            EmployeeHit hit = findEmployeeById(connection, id);
+            if (hit != null) {
+                return List.of(hit);
+            }
+        }
+        String personName = entityExtractor.resolvePersonName(question, intent);
+        if (personName.isBlank()) {
+            personName = extractPersonNameRegexFallback(question);
+        }
+        if (personName.isBlank()) {
+            return List.of();
+        }
+        return findEmployeesByName(connection, personName, 20);
+    }
+
+    private EmployeeHit findEmployeeById(Connection connection, int employeeId) {
+        String sql = """
+                SELECT id, name
+                FROM %s
+                WHERE id = ?
+                LIMIT 1
+                """.formatted(employeeTableQuoted());
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, employeeId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new EmployeeHit(rs.getInt("id"), safe(rs.getString("name")));
+                }
+            }
+        } catch (Exception e) {
+            log.debug("findEmployeeById failed: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private Map<String, String> filterColumnsByRoleFocus(Map<String, String> columns, String roleFocus) {
+        if (columns == null || columns.isEmpty() || roleFocus == null || "any".equalsIgnoreCase(roleFocus)) {
+            return columns == null ? Map.of() : columns;
+        }
+        Map<String, String> filtered = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : columns.entrySet()) {
+            String key = entry.getKey().toLowerCase(Locale.ROOT);
+            boolean match = switch (roleFocus) {
+                case "legal_rep" -> key.contains("legal_rep");
+                case "director" -> key.contains("director") || key.contains("chairman");
+                case "supervisor" -> key.contains("supervisor");
+                case "shareholder" -> key.contains("shareholder");
+                default -> true;
+            };
+            if (match) {
+                filtered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return filtered;
+    }
+
     private Map<String, String> loadExistingRoleColumns(Connection connection) {
         String sql = """
                 SELECT column_name
@@ -264,7 +324,7 @@ public class SqlPersonRoleRetriever {
         Map<String, String> columns = new LinkedHashMap<>();
         Map<String, String> labels = roleColumnCatalog.columnLabels();
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, properties.getMysqlSchema());
+            ps.setString(1, businessSchemaFromUrl());
             ps.setString(2, personRoleCompanyTablePhysical());
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -315,7 +375,7 @@ public class SqlPersonRoleRetriever {
                 LIMIT 1
                 """;
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, properties.getMysqlSchema());
+            ps.setString(1, businessSchemaFromUrl());
             ps.setString(2, personRoleCompanyTablePhysical());
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
@@ -323,6 +383,20 @@ public class SqlPersonRoleRetriever {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private String businessSchemaFromUrl() {
+        String url = properties.getBusinessMysqlUrl();
+        if (url == null || url.isBlank()) {
+            return properties.getMysqlSchema();
+        }
+        int slash = url.lastIndexOf('/');
+        if (slash < 0 || slash >= url.length() - 1) {
+            return properties.getMysqlSchema();
+        }
+        String tail = url.substring(slash + 1);
+        int q = tail.indexOf('?');
+        return q > 0 ? tail.substring(0, q) : tail;
     }
 
     private ContextChunk buildEmployeeNotFoundChunk(String personName) {

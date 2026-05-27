@@ -259,9 +259,51 @@
         }
         .thinking-box {
             min-height: 120px;
-            max-height: 320px;
+            max-height: 420px;
             overflow-y: auto;
             color: #cbd5e1;
+        }
+        .thinking-analysis { display: flex; flex-direction: column; gap: 14px; }
+        .thinking-section {
+            border: 1px solid rgba(129, 140, 248, 0.2);
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.45);
+            padding: 10px 12px;
+        }
+        .thinking-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 8px;
+        }
+        .thinking-line {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #cbd5e1;
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .thinking-line:last-child { margin-bottom: 0; }
+        .thinking-evidence-item {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid var(--border);
+        }
+        .thinking-evidence-head {
+            font-size: 12px;
+            font-weight: 500;
+            color: #a5b4fc;
+            margin-bottom: 4px;
+        }
+        .thinking-evidence-body {
+            font-size: 12px;
+            line-height: 1.55;
+            color: #94a3b8;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         .thinking-timeline { position: relative; padding-left: 4px; }
         .thinking-step {
@@ -525,14 +567,14 @@
             </div>
         </div>
         <div class="result-block">
-            <div class="panel-label">思考过程（实时 · 可核对路由与证据）</div>
+            <div class="panel-label">思考过程（问题拆解 · 检索依据 · 可展开证据片段）</div>
             <div class="thinking-panel">
                 <div class="thinking-toolbar">
                     <span id="thinkingStepLabel">等待提问</span>
                     <div class="thinking-progress-wrap" title="处理进度">
                         <div id="thinkingProgressBar" class="thinking-progress-bar"></div>
                     </div>
-                    <label class="check" style="margin:0;"><input type="checkbox" id="showThinkingDetail" checked> 显示技术细节</label>
+                    <label class="check" style="margin:0;"><input type="checkbox" id="showThinkingDetail" checked> 显示证据片段</label>
                 </div>
                 <div id="thinking" class="thinking-box">
                     <div class="thinking-placeholder">等待你的提问…</div>
@@ -697,8 +739,60 @@
     }
 
     function thinkingProgressPercent() {
+        const sections = collectAnalysisSections();
+        if (sections.length > 0) {
+            return Math.min(95, Math.round((sections.length / 5) * 100));
+        }
         const n = thinkingSteps.length + (modelThinkingBuffer ? 1 : 0);
         return Math.min(95, Math.round((n / 12) * 100));
+    }
+
+    function collectAnalysisSections() {
+        const sections = [];
+        for (const step of thinkingSteps) {
+            const d = step.details;
+            if (d && d.view === "analysis" && Array.isArray(d.sections)) {
+                for (const sec of d.sections) {
+                    if (sec && sec.title) {
+                        sections.push(sec);
+                    }
+                }
+            }
+        }
+        return sections;
+    }
+
+    function renderAnalysisDocument(isStreaming) {
+        const sections = collectAnalysisSections();
+        let html = '<div class="thinking-analysis">';
+        for (const sec of sections) {
+            html += '<div class="thinking-section">';
+            html += '<div class="thinking-section-title">' + escapeHtml(sec.title || "") + "</div>";
+            const lines = sec.lines || [];
+            for (const line of lines) {
+                if (line) {
+                    html += '<div class="thinking-line">' + escapeHtml(String(line)) + "</div>";
+                }
+            }
+            if (showThinkingDetailEl.checked && Array.isArray(sec.items)) {
+                for (const item of sec.items) {
+                    html += '<div class="thinking-evidence-item">'
+                        + '<div class="thinking-evidence-head">' + escapeHtml(item.head || "") + "</div>"
+                        + '<div class="thinking-evidence-body">' + escapeHtml(item.body || "") + "</div>"
+                        + "</div>";
+                }
+            }
+            html += "</div>";
+        }
+        html += "</div>";
+        if (modelThinkingBuffer && showThinkingDetailEl.checked) {
+            html += '<div class="thinking-model-box">'
+                + '<div class="thinking-model-head">模型内部推理（可选参考，非最终证据）</div>'
+                + '<div class="thinking-model-body' + (isStreaming ? " streaming" : "") + '">'
+                + escapeHtml(modelThinkingBuffer)
+                + "</div></div>";
+        }
+        return html;
     }
 
     function normalizeSseBuffer(text) {
@@ -721,13 +815,22 @@
 
     function renderThinkingLive(isStreaming) {
         const total = thinkingSteps.length;
-        thinkingStepLabelEl.textContent = total > 0
-            ? ("已记录 " + total + " 步" + (modelThinkingBuffer ? " · 模型推理中" : ""))
-            : "正在连接…";
-        thinkingProgressBarEl.style.width = (total > 0 ? thinkingProgressPercent() : 8) + "%";
+        const analysisSections = collectAnalysisSections();
+        thinkingStepLabelEl.textContent = analysisSections.length > 0
+            ? ("分析 " + analysisSections.length + " 段" + (modelThinkingBuffer ? " · 模型推理中" : ""))
+            : (total > 0
+                ? ("已记录 " + total + " 步" + (modelThinkingBuffer ? " · 模型推理中" : ""))
+                : "正在连接…");
+        thinkingProgressBarEl.style.width = (total > 0 || modelThinkingBuffer ? thinkingProgressPercent() : 8) + "%";
 
         if (total === 0 && !modelThinkingBuffer) {
-            thinkingEl.innerHTML = '<div class="thinking-placeholder">正在检索与组织回答…</div>';
+            thinkingEl.innerHTML = '<div class="thinking-placeholder">正在理解问题并检索知识…</div>';
+            return;
+        }
+
+        if (analysisSections.length > 0) {
+            thinkingEl.innerHTML = renderAnalysisDocument(isStreaming);
+            thinkingEl.scrollTop = thinkingEl.scrollHeight;
             return;
         }
 
@@ -788,6 +891,16 @@
 
     function onMetaOrFinalSummary(data, label) {
         if (!data || typeof data !== "object") return;
+        if (collectAnalysisSections().length > 0) {
+            if (data.conversationId) {
+                qaConversationId = data.conversationId;
+                sessionStorage.setItem("qaConversationId", qaConversationId);
+                updateConversationHint();
+            }
+            thinkingProgressBarEl.style.width = "100%";
+            thinkingStepLabelEl.textContent = "分析完成，正在输出回答";
+            return;
+        }
         const details = {};
         ["intent", "queryType", "personName", "roleFocus", "confidence", "canAnswer",
             "retrievalSource", "rerankProvider", "route", "evidence"].forEach(k => {
