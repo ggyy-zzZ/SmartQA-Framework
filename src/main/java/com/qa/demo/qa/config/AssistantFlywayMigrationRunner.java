@@ -2,6 +2,7 @@ package com.qa.demo.qa.config;
 
 import com.zaxxer.hikari.HikariDataSource;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.output.MigrateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -37,13 +38,19 @@ public class AssistantFlywayMigrationRunner implements ApplicationRunner {
             ds.setUsername(properties.getMysqlUsername());
             ds.setPassword(properties.getMysqlPassword());
             ds.setMaximumPoolSize(1);
-            Flyway.configure()
+            MigrateResult result = Flyway.configure()
                     .dataSource(ds)
                     .locations("classpath:db/migration/assistant")
+                    .baselineOnMigrate(true)
                     .load()
                     .migrate();
+            log.info(
+                    "Assistant Flyway migrate OK: {} migrations applied, schema version={}",
+                    result.migrationsExecuted,
+                    result.targetSchemaVersion
+            );
         } catch (Exception e) {
-            log.warn("Assistant Flyway migrate failed (check MySQL and qa.assistant.flyway-enabled): {}", e.toString());
+            log.error("Assistant Flyway migrate failed (check MySQL assistant DB and qa.assistant.flyway-enabled): {}", e.toString());
         } finally {
             ds.close();
         }

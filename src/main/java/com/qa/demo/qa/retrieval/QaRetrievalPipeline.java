@@ -4,6 +4,7 @@ import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
+import com.qa.demo.qa.domain.EntityRef;
 import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
 import com.qa.demo.qa.domain.PersonAliasIdentityParser;

@@ -2,7 +2,6 @@ package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.CompanyCandidate;
-import com.qa.demo.qa.core.QaScopes;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -12,8 +11,7 @@ import java.util.Locale;
 /**
  * 歧义指代澄清：当问题中存在"我们公司"、"这家"等模糊指代时，先让用户澄清再检索。
  * <p>
- * 歧义短语列表从配置文件动态加载（qa.assistant.ambiguous-phrases.{scope}），
- * 支持按 scope（enterprise/personal）配置不同的模式。
+ * 歧义短语列表从配置文件动态加载（qa.assistant.ambiguous-phrases.{scope}）。
  */
 @Service
 public class CompanyClarificationAdvisor {
@@ -25,9 +23,6 @@ public class CompanyClarificationAdvisor {
     }
 
     public boolean needsClarification(String question, String scope) {
-        if (QaScopes.PERSONAL.equals(scope)) {
-            return false;
-        }
         if (question == null || question.isBlank()) {
             return false;
         }

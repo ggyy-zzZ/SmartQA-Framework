@@ -187,6 +187,75 @@ public class QaAssistantProperties {
      */
     private boolean enableScheduledSync = true;
 
+    /** EKSP 增量同步域（如 org_master） */
+    private String knowledgeSyncDomain = "org_master";
+
+    /** 首次/无水位时默认回溯小时数 */
+    private int knowledgeSyncDefaultSinceHours = 24;
+
+    /** 定时任务是否触发 EKSP incremental sync（Python 灌库） */
+    private boolean knowledgeSyncIncrementalScheduledEnabled = false;
+
+    /**
+     * 为 true 时先探测业务库水位（updated_at > since），有变更才跑增量；为 false 则按轮询间隔无条件增量（旧行为）。
+     */
+    private boolean knowledgeSyncWatermarkWatchOnly = true;
+
+    /** 自动同步轮询间隔（毫秒），仅在水位监测模式下作为 {@code @Scheduled} 间隔 */
+    private long knowledgeSyncPollIntervalMs = 60_000L;
+
+    /**
+     * 锚点表水位列（如 tdcomp.company 的 modifytime）；空则按候选列自动探测。
+     */
+    private String knowledgeSyncWatermarkColumn = "modifytime";
+
+    // ==================== CDC / Debezium 配置 ====================
+
+    /**
+     * 是否启用 Debezium CDC（替代水位 Polling）。
+     */
+    private boolean cdcEnabled = false;
+
+    /**
+     * CDC Kafka Bootstrap Servers。
+     */
+    private String cdcKafkaBootstrapServers = "localhost:9092";
+
+    /**
+     * CDC Consumer Group ID。
+     */
+    private String cdcKafkaGroupId = "demo-cdc-consumer";
+
+    /**
+     * Debezium 监听的数据库名（逗号分隔，如 tdcomp）。
+     */
+    private String cdcDatabaseIncludeList = "tdcomp";
+
+    /**
+     * Debezium 监听的表名（逗号分隔，如 tdcomp.company,tdcomp.employee）。
+     */
+    private String cdcTableIncludeList = "tdcomp.company,tdcomp.employee,tdcomp.branch,tdcomp.partner";
+
+    /**
+     * CDC 写入重试次数。
+     */
+    private int cdcMaxRetries = 3;
+
+    /**
+     * CDC 写入重试间隔（毫秒）。
+     */
+    private long cdcRetryDelayMs = 5000L;
+
+    /**
+     * CDC 目标库写入并行度。
+     */
+    private int cdcWriteParallelism = 4;
+
+    /**
+     * CDC 死信队列 Topic 名称。
+     */
+    private String cdcDltTopic = "cdc_dlt";
+
     /**
      * 清单 JSON 文件路径（仅运维配置本地路径）；含 {@code tables} 数组与可选 {@code jobName}。
      */
@@ -198,14 +267,6 @@ public class QaAssistantProperties {
     private String structuredIngestJobLogPath = "";
 
     private int neo4jConnectTimeoutMs = 5000;
-
-    /**
-     * DeepSeek API 配置（备用模型）
-     */
-    private String deepseekApiUrl = "https://api.deepseek.com/v1/chat/completions";
-    private String deepseekApiKey = "";
-    private String deepseekModel = "deepseek-chat";
-    private int deepseekTimeoutMs = 60000;
 
     /**
      * 外部服务超时（毫秒）：Neo4j 查询。
@@ -798,35 +859,125 @@ public class QaAssistantProperties {
         this.enableScheduledSync = enableScheduledSync;
     }
 
-    public String getDeepseekApiUrl() {
-        return deepseekApiUrl;
+    public String getKnowledgeSyncDomain() {
+        return knowledgeSyncDomain;
     }
 
-    public void setDeepseekApiUrl(String deepseekApiUrl) {
-        this.deepseekApiUrl = deepseekApiUrl;
+    public void setKnowledgeSyncDomain(String knowledgeSyncDomain) {
+        this.knowledgeSyncDomain = knowledgeSyncDomain;
     }
 
-    public String getDeepseekApiKey() {
-        return deepseekApiKey;
+    public int getKnowledgeSyncDefaultSinceHours() {
+        return knowledgeSyncDefaultSinceHours;
     }
 
-    public void setDeepseekApiKey(String deepseekApiKey) {
-        this.deepseekApiKey = deepseekApiKey == null ? "" : deepseekApiKey.trim();
+    public void setKnowledgeSyncDefaultSinceHours(int knowledgeSyncDefaultSinceHours) {
+        this.knowledgeSyncDefaultSinceHours = knowledgeSyncDefaultSinceHours;
     }
 
-    public String getDeepseekModel() {
-        return deepseekModel;
+    public boolean isKnowledgeSyncIncrementalScheduledEnabled() {
+        return knowledgeSyncIncrementalScheduledEnabled;
     }
 
-    public void setDeepseekModel(String deepseekModel) {
-        this.deepseekModel = deepseekModel;
+    public void setKnowledgeSyncIncrementalScheduledEnabled(boolean knowledgeSyncIncrementalScheduledEnabled) {
+        this.knowledgeSyncIncrementalScheduledEnabled = knowledgeSyncIncrementalScheduledEnabled;
     }
 
-    public int getDeepseekTimeoutMs() {
-        return deepseekTimeoutMs;
+    public boolean isKnowledgeSyncWatermarkWatchOnly() {
+        return knowledgeSyncWatermarkWatchOnly;
     }
 
-    public void setDeepseekTimeoutMs(int deepseekTimeoutMs) {
-        this.deepseekTimeoutMs = deepseekTimeoutMs;
+    public void setKnowledgeSyncWatermarkWatchOnly(boolean knowledgeSyncWatermarkWatchOnly) {
+        this.knowledgeSyncWatermarkWatchOnly = knowledgeSyncWatermarkWatchOnly;
+    }
+
+    public long getKnowledgeSyncPollIntervalMs() {
+        return knowledgeSyncPollIntervalMs;
+    }
+
+    public void setKnowledgeSyncPollIntervalMs(long knowledgeSyncPollIntervalMs) {
+        this.knowledgeSyncPollIntervalMs = knowledgeSyncPollIntervalMs;
+    }
+
+    public String getKnowledgeSyncWatermarkColumn() {
+        return knowledgeSyncWatermarkColumn;
+    }
+
+    public void setKnowledgeSyncWatermarkColumn(String knowledgeSyncWatermarkColumn) {
+        this.knowledgeSyncWatermarkColumn = knowledgeSyncWatermarkColumn;
+    }
+
+    // ==================== CDC / Debezium Getters & Setters ====================
+
+    public boolean isCdcEnabled() {
+        return cdcEnabled;
+    }
+
+    public void setCdcEnabled(boolean cdcEnabled) {
+        this.cdcEnabled = cdcEnabled;
+    }
+
+    public String getCdcKafkaBootstrapServers() {
+        return cdcKafkaBootstrapServers;
+    }
+
+    public void setCdcKafkaBootstrapServers(String cdcKafkaBootstrapServers) {
+        this.cdcKafkaBootstrapServers = cdcKafkaBootstrapServers;
+    }
+
+    public String getCdcKafkaGroupId() {
+        return cdcKafkaGroupId;
+    }
+
+    public void setCdcKafkaGroupId(String cdcKafkaGroupId) {
+        this.cdcKafkaGroupId = cdcKafkaGroupId;
+    }
+
+    public String getCdcDatabaseIncludeList() {
+        return cdcDatabaseIncludeList;
+    }
+
+    public void setCdcDatabaseIncludeList(String cdcDatabaseIncludeList) {
+        this.cdcDatabaseIncludeList = cdcDatabaseIncludeList;
+    }
+
+    public String getCdcTableIncludeList() {
+        return cdcTableIncludeList;
+    }
+
+    public void setCdcTableIncludeList(String cdcTableIncludeList) {
+        this.cdcTableIncludeList = cdcTableIncludeList;
+    }
+
+    public int getCdcMaxRetries() {
+        return cdcMaxRetries;
+    }
+
+    public void setCdcMaxRetries(int cdcMaxRetries) {
+        this.cdcMaxRetries = cdcMaxRetries;
+    }
+
+    public long getCdcRetryDelayMs() {
+        return cdcRetryDelayMs;
+    }
+
+    public void setCdcRetryDelayMs(long cdcRetryDelayMs) {
+        this.cdcRetryDelayMs = cdcRetryDelayMs;
+    }
+
+    public int getCdcWriteParallelism() {
+        return cdcWriteParallelism;
+    }
+
+    public void setCdcWriteParallelism(int cdcWriteParallelism) {
+        this.cdcWriteParallelism = cdcWriteParallelism;
+    }
+
+    public String getCdcDltTopic() {
+        return cdcDltTopic;
+    }
+
+    public void setCdcDltTopic(String cdcDltTopic) {
+        this.cdcDltTopic = cdcDltTopic;
     }
 }

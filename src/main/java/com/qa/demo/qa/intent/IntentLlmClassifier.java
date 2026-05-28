@@ -3,6 +3,7 @@ package com.qa.demo.qa.intent;
 import com.qa.demo.knowledge.KnowledgeAssistantPrompts;
 import com.qa.demo.qa.answer.MiniMaxClient;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.EntityRef;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
@@ -69,6 +70,26 @@ public class IntentLlmClassifier {
             throw new IllegalStateException("Invalid or unknown intent from LLM: " + normalized.intent());
         }
         return normalized;
+    }
+
+    /**
+     * 追问场景的意图解析：带会话上下文和结构化实体（含状态元数据）。
+     * <p>
+     * 注意：本方法不传递 status 字段给 LLM，而是通过 companyHints 传递公司列表。
+     * LLM 根据当前问题的语义自行判断使用哪些公司（如"非存续"由 LLM 理解）。
+     */
+    public IntentDecision classifyWithEntities(String currentQuestion, String priorQuestion, String priorQueryType,
+            String priorAnswer, String personName, List<EntityRef> companyEntities) throws Exception {
+        // 将 EntityRef 列表转换为公司名称列表（不传递 status）
+        List<String> companyHints = new ArrayList<>();
+        if (companyEntities != null) {
+            for (EntityRef ref : companyEntities) {
+                if (ref.name() != null && !ref.name().isBlank() && !companyHints.contains(ref.name())) {
+                    companyHints.add(ref.name());
+                }
+            }
+        }
+        return classifyWithContext(currentQuestion, priorQuestion, priorQueryType, priorAnswer, personName, companyHints);
     }
 
     private String buildFollowUpUserPrompt(String currentQuestion, String priorQuestion, String priorQueryType,

@@ -7,12 +7,13 @@ import argparse
 import hashlib
 import json
 import os
-import uuid
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import requests
+
+from sync_common import DEFAULT_DOMAIN, DEFAULT_ENTITY_TYPE, stable_point_id
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,8 +122,12 @@ def build_document(row: dict[str, Any]) -> str:
 
 
 def payload_from_row(row: dict[str, Any], doc_text: str) -> dict[str, Any]:
+    company_id = row.get("company_id")
     return {
-        "company_id": row.get("company_id"),
+        "domain": row.get("domain") or DEFAULT_DOMAIN,
+        "entity_type_key": DEFAULT_ENTITY_TYPE,
+        "entity_id": str(company_id) if company_id is not None else "",
+        "company_id": company_id,
         "company_name": row.get("company_name"),
         "status": row.get("status"),
         "entity_type": row.get("entity_type"),
@@ -269,9 +274,14 @@ def main() -> None:
 
     points: list[dict[str, Any]] = []
     for row, vector, doc in zip(rows, vectors, docs):
+        company_id = str(row.get("company_id") or "").strip()
+        if not company_id:
+            continue
+        domain = str(row.get("domain") or DEFAULT_DOMAIN)
+        point_id = stable_point_id(domain, DEFAULT_ENTITY_TYPE, company_id)
         points.append(
             {
-                "id": str(uuid.uuid4()),
+                "id": point_id,
                 "vector": vector,
                 "payload": payload_from_row(row, doc),
             }

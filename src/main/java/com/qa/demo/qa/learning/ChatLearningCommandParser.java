@@ -41,14 +41,7 @@ public class ChatLearningCommandParser {
     }
 
     private String resolveLearningScope(String text, String defaultScope) {
-        String raw = text == null ? "" : text.toLowerCase();
-        if (raw.contains("个人") || raw.contains("我的") || raw.contains("我自己")) {
-            return QaScopes.PERSONAL;
-        }
-        if (raw.contains("企业") || raw.contains("公司")) {
-            return QaScopes.ENTERPRISE;
-        }
-        return QaScopes.normalize(defaultScope);
+        return QaScopes.ENTERPRISE;
     }
 
     private String selectLearningContent(String raw, String suffix) {

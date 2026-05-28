@@ -1,5 +1,6 @@
 package com.qa.demo.qa.learning;
 
+import com.qa.demo.qa.config.QaAssistantProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -9,22 +10,17 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * 同步追踪服务：记录每个数据源的同步状态，支持增量同步
+ * 同步追踪服务：记录每个数据源的表级同步状态（与 {@link SyncEntityStateService} 互补）。
  */
 @Service
 public class SyncTrackingService {
 
     private static final Logger log = LoggerFactory.getLogger(SyncTrackingService.class);
-    private static final String WORKSPACE_SCHEMA = "assistant";
 
-    private final String jdbcUrl;
-    private final String username;
-    private final String password;
+    private final QaAssistantProperties properties;
 
-    public SyncTrackingService() {
-        this.jdbcUrl = "jdbc:mysql://localhost:3306/" + WORKSPACE_SCHEMA + "?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true";
-        this.username = "root";
-        this.password = "root";
+    public SyncTrackingService(QaAssistantProperties properties) {
+        this.properties = properties;
     }
 
     /**
@@ -188,7 +184,11 @@ public class SyncTrackingService {
     }
 
     private Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(jdbcUrl, username, password);
+        return DriverManager.getConnection(
+                properties.getMysqlUrl(),
+                properties.getMysqlUsername(),
+                properties.getMysqlPassword()
+        );
     }
 
     // ========== 数据类 ==========

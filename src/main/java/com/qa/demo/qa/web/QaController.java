@@ -14,6 +14,10 @@ import com.qa.demo.qa.learning.MysqlSchemaCatalogService;
 import com.qa.demo.qa.learning.SchemaSedimentationPlanService;
 import com.qa.demo.qa.learning.StructuredIngestJobService;
 import com.qa.demo.qa.learning.StructuredCsvIngestService;
+import com.qa.demo.qa.learning.EnterpriseKnowledgeSyncService;
+import com.qa.demo.qa.learning.KnowledgeSyncChangeDetector;
+import com.qa.demo.qa.learning.ScheduledSyncService;
+import com.qa.demo.qa.learning.SyncEntityStateService;
 import com.qa.demo.qa.learning.StructuredTableRowAuditService;
 import com.qa.demo.qa.ops.LocalKnowledgeOpsService;
 import com.qa.demo.qa.retrieval.EvidenceRerankService;
@@ -72,6 +76,10 @@ public class QaController {
     private final TextEmbeddingService textEmbeddingService;
     private final LocalKnowledgeOpsService localKnowledgeOpsService;
     private final EvidenceRerankService evidenceRerankService;
+    private final EnterpriseKnowledgeSyncService enterpriseKnowledgeSyncService;
+    private final SyncEntityStateService syncEntityStateService;
+    private final KnowledgeSyncChangeDetector knowledgeSyncChangeDetector;
+    private final ScheduledSyncService scheduledSyncService;
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -92,7 +100,11 @@ public class QaController {
             MultiExpertLearningService multiExpertLearningService,
             TextEmbeddingService textEmbeddingService,
             LocalKnowledgeOpsService localKnowledgeOpsService,
-            EvidenceRerankService evidenceRerankService
+            EvidenceRerankService evidenceRerankService,
+            EnterpriseKnowledgeSyncService enterpriseKnowledgeSyncService,
+            SyncEntityStateService syncEntityStateService,
+            KnowledgeSyncChangeDetector knowledgeSyncChangeDetector,
+            ScheduledSyncService scheduledSyncService
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -113,6 +125,10 @@ public class QaController {
         this.textEmbeddingService = textEmbeddingService;
         this.localKnowledgeOpsService = localKnowledgeOpsService;
         this.evidenceRerankService = evidenceRerankService;
+        this.enterpriseKnowledgeSyncService = enterpriseKnowledgeSyncService;
+        this.syncEntityStateService = syncEntityStateService;
+        this.knowledgeSyncChangeDetector = knowledgeSyncChangeDetector;
+        this.scheduledSyncService = scheduledSyncService;
     }
 
     /**
@@ -120,7 +136,33 @@ public class QaController {
      */
     @GetMapping("/learn/knowledge-sync/status")
     public Map<String, Object> learnKnowledgeSyncStatus() {
-        return localKnowledgeOpsService.statusSnapshot();
+        Map<String, Object> body = new LinkedHashMap<>(localKnowledgeOpsService.statusSnapshot());
+        body.put("flywayEnabled", assistantProperties.isFlywayEnabled());
+        body.put("knowledgeSyncDomain", assistantProperties.getKnowledgeSyncDomain());
+        body.put("entityStateCount", syncEntityStateService.countByDomain(assistantProperties.getKnowledgeSyncDomain()));
+        body.put("knowledgeSyncAutoEnabled", assistantProperties.isKnowledgeSyncIncrementalScheduledEnabled());
+        body.put("knowledgeSyncWatermarkWatchOnly", assistantProperties.isKnowledgeSyncWatermarkWatchOnly());
+        body.put("knowledgeSyncPollIntervalMs", assistantProperties.getKnowledgeSyncPollIntervalMs());
+        body.put("knowledgeSyncWatermarkColumn", assistantProperties.getKnowledgeSyncWatermarkColumn());
+        body.put("currentIncrementalSince", enterpriseKnowledgeSyncService.currentIncrementalSince());
+        knowledgeSyncChangeDetector.lastProbe().ifPresent(p -> body.put("lastWatermarkProbe", p.toMap()));
+        return body;
+    }
+
+    /**
+     * 探测业务库相对当前水位是否有变更（不执行同步）。
+     */
+    @GetMapping("/learn/knowledge-sync/watermark-probe")
+    public Map<String, Object> learnKnowledgeSyncWatermarkProbe() {
+        return knowledgeSyncChangeDetector.probe().toMap();
+    }
+
+    /**
+     * 有水位变更时才执行增量同步。
+     */
+    @PostMapping("/learn/knowledge-sync/incremental-if-changed")
+    public Map<String, Object> learnKnowledgeSyncIncrementalIfChanged() {
+        return scheduledSyncService.triggerIncrementalIfChanged();
     }
 
     /**
@@ -162,6 +204,27 @@ public class QaController {
     }
 
     /**
+     * EKSP 增量同步：从业务 MySQL 拉取变更 → upsert Neo4j + Qdrant，并更新 sync_entity_state。
+     * 默认使用 qa.assistant.business-mysql-* 连接；async=true 时后台执行。
+     */
+    @PostMapping("/learn/knowledge-sync/incremental")
+    public Map<String, Object> learnKnowledgeSyncIncremental(
+            @RequestBody(required = false) KnowledgeSyncIncrementalRequest request) {
+        KnowledgeSyncIncrementalRequest req = request != null ? request : new KnowledgeSyncIncrementalRequest();
+        return enterpriseKnowledgeSyncService.runIncremental(new EnterpriseKnowledgeSyncService.IncrementalSyncRequest(
+                req.host(),
+                req.port(),
+                req.database(),
+                req.username(),
+                req.password(),
+                req.since(),
+                req.companyIds(),
+                req.domain(),
+                req.async()
+        ));
+    }
+
+    /**
      * 本地排障：核对当前 JVM 读到的 MiniMax 配置（不返回密钥明文）。
      * 若此处显示未配置，而终端 curl 正常，说明 IDE/另一进程未继承 {@code MINIMAX_API_KEY}。
      */
@@ -175,6 +238,7 @@ public class QaController {
         body.put("minimaxApiUrl", assistantProperties.getApiUrl());
         body.put("minimaxModel", assistantProperties.getModel());
         body.put("mysqlEnabled", assistantProperties.isMysqlEnabled());
+        body.put("flywayEnabled", assistantProperties.isFlywayEnabled());
         body.put("vectorEnabled", assistantProperties.isVectorEnabled());
         String dashKey = assistantProperties.getDashscopeApiKey();
         boolean dashPresent = dashKey != null && !dashKey.isBlank();
@@ -886,7 +950,7 @@ public class QaController {
     /**
      * 问答请求体（同步与流式共用）。
      *
-     * @param scope          {@link QaScopes#ENTERPRISE} 或 personal，空则默认企业库
+     * @param scope          保留参数兼容；统一归一化为 {@link QaScopes#ENTERPRISE}
      * @param conversationId 多轮会话 ID，空则服务端生成
      * @param followUp       true 时结合最近轮次改写检索问句；null 时由启发式判断
      */
@@ -924,6 +988,23 @@ public class QaController {
     ) {
         public KnowledgeSyncFromMysqlRequest() {
             this("localhost", 3306, "tdcomp", "root", null, false, 0);
+        }
+    }
+
+    /** EKSP 增量同步：字段均可选，默认读 business-mysql 与 knowledge-sync-domain 配置。 */
+    public record KnowledgeSyncIncrementalRequest(
+            String host,
+            int port,
+            String database,
+            String username,
+            String password,
+            String since,
+            String companyIds,
+            String domain,
+            boolean async
+    ) {
+        public KnowledgeSyncIncrementalRequest() {
+            this(null, 0, null, null, null, null, null, null, false);
         }
     }
 

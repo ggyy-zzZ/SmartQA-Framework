@@ -45,7 +45,7 @@ public class MultiExpertLearningService {
     /**
      * 多专家协作学习入口
      * @param dynamicConn 动态数据库连接（可以是业务库）
-     * @param scope 学习范围（enterprise/personal）
+     * @param scope 学习范围（统一为企业知识库 enterprise）
      * @return 学习结果
      */
     public MultiExpertLearningResult learnWithMultiExperts(MysqlSchemaCatalogService.DynamicConnection dynamicConn, String scope) {

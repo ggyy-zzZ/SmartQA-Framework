@@ -33,7 +33,6 @@ public class ActiveLearningService {
 
     private static final String MYSQL_TABLE = "qa_active_knowledge";
     private static final String SCOPE_ENTERPRISE = "enterprise";
-    private static final String SCOPE_PERSONAL = "personal";
     private static final Pattern CJK_TOKEN = Pattern.compile("[\\u4e00-\\u9fa5]{2,8}");
     private static final Pattern EN_TOKEN = Pattern.compile("[a-zA-Z][a-zA-Z0-9_]{2,24}");
     /** 从学习文本中抽取「别名→实名」：老布是李晓峰 */
@@ -132,11 +131,7 @@ public class ActiveLearningService {
             boolean hasScope = resolveScopeColumnPresent(connection, schema);
             StringBuilder where = new StringBuilder();
             if (hasScope && !normalizedScope.isBlank()) {
-                if (SCOPE_PERSONAL.equals(normalizedScope)) {
-                    where.append("scope = ? AND (");
-                } else {
-                    where.append("(scope = ? OR scope IS NULL OR scope = '') AND (");
-                }
+                where.append("(scope = ? OR scope IS NULL OR scope = '') AND (");
             }
             for (int i = 0; i < keywords.size(); i++) {
                 if (i > 0) {
@@ -690,17 +685,7 @@ public class ActiveLearningService {
     }
 
     private String normalizeScope(String scope) {
-        if (scope == null || scope.isBlank()) {
-            return "";
-        }
-        String raw = scope.trim().toLowerCase(Locale.ROOT);
-        if (raw.contains("个人") || raw.equals("personal") || raw.equals("me")) {
-            return SCOPE_PERSONAL;
-        }
-        if (raw.contains("企业") || raw.equals("enterprise") || raw.equals("company")) {
-            return SCOPE_ENTERPRISE;
-        }
-        return raw;
+        return SCOPE_ENTERPRISE;
     }
 
     public record LearningResult(

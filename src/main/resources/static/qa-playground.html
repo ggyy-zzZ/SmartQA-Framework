@@ -21,6 +21,8 @@
             --error: #fb7185;
             --radius: 14px;
             --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+            --user-msg-bg: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            --assistant-bg: var(--surface);
         }
         * { box-sizing: border-box; }
         body {
@@ -34,620 +36,488 @@
                 var(--bg);
         }
         .wrap {
-            max-width: 720px;
+            max-width: 760px;
             margin: 0 auto;
-            padding: 28px 20px 48px;
+            padding: 0 20px 48px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
         }
 
-        .hero {
+        header.hero {
             text-align: center;
-            padding: 8px 0 28px;
+            padding: 20px 0 16px;
+            flex-shrink: 0;
         }
         .hero-orb {
-            width: 56px;
-            height: 56px;
-            margin: 0 auto 16px;
+            width: 44px;
+            height: 44px;
+            margin: 0 auto 12px;
             border-radius: 50%;
             background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-            box-shadow: 0 0 40px rgba(129, 140, 248, 0.45);
+            box-shadow: 0 0 30px rgba(129, 140, 248, 0.4);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 26px;
+            font-size: 20px;
         }
         .hero h1 {
-            margin: 0 0 8px;
-            font-size: 26px;
+            margin: 0 0 6px;
+            font-size: 22px;
             font-weight: 600;
-            letter-spacing: 0.02em;
         }
         .hero p {
             margin: 0;
-            font-size: 14px;
+            font-size: 13px;
             color: var(--muted);
-            line-height: 1.5;
-        }
-        .hero-tags {
-            margin-top: 14px;
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .tag {
-            font-size: 11px;
-            padding: 4px 10px;
-            border-radius: 999px;
-            background: rgba(129, 140, 248, 0.12);
-            border: 1px solid rgba(129, 140, 248, 0.25);
-            color: #c7d2fe;
         }
 
-        .card {
-            background: var(--surface);
+        /* 聊天容器 */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 0 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 3px;
+        }
+
+        /* 消息气泡 */
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 85%;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .message.user {
+            align-self: flex-end;
+        }
+        .message.assistant {
+            align-self: flex-start;
+        }
+        .message-label {
+            font-size: 11px;
+            color: var(--muted);
+            margin-bottom: 4px;
+            padding: 0 4px;
+        }
+        .message.user .message-label {
+            text-align: right;
+        }
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 16px;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+        .message.user .message-bubble {
+            background: var(--user-msg-bg);
+            color: #fff;
+            border-bottom-right-radius: 4px;
+        }
+        .message.assistant .message-bubble {
+            background: var(--assistant-bg);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px 22px;
-            margin-bottom: 16px;
-            box-shadow: var(--shadow);
-            backdrop-filter: blur(12px);
+            border-bottom-left-radius: 4px;
         }
-        .card-highlight {
-            border-color: rgba(129, 140, 248, 0.28);
-            box-shadow: var(--shadow), 0 0 0 1px rgba(129, 140, 248, 0.08);
-        }
-        .card-head {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        .card-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            background: linear-gradient(145deg, rgba(129, 140, 248, 0.25), rgba(56, 189, 248, 0.15));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            flex-shrink: 0;
-        }
-        .card-head-text h2 {
-            margin: 0;
-            font-size: 17px;
-            font-weight: 600;
-        }
-        .card-head-text p {
-            margin: 4px 0 0;
+
+        /* 思考过程（可折叠） */
+        .thinking-toggle {
             font-size: 12px;
             color: var(--muted);
-        }
-
-        textarea, input[type="text"], input[type="password"], input[type="number"] {
-            width: 100%;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            padding: 14px 16px;
-            font-size: 15px;
-            background: var(--surface-2);
-            color: var(--text);
-            font-family: inherit;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        #question {
-            min-height: 88px;
-            resize: vertical;
-            line-height: 1.55;
-        }
-        textarea:focus, input:focus {
-            outline: none;
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
-        }
-        textarea::placeholder, input::placeholder { color: #64748b; }
-
-        .ask-bar {
+            cursor: pointer;
+            padding: 6px 0;
             display: flex;
             align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 14px;
+            gap: 6px;
+            user-select: none;
         }
-        .scope-pills {
-            display: flex;
+        .thinking-toggle:hover {
+            color: var(--accent);
+        }
+        .thinking-toggle::before {
+            content: "▸";
+            transition: transform 0.2s;
+        }
+        .thinking-toggle.open::before {
+            transform: rotate(90deg);
+        }
+        .thinking-content {
+            display: none;
+            padding: 10px 0;
+        }
+        .thinking-content.open {
+            display: block;
+        }
+        .thinking-inner {
             background: var(--surface-2);
-            border-radius: 10px;
-            padding: 4px;
             border: 1px solid var(--border);
-        }
-        .scope-pills label {
-            font-size: 13px;
-            padding: 8px 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            color: var(--muted);
-            transition: background 0.2s, color 0.2s;
-        }
-        .scope-pills input { display: none; }
-        .scope-pills label:has(input:checked) {
-            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-            color: #fff;
-        }
-        button {
-            border: none;
             border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
-            color: #fff;
-            padding: 12px 28px;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-            font-family: inherit;
-            transition: transform 0.15s, filter 0.15s;
+            padding: 12px;
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 320px;
+            overflow-y: auto;
+            color: #cbd5e1;
         }
-        button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
-        button:disabled {
-            background: #334155;
-            cursor: not-allowed;
-            transform: none;
-            filter: none;
+        .thinking-inner::-webkit-scrollbar {
+            width: 4px;
         }
-        button.secondary {
-            background: transparent;
+        .thinking-inner::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 2px;
+        }
+        .thinking-section {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed rgba(148, 163, 184, 0.1);
+        }
+        .thinking-section:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        .thinking-section-title {
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 6px;
+        }
+        .thinking-line {
+            color: #cbd5e1;
+            margin-bottom: 3px;
+        }
+        .thinking-evidence {
+            margin-top: 6px;
+            padding: 6px 8px;
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 6px;
             border: 1px solid var(--border);
-            color: var(--text);
-            padding: 10px 18px;
-            font-size: 14px;
         }
-        button.secondary:hover:not(:disabled) {
-            border-color: var(--border-focus);
-            background: rgba(129, 140, 248, 0.08);
+        .thinking-evidence-head {
+            font-size: 11px;
+            color: #a5b4fc;
+            margin-bottom: 2px;
         }
-        button.primary-lg {
-            padding: 12px 32px;
-            font-size: 15px;
+        .thinking-evidence-body {
+            font-size: 11px;
+            color: #94a3b8;
         }
 
-        .status {
+        /* 欢迎消息 */
+        .welcome-hint {
+            text-align: center;
+            color: var(--muted);
             font-size: 13px;
+            padding: 40px 20px;
+        }
+        .welcome-hint-examples {
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+        }
+        .example-chip {
+            font-size: 12px;
+            padding: 6px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .example-chip:hover {
+            border-color: var(--border-focus);
+            background: rgba(129, 140, 248, 0.1);
+        }
+
+        /* 输入区域 */
+        .input-area {
+            flex-shrink: 0;
+            padding: 12px 0;
+        }
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 6px 6px 6px 16px;
+            align-items: center;
+            transition: border-color 0.2s;
+        }
+        .input-wrapper:focus-within {
+            border-color: var(--border-focus);
+        }
+        .input-wrapper textarea {
+            flex: 1;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            resize: none;
+            min-height: 24px;
+            max-height: 120px;
+            line-height: 1.5;
+            padding: 4px 0;
+            outline: none;
+        }
+        .input-wrapper textarea::placeholder {
+            color: #64748b;
+        }
+        .input-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .new-chat-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: border-color 0.2s, color 0.2s;
+            flex-shrink: 0;
+        }
+        .new-chat-btn:hover {
+            border-color: var(--border-focus);
+            color: var(--text);
+        }
+        .send-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: transform 0.15s, filter 0.15s;
+            flex-shrink: 0;
+        }
+        .send-btn:hover:not(:disabled) {
+            filter: brightness(1.1);
+            transform: scale(1.05);
+        }
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            padding: 0 4px;
+        }
+        .status {
+            font-size: 12px;
             color: var(--muted);
         }
         .status.ok { color: var(--success); }
         .status.error { color: var(--error); }
 
-        .panel-label {
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--muted);
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-        .thinking-box, .answer-box {
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 14px 16px;
-            line-height: 1.65;
-            font-size: 14px;
-        }
-        .thinking-panel { display: flex; flex-direction: column; gap: 10px; }
-        .thinking-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-            font-size: 12px;
-            color: var(--muted);
-        }
-        .thinking-progress-wrap {
-            flex: 1;
-            min-width: 120px;
-            max-width: 280px;
-            height: 4px;
-            background: rgba(148, 163, 184, 0.15);
-            border-radius: 999px;
-            overflow: hidden;
-        }
-        .thinking-progress-bar {
-            height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, var(--primary), var(--accent));
-            transition: width 0.35s ease;
-        }
-        .thinking-box {
-            min-height: 120px;
-            max-height: 420px;
-            overflow-y: auto;
-            color: #cbd5e1;
-        }
-        .thinking-analysis { display: flex; flex-direction: column; gap: 14px; }
-        .thinking-section {
-            border: 1px solid rgba(129, 140, 248, 0.2);
-            border-radius: 10px;
-            background: rgba(15, 23, 42, 0.45);
-            padding: 10px 12px;
-        }
-        .thinking-section-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #e2e8f0;
-            margin-bottom: 8px;
-        }
-        .thinking-line {
-            font-size: 13px;
-            line-height: 1.6;
-            color: #cbd5e1;
-            margin-bottom: 4px;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .thinking-line:last-child { margin-bottom: 0; }
-        .thinking-evidence-item {
-            margin-top: 8px;
-            padding: 8px 10px;
-            border-radius: 8px;
-            background: rgba(30, 41, 59, 0.6);
-            border: 1px solid var(--border);
-        }
-        .thinking-evidence-head {
-            font-size: 12px;
-            font-weight: 500;
-            color: #a5b4fc;
-            margin-bottom: 4px;
-        }
-        .thinking-evidence-body {
-            font-size: 12px;
-            line-height: 1.55;
-            color: #94a3b8;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .thinking-timeline { position: relative; padding-left: 4px; }
-        .thinking-step {
-            position: relative;
-            padding: 8px 8px 8px 20px;
-            border-left: 2px solid rgba(129, 140, 248, 0.25);
-            margin-bottom: 4px;
-        }
-        .thinking-step:last-child { margin-bottom: 0; }
-        .thinking-step.active {
-            border-left-color: var(--accent);
-            background: rgba(129, 140, 248, 0.08);
-            border-radius: 0 8px 8px 0;
-        }
-        .thinking-step-time {
-            font-size: 11px;
-            color: #64748b;
-            margin-bottom: 2px;
-        }
-        .thinking-step-head {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
-        }
-        .thinking-phase {
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #c7d2fe;
-            background: rgba(99, 102, 241, 0.25);
-            padding: 2px 8px;
-            border-radius: 6px;
-        }
-        .thinking-step-msg {
-            font-size: 13px;
-            line-height: 1.55;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .thinking-tags {
-            margin-top: 6px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        .thinking-tag {
-            font-size: 11px;
-            padding: 2px 8px;
-            border-radius: 6px;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--border);
-            color: #94a3b8;
-            font-family: ui-monospace, Consolas, monospace;
-        }
-        .thinking-model-box {
-            margin-top: 8px;
-            border: 1px solid rgba(129, 140, 248, 0.35);
-            border-radius: 10px;
-            background: rgba(15, 23, 42, 0.5);
-        }
-        .thinking-model-head {
-            font-size: 12px;
-            font-weight: 600;
-            color: #a5b4fc;
-            padding: 8px 12px;
-            border-bottom: 1px solid var(--border);
-        }
-        .thinking-model-body {
-            padding: 10px 12px;
-            font-size: 12px;
-            line-height: 1.55;
-            max-height: 140px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
-            color: #94a3b8;
-        }
-        .thinking-model-body.streaming::after {
-            content: "▋";
-            animation: blink 1s step-end infinite;
-            color: var(--accent);
-            margin-left: 2px;
-        }
-        @keyframes blink { 50% { opacity: 0; } }
-        .thinking-placeholder { color: var(--muted); font-size: 13px; padding: 8px 4px; }
-        .answer-box {
-            min-height: 100px;
-            color: var(--text);
-        }
-        .answer-box:empty::before {
-            content: "回答将显示在这里…";
-            color: #64748b;
-        }
-        .answer-box h1, .answer-box h2, .answer-box h3 { margin: 12px 0 8px; color: #e0e7ff; }
-        .answer-box table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
-        .answer-box td, .answer-box th {
-            border: 1px solid var(--border);
-            padding: 8px 10px;
-        }
-        .result-block { margin-top: 14px; }
-
-        .learn-primary {
-            background: rgba(129, 140, 248, 0.06);
-            border: 1px solid rgba(129, 140, 248, 0.2);
-            border-radius: 12px;
-            padding: 16px;
-        }
-        .learn-primary .badge {
-            display: inline-block;
-            font-size: 11px;
-            font-weight: 600;
-            color: #a5b4fc;
-            background: rgba(99, 102, 241, 0.2);
-            padding: 3px 8px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-        }
-        .simple-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .hint {
-            font-size: 12px;
-            color: var(--muted);
-            margin: 8px 0 0;
-            line-height: 1.5;
-        }
-        .hint code {
-            font-size: 11px;
-            background: rgba(0, 0, 0, 0.25);
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        .toolbar {
-            margin-top: 12px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-        label.check {
-            font-size: 13px;
-            color: var(--muted);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .ops-log {
-            background: #080c18;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 12px;
-            max-height: 200px;
-            overflow-y: auto;
-            font-family: ui-monospace, Consolas, monospace;
-            font-size: 11px;
-            line-height: 1.5;
-            color: #94a3b8;
-            white-space: pre-wrap;
-        }
-
-        details.advanced {
-            margin-top: 12px;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            background: var(--surface-2);
-            overflow: hidden;
-        }
-        details.advanced summary {
-            padding: 12px 16px;
-            font-size: 13px;
-            color: var(--muted);
-            cursor: pointer;
-            list-style: none;
-            user-select: none;
-        }
-        details.advanced summary::-webkit-details-marker { display: none; }
-        details.advanced summary::before {
-            content: "▸ ";
-            display: inline-block;
-            transition: transform 0.2s;
-        }
-        details.advanced[open] summary::before { transform: rotate(90deg); }
-        details.advanced .advanced-body {
-            padding: 0 16px 16px;
-            border-top: 1px solid var(--border);
-        }
-        details.advanced .advanced-item {
-            padding-top: 14px;
-        }
-        details.advanced .advanced-item + .advanced-item {
-            margin-top: 14px;
-            padding-top: 14px;
-            border-top: 1px dashed var(--border);
-        }
-
-        .hidden { display: none !important; }
-
+        /* 底部链接 */
         .footer-links {
             text-align: center;
-            margin-top: 24px;
-            font-size: 12px;
+            font-size: 11px;
+            padding: 8px 0;
         }
         .footer-links a {
             color: var(--muted);
             text-decoration: none;
-            margin: 0 10px;
+            margin: 0 8px;
         }
-        .footer-links a:hover { color: var(--accent); }
+        .footer-links a:hover {
+            color: var(--accent);
+        }
+
+        /* 同步面板（折叠） */
+        .sync-toggle {
+            position: fixed;
+            bottom: 80px;
+            right: 24px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-color 0.2s, color 0.2s;
+        }
+        .sync-toggle:hover {
+            border-color: var(--border-focus);
+            color: var(--accent);
+        }
+        .sync-panel {
+            position: fixed;
+            bottom: 130px;
+            right: 24px;
+            width: 320px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            display: none;
+            box-shadow: var(--shadow);
+            max-height: 520px;
+            overflow-y: auto;
+        }
+        .sync-panel.open {
+            display: block;
+        }
+        .sync-panel h3 {
+            margin: 0 0 12px;
+            font-size: 14px;
+            color: var(--text);
+        }
+        .sync-form {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .sync-form input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text);
+            font-size: 13px;
+        }
+        .sync-form button {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .sync-form button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+        .sync-form button.secondary {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .sync-form label {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+        .sync-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .sync-section:first-of-type {
+            margin-top: 0;
+            padding-top: 0;
+            border-top: none;
+        }
+        .sync-section-title {
+            font-size: 11px;
+            color: var(--muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .sync-btn-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .sync-btn-row button {
+            flex: 1;
+            min-width: 120px;
+        }
+        .sync-log {
+            margin-top: 12px;
+            background: #080c18;
+            border-radius: 8px;
+            padding: 8px;
+            font-family: ui-monospace, Consolas, monospace;
+            font-size: 10px;
+            max-height: 120px;
+            overflow-y: auto;
+            color: #94a3b8;
+            white-space: pre-wrap;
+        }
+        .sync-status {
+            font-size: 11px;
+            margin-top: 6px;
+        }
 
         @media (max-width: 520px) {
-            .simple-grid { grid-template-columns: 1fr; }
-            .ask-bar { flex-direction: column; align-items: stretch; }
-            .scope-pills { width: 100%; justify-content: center; }
-            button.primary-lg { width: 100%; }
+            .wrap { padding: 0 12px 32px; }
+            .message { max-width: 92%; }
+            .sync-panel { width: calc(100vw - 32px); right: 16px; }
         }
     </style>
 </head>
 <body>
 <div class="wrap">
-
     <header class="hero">
         <div class="hero-orb" aria-hidden="true">✦</div>
         <h1>企业智能助手</h1>
-        <p>基于企业知识图谱与向量库，为你检索证据并生成有据回答</p>
-        <div class="hero-tags">
-            <span class="tag">统一召回</span>
-            <span class="tag">证据重排</span>
-            <span class="tag">图谱 + 向量</span>
-        </div>
+        <p>基于企业知识图谱与向量库</p>
     </header>
 
-    <!-- 对话 -->
-    <section class="card card-highlight">
-        <div class="card-head">
-            <div class="card-icon">💬</div>
-            <div class="card-head-text">
-                <h2>向我提问</h2>
-                <p>例如：某公司注册地址、某人担任哪些公司的法定代表人</p>
+    <div id="chatContainer" class="chat-container">
+        <div class="welcome-hint">
+            <div>向我提问，例如：</div>
+            <div class="welcome-hint-examples">
+                <span class="example-chip" onclick="fillQuestion('戴先生是哪些主体的法定代表人')">戴先生是哪些主体的法定代表人</span>
+                <span class="example-chip" onclick="fillQuestion('某公司有哪些证照')">某公司有哪些证照</span>
+                <span class="example-chip" onclick="fillQuestion('周吴徐具体是哪些人')">周吴徐具体是哪些人</span>
             </div>
         </div>
-        <textarea id="question" placeholder="输入你的问题，我会从已同步的企业知识中查找依据…"></textarea>
-        <div class="ask-bar">
-            <div class="scope-pills" role="group" aria-label="知识库范围">
-                <label><input type="radio" name="scope" value="enterprise" checked> 企业知识库</label>
-                <label><input type="radio" name="scope" value="personal"> 个人记忆</label>
+    </div>
+
+    <div class="input-area">
+        <div class="input-wrapper">
+            <textarea id="questionInput" rows="1" placeholder="输入问题，Enter 发送，Ctrl+Enter 换行…"></textarea>
+            <div class="input-actions">
+                <button class="new-chat-btn" id="newChatBtn" title="新对话">+</button>
+                <button class="send-btn" id="sendBtn">↑</button>
             </div>
-            <button type="button" id="askBtn" class="primary-lg">发送</button>
-            <button type="button" id="newConversationBtn" class="secondary" title="清空会话上下文，开始新话题">新对话</button>
+        </div>
+        <div class="status-bar">
             <span id="statusText" class="status">就绪</span>
         </div>
-        <p class="hint" id="conversationHint" style="margin-top:8px;">连续追问（如「具体是哪些证照？」）会自动带上上一轮上下文；换话题请点「新对话」。</p>
-    </section>
-
-    <!-- 回答 -->
-    <section class="card">
-        <div class="card-head">
-            <div class="card-icon">✨</div>
-            <div class="card-head-text">
-                <h2>助手回复</h2>
-                <p>思考过程与最终回答</p>
-            </div>
-        </div>
-        <div class="result-block">
-            <div class="panel-label">思考过程（问题拆解 · 检索依据 · 可展开证据片段）</div>
-            <div class="thinking-panel">
-                <div class="thinking-toolbar">
-                    <span id="thinkingStepLabel">等待提问</span>
-                    <div class="thinking-progress-wrap" title="处理进度">
-                        <div id="thinkingProgressBar" class="thinking-progress-bar"></div>
-                    </div>
-                    <label class="check" style="margin:0;"><input type="checkbox" id="showThinkingDetail" checked> 显示证据片段</label>
-                </div>
-                <div id="thinking" class="thinking-box">
-                    <div class="thinking-placeholder">等待你的提问…</div>
-                </div>
-            </div>
-        </div>
-        <div class="result-block">
-            <div class="panel-label">回答</div>
-            <div id="answer" class="answer-box"></div>
-        </div>
-    </section>
-
-    <!-- 知识同步 -->
-    <section class="card">
-        <div class="card-head">
-            <div class="card-icon">📚</div>
-            <div class="card-head-text">
-                <h2>同步企业知识</h2>
-                <p>从业务数据库全量导入后再提问，效果更佳</p>
-            </div>
-        </div>
-
-        <div class="learn-primary">
-            <span class="badge">推荐 · 首次或数据更新后执行</span>
-            <p class="hint" id="syncPreflight">正在检查环境…</p>
-            <p class="hint">将清空并重建图谱与向量库，从业务库（如 <code>tdcomp</code>）导出公司、法人、股东等信息。</p>
-            <div class="simple-grid">
-                <input id="syncMysqlHost" type="text" placeholder="主机" value="localhost">
-                <input id="syncMysqlPort" type="number" placeholder="端口" value="3306">
-            </div>
-            <div class="simple-grid" style="margin-top:10px;">
-                <input id="syncMysqlDb" type="text" placeholder="数据库名（如 tdcomp）">
-                <input id="syncMysqlUser" type="text" placeholder="用户名" value="root">
-            </div>
-            <div style="margin-top:10px;">
-                <input id="syncMysqlPass" type="password" placeholder="密码（可留空，使用应用配置）">
-            </div>
-            <div class="toolbar">
-                <label class="check"><input type="checkbox" id="syncClearLogs"> 清空问答日志</label>
-                <label class="check">限流 <input type="number" id="syncLimit" min="0" value="0" style="width:64px;margin-left:4px;" title="0=全量"></label>
-            </div>
-            <div class="toolbar">
-                <button type="button" id="syncFromMysqlBtn" class="primary-lg">开始全量同步</button>
-                <button type="button" class="secondary" id="syncResetBtn">仅清空</button>
-                <span id="syncStatus" class="status">就绪</span>
-            </div>
-            <div class="result-block">
-                <div class="panel-label">同步日志</div>
-                <div id="syncLog" class="ops-log">尚未执行。</div>
-            </div>
-        </div>
-
-        <details class="advanced">
-            <summary>更多学习方式（备用）</summary>
-            <div class="advanced-body">
-                <div class="advanced-item">
-                    <div class="panel-label" style="text-transform:none;letter-spacing:0;">从已有 JSONL 重建</div>
-                    <p class="hint">不连业务库，仅用本地 <code>enterprise_mysql_clean.jsonl</code> 灌入图与向量。</p>
-                    <button type="button" class="secondary" id="syncRebuildBtn">从 JSONL 重建</button>
-                </div>
-                <div class="advanced-item">
-                    <div class="panel-label" style="text-transform:none;letter-spacing:0;">补充文本记忆</div>
-                    <input id="learnTextTitle" type="text" placeholder="标题（可选）">
-                    <textarea id="learnTextBody" style="margin-top:8px;min-height:72px;" placeholder="粘贴制度说明、别名对照等补充知识…"></textarea>
-                    <div class="toolbar">
-                        <button type="button" class="secondary" id="learnTextBtn">保存到记忆</button>
-                        <span id="learnTextStatus" class="status"></span>
-                    </div>
-                    <p class="hint">补充内容进入主动学习通道，问答时会与主库一并检索。</p>
-                </div>
-            </div>
-        </details>
-    </section>
+    </div>
 
     <footer class="footer-links">
         <a href="/qa/assistant/runtime-summary" target="_blank">运行配置</a>
@@ -655,305 +525,309 @@
     </footer>
 </div>
 
+<button class="sync-toggle" id="syncToggleBtn" title="知识同步">📚</button>
+<div class="sync-panel" id="syncPanel">
+    <h3>同步企业知识</h3>
+    <div class="sync-form">
+        <div class="sync-section">
+            <div class="sync-section-title">增量同步（EKSP）</div>
+            <label for="syncSince">since（可选，如 2026-01-01 00:00:00；留空用配置/水位）</label>
+            <input id="syncSince" type="text" placeholder="留空 = 上次同步时间或近 24 小时">
+            <label for="syncCompanyIds">companyIds（可选，逗号分隔）</label>
+            <input id="syncCompanyIds" type="text" placeholder="例：1001,1002">
+            <div class="sync-btn-row">
+                <button type="button" id="syncIncrementalBtn">增量同步</button>
+                <button type="button" class="secondary" id="syncIncrementalIfChangedBtn">有变更才同步</button>
+            </div>
+            <div class="sync-btn-row">
+                <button type="button" class="secondary" id="syncWatermarkProbeBtn">探测水位</button>
+                <button type="button" class="secondary" id="syncRefreshStatusBtn">刷新状态</button>
+            </div>
+            <p style="margin:6px 0 0;font-size:10px;color:var(--muted);line-height:1.4">
+                自动同步：配置 <code>knowledge-sync-incremental-scheduled-enabled=true</code> 后，按 poll-interval 轮询 company.updated_at，有变更才跑增量。
+            </p>
+        </div>
+        <div class="sync-section">
+            <div class="sync-section-title">全量同步（清空后重建）</div>
+            <input id="syncMysqlDb" type="text" placeholder="数据库名（如 tdcomp）">
+            <input id="syncMysqlHost" type="text" placeholder="主机" value="localhost">
+            <input id="syncMysqlPort" type="number" placeholder="端口" value="3306">
+            <input id="syncMysqlUser" type="text" placeholder="用户名" value="root">
+            <input id="syncMysqlPass" type="password" placeholder="密码">
+            <button type="button" id="syncFromMysqlBtn">开始全量同步</button>
+        </div>
+    </div>
+    <div id="syncStatus" class="sync-status status"></div>
+    <div id="syncLog" class="sync-log">尚未执行</div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-    const questionEl = document.getElementById("question");
-    const scopeModeEl = () => document.querySelector('input[name="scope"]:checked')?.value || "enterprise";
-    const askBtnEl = document.getElementById("askBtn");
-    const newConversationBtnEl = document.getElementById("newConversationBtn");
-    const conversationHintEl = document.getElementById("conversationHint");
-    const statusTextEl = document.getElementById("statusText");
-    const thinkingEl = document.getElementById("thinking");
-    const thinkingStepLabelEl = document.getElementById("thinkingStepLabel");
-    const thinkingProgressBarEl = document.getElementById("thinkingProgressBar");
-    const showThinkingDetailEl = document.getElementById("showThinkingDetail");
-    const answerEl = document.getElementById("answer");
+    const chatContainer = document.getElementById("chatContainer");
+    const questionInput = document.getElementById("questionInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const newChatBtn = document.getElementById("newChatBtn");
+    const statusText = document.getElementById("statusText");
+    const syncToggleBtn = document.getElementById("syncToggleBtn");
+    const syncPanel = document.getElementById("syncPanel");
 
-    /** 多轮会话 ID：同页连续提问时由服务端返回并回传 */
     let qaConversationId = sessionStorage.getItem("qaConversationId") || null;
-
-    const learnTextTitleEl = document.getElementById("learnTextTitle");
-    const learnTextBodyEl = document.getElementById("learnTextBody");
-    const learnTextBtnEl = document.getElementById("learnTextBtn");
-    const learnTextStatusEl = document.getElementById("learnTextStatus");
+    let askAbortController = null;
+    let thinkingBuffer = "";
 
     function escapeHtml(text) {
         return (text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    let askAbortController = null;
-    let thinkingSteps = [];
-    let modelThinkingBuffer = "";
+    function fillQuestion(text) {
+        questionInput.value = text;
+        questionInput.focus();
+    }
 
-    function parseSseData(raw) {
-        if (raw == null || raw === "") return null;
-        try {
-            return JSON.parse(raw);
-        } catch {
-            return raw;
+    function autoResize() {
+        questionInput.style.height = "auto";
+        questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + "px";
+    }
+
+    questionInput.addEventListener("input", autoResize);
+
+    questionInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            sendBtn.click();
+        }
+    });
+
+    /* ===== 消息渲染 ===== */
+    function addMessage(role, content, thinkingHtml) {
+        const div = document.createElement("div");
+        div.className = "message " + role;
+
+        const label = document.createElement("div");
+        label.className = "message-label";
+        label.textContent = role === "user" ? "你" : "助手";
+        div.appendChild(label);
+
+        const bubble = document.createElement("div");
+        bubble.className = "message-bubble";
+        if (role === "assistant" && content === "") {
+            bubble.innerHTML = '<span style="color:var(--muted)">正在分析…</span>';
+        } else if (window.marked && typeof window.marked.parse === "function" && content) {
+            bubble.innerHTML = window.marked.parse(content, {gfm: true, breaks: true});
+        } else {
+            bubble.textContent = content || "";
+        }
+        div.appendChild(bubble);
+
+        if (role === "assistant" && thinkingHtml) {
+            const toggle = document.createElement("div");
+            toggle.className = "thinking-toggle";
+            toggle.textContent = "查看思考过程";
+            toggle.addEventListener("click", function() {
+                toggle.classList.toggle("open");
+                contentDiv.style.display = toggle.classList.contains("open") ? "block" : "none";
+                toggle.textContent = toggle.classList.contains("open") ? "收起思考" : "查看思考过程";
+            });
+
+            const contentDiv = document.createElement("div");
+            contentDiv.className = "thinking-content";
+            contentDiv.style.display = "none";
+
+            const inner = document.createElement("div");
+            inner.className = "thinking-inner";
+            inner.innerHTML = thinkingHtml;
+            contentDiv.appendChild(inner);
+
+            bubble.after(toggle);
+            toggle.after(contentDiv);
+        }
+
+        chatContainer.appendChild(div);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return div;
+    }
+
+    function appendToLastAssistantMessage(content, thinkingHtml) {
+        const messages = chatContainer.querySelectorAll(".message.assistant");
+        if (messages.length === 0) return null;
+        const last = messages[messages.length - 1];
+        const bubble = last.querySelector(".message-bubble");
+        if (window.marked && typeof window.marked.parse === "function" && content) {
+            bubble.innerHTML = window.marked.parse(content, {gfm: true, breaks: true});
+        } else {
+            bubble.textContent = content || "";
+        }
+        // 如果有思考过程内容，更新或添加
+        if (thinkingHtml) {
+            let toggle = last.querySelector(".thinking-toggle");
+            let contentDiv = last.querySelector(".thinking-content");
+            if (!toggle) {
+                toggle = document.createElement("div");
+                toggle.className = "thinking-toggle";
+                toggle.textContent = "查看思考过程";
+                toggle.addEventListener("click", function() {
+                    toggle.classList.toggle("open");
+                    contentDiv.style.display = toggle.classList.contains("open") ? "block" : "none";
+                    toggle.textContent = toggle.classList.contains("open") ? "收起思考" : "查看思考过程";
+                });
+                bubble.after(toggle);
+                contentDiv = document.createElement("div");
+                contentDiv.className = "thinking-content";
+                contentDiv.style.display = "none";
+                const inner = document.createElement("div");
+                inner.className = "thinking-inner";
+                inner.innerHTML = thinkingHtml;
+                contentDiv.appendChild(inner);
+                toggle.after(contentDiv);
+            } else {
+                const inner = contentDiv.querySelector(".thinking-inner");
+                if (inner) inner.innerHTML = thinkingHtml;
+            }
+        }
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return last;
+    }
+
+    function updateThinkingInLastMessage(thinkingHtml) {
+        const messages = chatContainer.querySelectorAll(".message.assistant");
+        if (messages.length === 0) return;
+        const last = messages[messages.length - 1];
+        let toggle = last.querySelector(".thinking-toggle");
+        let contentDiv = last.querySelector(".thinking-content");
+        if (!toggle) {
+            toggle = document.createElement("div");
+            toggle.className = "thinking-toggle open";
+            toggle.textContent = "收起思考";
+            toggle.addEventListener("click", function() {
+                toggle.classList.toggle("open");
+                contentDiv.style.display = toggle.classList.contains("open") ? "block" : "none";
+                toggle.textContent = toggle.classList.contains("open") ? "收起思考" : "查看思考过程";
+            });
+            const bubble = last.querySelector(".message-bubble");
+            bubble.after(toggle);
+            contentDiv = document.createElement("div");
+            contentDiv.className = "thinking-content open";
+            const inner = document.createElement("div");
+            inner.className = "thinking-inner";
+            inner.innerHTML = thinkingHtml;
+            contentDiv.appendChild(inner);
+            toggle.after(contentDiv);
+        } else {
+            const inner = contentDiv.querySelector(".thinking-inner");
+            if (inner) inner.innerHTML = thinkingHtml;
         }
     }
 
+    /* ===== 思考过程解析 ===== */
     const THINKING_PHASE_ORDER = [
-        "start", "question", "context", "hint", "learning", "recall", "orchestrate", "clarify",
+        "start", "question", "context", "hint", "learning", "orchestrate", "clarify",
         "intent_wait", "intent_done", "intent", "learning_recall", "retrieval", "retrieval_done",
         "evidence", "audit", "decision", "generation", "model", "degrade", "result", "meta"
     ];
 
-    function phaseLabel(phase) {
-        const map = {
-            start: "开始", question: "问题", context: "上下文", hint: "对象",
-            learning: "学习", orchestrate: "调度", clarify: "澄清",
-            intent_wait: "意图识别", intent_done: "意图结果", intent: "意图",
-            recall: "记忆", learning_recall: "记忆",
-            retrieval: "检索中", retrieval_done: "检索完成", evidence: "证据",
-            audit: "质检", decision: "决策", generation: "生成", model: "模型推理",
-            degrade: "降级", result: "结果", meta: "结果摘要"
-        };
-        return map[phase] || phase || "步骤";
-    }
-
-    function formatStepTime(iso) {
-        if (!iso) return "";
-        try {
-            const d = new Date(iso);
-            return d.toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit", second: "2-digit"});
-        } catch {
-            return "";
-        }
-    }
-
-    function formatDetailTags(details) {
-        if (!details || typeof details !== "object" || !showThinkingDetailEl.checked) return "";
-        const parts = [];
-        for (const [key, val] of Object.entries(details)) {
-            if (val == null || val === "") continue;
-            let text = val;
-            if (Array.isArray(val)) text = val.join(", ");
-            else if (typeof val === "object") text = JSON.stringify(val);
-            else if (typeof val === "boolean") text = val ? "是" : "否";
-            else if (typeof val === "number") text = String(val);
-            parts.push('<span class="thinking-tag">' + escapeHtml(key) + "=" + escapeHtml(String(text)) + "</span>");
-        }
-        return parts.length ? '<div class="thinking-tags">' + parts.join("") + "</div>" : "";
-    }
-
-    function thinkingProgressPercent() {
-        const sections = collectAnalysisSections();
-        if (sections.length > 0) {
-            return Math.min(95, Math.round((sections.length / 5) * 100));
-        }
-        const n = thinkingSteps.length + (modelThinkingBuffer ? 1 : 0);
-        return Math.min(95, Math.round((n / 12) * 100));
-    }
-
-    function collectAnalysisSections() {
+    function collectAnalysisSections(steps) {
         const sections = [];
-        for (const step of thinkingSteps) {
+        for (const step of steps) {
             const d = step.details;
             if (d && d.view === "analysis" && Array.isArray(d.sections)) {
                 for (const sec of d.sections) {
-                    if (sec && sec.title) {
-                        sections.push(sec);
-                    }
+                    if (sec && sec.title) sections.push(sec);
                 }
             }
         }
         return sections;
     }
 
-    function renderAnalysisDocument(isStreaming) {
-        const sections = collectAnalysisSections();
-        let html = '<div class="thinking-analysis">';
+    function renderThinkingSections(sections) {
+        let html = "";
         for (const sec of sections) {
             html += '<div class="thinking-section">';
             html += '<div class="thinking-section-title">' + escapeHtml(sec.title || "") + "</div>";
-            const lines = sec.lines || [];
-            for (const line of lines) {
-                if (line) {
-                    html += '<div class="thinking-line">' + escapeHtml(String(line)) + "</div>";
-                }
+            for (const line of sec.lines || []) {
+                if (line) html += '<div class="thinking-line">' + escapeHtml(String(line)) + "</div>";
             }
-            if (showThinkingDetailEl.checked && Array.isArray(sec.items)) {
-                for (const item of sec.items) {
-                    html += '<div class="thinking-evidence-item">'
-                        + '<div class="thinking-evidence-head">' + escapeHtml(item.head || "") + "</div>"
-                        + '<div class="thinking-evidence-body">' + escapeHtml(item.body || "") + "</div>"
-                        + "</div>";
-                }
+            for (const item of sec.items || []) {
+                html += '<div class="thinking-evidence">'
+                    + '<div class="thinking-evidence-head">' + escapeHtml(item.head || "") + "</div>"
+                    + '<div class="thinking-evidence-body">' + escapeHtml(item.body || "") + "</div>"
+                    + "</div>";
             }
             html += "</div>";
-        }
-        html += "</div>";
-        if (modelThinkingBuffer && showThinkingDetailEl.checked) {
-            html += '<div class="thinking-model-box">'
-                + '<div class="thinking-model-head">模型内部推理（可选参考，非最终证据）</div>'
-                + '<div class="thinking-model-body' + (isStreaming ? " streaming" : "") + '">'
-                + escapeHtml(modelThinkingBuffer)
-                + "</div></div>";
         }
         return html;
     }
 
-    function normalizeSseBuffer(text) {
-        return (text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    function renderThinkingTimeline(steps) {
+        const phaseLabel = {
+            start: "开始", question: "问题", context: "上下文", hint: "对象",
+            learning: "学习", orchestrate: "调度", clarify: "澄清",
+            intent_wait: "意图识别", intent_done: "意图", intent: "意图",
+            recall: "记忆", learning_recall: "记忆",
+            retrieval: "检索", retrieval_done: "检索完成", evidence: "证据",
+            audit: "质检", decision: "决策", generation: "生成", model: "模型推理",
+            degrade: "降级", result: "结果", meta: "摘要"
+        };
+        let html = "";
+        for (const step of steps) {
+            const label = phaseLabel[step.phase] || step.phase || "步骤";
+            html += '<div class="thinking-section">';
+            html += '<div class="thinking-section-title">' + escapeHtml(label) + "</div>";
+            if (step.message) {
+                html += '<div class="thinking-line">' + escapeHtml(step.message) + "</div>";
+            }
+            if (step.details) {
+                for (const [key, val] of Object.entries(step.details)) {
+                    if (val == null || val === "") continue;
+                    let text = Array.isArray(val) ? val.join(", ") : (typeof val === "object" ? JSON.stringify(val) : String(val));
+                    html += '<div class="thinking-line" style="color:var(--muted)">'
+                        + escapeHtml(key) + " = " + escapeHtml(text) + "</div>";
+                }
+            }
+            html += "</div>";
+        }
+        return html;
+    }
+
+    /* ===== SSE 处理 ===== */
+    function parseSseData(raw) {
+        if (raw == null || raw === "") return null;
+        try { return JSON.parse(raw); } catch { return raw; }
     }
 
     function processSseBlock(block) {
-        if (!block || !block.trim()) return;
+        if (!block || !block.trim()) return null;
         let eventName = "message";
         const dataLines = [];
         for (const line of block.split("\n")) {
-            if (line.startsWith("event:")) {
-                eventName = line.slice(6).trim();
-            } else if (line.startsWith("data:")) {
-                dataLines.push(line.slice(5).trimStart());
-            }
+            if (line.startsWith("event:")) eventName = line.slice(6).trim();
+            else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
         }
         return {eventName, data: parseSseData(dataLines.join("\n"))};
     }
 
-    function renderThinkingLive(isStreaming) {
-        const total = thinkingSteps.length;
-        const analysisSections = collectAnalysisSections();
-        thinkingStepLabelEl.textContent = analysisSections.length > 0
-            ? ("分析 " + analysisSections.length + " 段" + (modelThinkingBuffer ? " · 模型推理中" : ""))
-            : (total > 0
-                ? ("已记录 " + total + " 步" + (modelThinkingBuffer ? " · 模型推理中" : ""))
-                : "正在连接…");
-        thinkingProgressBarEl.style.width = (total > 0 || modelThinkingBuffer ? thinkingProgressPercent() : 8) + "%";
+    let state = {answerBuffer: "", streamedDelta: false, lastEventAt: Date.now()};
+    let thinkingSteps = [];
 
-        if (total === 0 && !modelThinkingBuffer) {
-            thinkingEl.innerHTML = '<div class="thinking-placeholder">正在理解问题并检索知识…</div>';
-            return;
-        }
-
-        if (analysisSections.length > 0) {
-            thinkingEl.innerHTML = renderAnalysisDocument(isStreaming);
-            thinkingEl.scrollTop = thinkingEl.scrollHeight;
-            return;
-        }
-
-        let html = '<div class="thinking-timeline">';
-        thinkingSteps.forEach((item, idx) => {
-            const active = idx === total - 1 && !modelThinkingBuffer;
-            html += '<div class="thinking-step' + (active ? " active" : "") + '">'
-                + '<div class="thinking-step-time">' + escapeHtml(formatStepTime(item.timestamp)) + "</div>"
-                + '<div class="thinking-step-head"><span class="thinking-phase">' + escapeHtml(phaseLabel(item.phase)) + "</span></div>"
-                + '<div class="thinking-step-msg">' + escapeHtml(item.message || "") + "</div>"
-                + formatDetailTags(item.details)
-                + "</div>";
-        });
-        html += "</div>";
-
-        if (modelThinkingBuffer && showThinkingDetailEl.checked) {
-            html += '<div class="thinking-model-box">'
-                + '<div class="thinking-model-head">模型推理过程（生成答案前的内部推理，可核对逻辑）</div>'
-                + '<div class="thinking-model-body' + (isStreaming ? " streaming" : "") + '">'
-                + escapeHtml(modelThinkingBuffer)
-                + "</div></div>";
-        }
-        thinkingEl.innerHTML = html;
-        thinkingEl.scrollTop = thinkingEl.scrollHeight;
-    }
-
-    function resetThinkingPanel() {
-        thinkingSteps = [];
-        modelThinkingBuffer = "";
-        thinkingProgressBarEl.style.width = "0%";
-        thinkingStepLabelEl.textContent = "等待提问";
-        renderThinkingLive();
-    }
-
-    function addThinkingStep(phase, message, details, timestamp) {
-        thinkingSteps.push({
-            phase: phase || "step",
-            message: message || "",
-            details: details || null,
-            timestamp: timestamp || new Date().toISOString()
-        });
-        renderThinkingLive(true);
-    }
-
-    function onThinkingEvent(payload) {
-        if (!payload || typeof payload !== "object") return;
-        const phase = payload.phase || "";
-        const message = payload.message || "";
-        if (phase === "model") {
-            modelThinkingBuffer += message;
-            renderThinkingLive(true);
-            return;
-        }
-        if (message || (payload.details && Object.keys(payload.details).length)) {
-            addThinkingStep(phase, message, payload.details, payload.timestamp);
-        }
-    }
-
-    function onMetaOrFinalSummary(data, label) {
-        if (!data || typeof data !== "object") return;
-        if (collectAnalysisSections().length > 0) {
-            if (data.conversationId) {
-                qaConversationId = data.conversationId;
-                sessionStorage.setItem("qaConversationId", qaConversationId);
-                updateConversationHint();
-            }
-            thinkingProgressBarEl.style.width = "100%";
-            thinkingStepLabelEl.textContent = "分析完成，正在输出回答";
-            return;
-        }
-        const details = {};
-        ["intent", "queryType", "personName", "roleFocus", "confidence", "canAnswer",
-            "retrievalSource", "rerankProvider", "route", "evidence"].forEach(k => {
-            if (data[k] !== undefined && data[k] !== null && data[k] !== "") {
-                details[k] = data[k];
-            }
-        });
-        if (Array.isArray(data.evidence)) {
-            details.evidenceCount = data.evidence.length;
-        }
-        if (data.conversationId) {
-            qaConversationId = data.conversationId;
-            sessionStorage.setItem("qaConversationId", qaConversationId);
-            details.conversationId = qaConversationId;
-            updateConversationHint();
-        }
-        if (data.followUpApplied === true) {
-            details.followUpApplied = true;
-        }
-        const msg = label + (details.evidenceCount != null ? "，证据 " + details.evidenceCount + " 条" : "");
-        addThinkingStep("meta", msg, details, data.timestamp);
-    }
-
-    function renderAnswer(text, streaming) {
-        const content = text || "";
-        if (streaming) {
-            answerEl.textContent = content;
-            answerEl.classList.add("streaming");
-            return;
-        }
-        answerEl.classList.remove("streaming");
-        if (window.marked && typeof window.marked.parse === "function") {
-            answerEl.innerHTML = window.marked.parse(content, {gfm: true, breaks: true});
-        } else {
-            answerEl.textContent = content;
-        }
-    }
-
-    function clearResult() {
-        resetThinkingPanel();
-        answerEl.innerHTML = "";
-        answerEl.classList.remove("streaming");
-    }
-
-    function setStatus(text, isError) {
-        statusTextEl.textContent = text;
-        statusTextEl.className = "status" + (text.includes("完成") ? " ok" : (isError || text.includes("失败") || text.includes("错误") ? " error" : ""));
-    }
-
-    function handleSseEvent(eventName, data, state) {
+    function handleSseEvent(eventName, data) {
         if (eventName === "thinking") {
-            onThinkingEvent(data);
-            setStatus("思考中…");
+            if (!data || typeof data !== "object") return;
+            if (data.phase === "model") {
+                thinkingBuffer += data.message || "";
+                updateThinkingInLastMessage(thinkingBuffer);
+            } else if (data.message || (data.details && Object.keys(data.details).length)) {
+                thinkingSteps.push({
+                    phase: data.phase || "step",
+                    message: data.message || "",
+                    details: data.details || null,
+                    timestamp: data.timestamp || new Date().toISOString()
+                });
+                const sections = collectAnalysisSections(thinkingSteps);
+                if (sections.length > 0) {
+                    updateThinkingInLastMessage(renderThinkingSections(sections));
+                } else {
+                    updateThinkingInLastMessage(renderThinkingTimeline(thinkingSteps) + (thinkingBuffer ? '<div class="thinking-section"><div class="thinking-section-title">模型推理</div><div class="thinking-line">' + escapeHtml(thinkingBuffer) + '</div></div>' : ""));
+                }
+            }
             state.lastEventAt = Date.now();
             return;
         }
@@ -962,16 +836,24 @@
             if (chunk) {
                 state.streamedDelta = true;
                 state.answerBuffer += chunk;
-                renderAnswer(state.answerBuffer, true);
-                setStatus("生成中…");
-                state.lastEventAt = Date.now();
+                const bubble = chatContainer.querySelectorAll(".message.assistant");
+                if (bubble.length > 0) {
+                    const lastBubble = bubble[bubble.length - 1].querySelector(".message-bubble");
+                    if (window.marked && typeof window.marked.parse === "function") {
+                        lastBubble.innerHTML = window.marked.parse(state.answerBuffer, {gfm: true, breaks: true});
+                    } else {
+                        lastBubble.textContent = state.answerBuffer;
+                    }
+                }
+                chatContainer.scrollTop = chatContainer.scrollHeight;
             }
+            state.lastEventAt = Date.now();
             return;
         }
         if (eventName === "meta") {
-            onMetaOrFinalSummary(data, "元数据已就绪");
-            if (data && data.intent) {
-                setStatus("检索完成 · " + data.intent);
+            if (data && data.conversationId) {
+                qaConversationId = data.conversationId;
+                sessionStorage.setItem("qaConversationId", qaConversationId);
             }
             state.lastEventAt = Date.now();
             return;
@@ -980,22 +862,22 @@
             if (data && data.answer != null) {
                 state.answerBuffer = String(data.answer);
             }
-            onMetaOrFinalSummary(data, "最终答复已生成");
-            thinkingProgressBarEl.style.width = "100%";
+            if (data && data.conversationId) {
+                qaConversationId = data.conversationId;
+                sessionStorage.setItem("qaConversationId", qaConversationId);
+            }
             state.lastEventAt = Date.now();
             return;
         }
         if (eventName === "qa_error") {
-            const msg = data && data.message ? data.message : "流式问答失败";
-            throw new Error(msg);
+            throw new Error((data && data.message) ? data.message : "流式问答失败");
         }
     }
 
     async function consumeAskStream(question, scope, signal) {
         const payload = {question, scope};
-        if (qaConversationId) {
-            payload.conversationId = qaConversationId;
-        }
+        if (qaConversationId) payload.conversationId = qaConversationId;
+
         const resp = await fetch("/qa/ask/stream", {
             method: "POST",
             headers: {"Content-Type": "application/json; charset=utf-8", "Accept": "text/event-stream"},
@@ -1005,18 +887,21 @@
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         if (!resp.body) throw new Error("浏览器不支持流式响应");
 
-        addThinkingStep("start", "已连接服务端，等待处理进度…", null);
-        setStatus("已连接…");
+        state = {answerBuffer: "", streamedDelta: false, lastEventAt: Date.now()};
+        thinkingSteps = [];
+        thinkingBuffer = "";
+
+        addMessage("assistant", "", "");
+        setStatus("思考中…");
 
         const reader = resp.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
-        const state = {answerBuffer: "", streamedDelta: false, lastEventAt: Date.now()};
         const idleLimitMs = 180000;
 
         while (true) {
             if (Date.now() - state.lastEventAt > idleLimitMs) {
-                throw new Error("超过 " + (idleLimitMs / 1000) + " 秒未收到新进度，已中止（可能卡在 MiniMax 或向量/重排接口）");
+                throw new Error("超过 " + (idleLimitMs / 1000) + " 秒未收到响应，已中止");
             }
             const readPromise = reader.read();
             const timeoutPromise = new Promise((_, reject) =>
@@ -1026,72 +911,58 @@
             try {
                 ({done, value} = await Promise.race([readPromise, timeoutPromise]));
             } catch (e) {
-                if (e.message === "__read_timeout__") {
-                    continue;
-                }
+                if (e.message === "__read_timeout__") continue;
                 throw e;
             }
             if (done) break;
             buffer += decoder.decode(value, {stream: true});
-            buffer = normalizeSseBuffer(buffer);
+            buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
             const blocks = buffer.split("\n\n");
             buffer = blocks.pop() || "";
-
             for (const block of blocks) {
                 const parsed = processSseBlock(block);
-                if (!parsed) continue;
-                handleSseEvent(parsed.eventName, parsed.data, state);
+                if (parsed) handleSseEvent(parsed.eventName, parsed.data);
             }
         }
 
-        buffer = normalizeSseBuffer(buffer);
         if (buffer.trim()) {
             const parsed = processSseBlock(buffer);
-            if (parsed) {
-                handleSseEvent(parsed.eventName, parsed.data, state);
+            if (parsed) handleSseEvent(parsed.eventName, parsed.data);
+        }
+
+        const bubble = chatContainer.querySelectorAll(".message.assistant");
+        if (bubble.length > 0) {
+            const lastBubble = bubble[bubble.length - 1].querySelector(".message-bubble");
+            if (window.marked && typeof window.marked.parse === "function") {
+                lastBubble.innerHTML = window.marked.parse(state.answerBuffer || "", {gfm: true, breaks: true});
+            } else {
+                lastBubble.textContent = state.answerBuffer || "";
             }
         }
-
-        if (!state.streamedDelta && !state.answerBuffer && thinkingSteps.length <= 1 && !modelThinkingBuffer) {
-            addThinkingStep("result", "流程已结束，未收到分步思考事件。", null);
-        }
-        thinkingProgressBarEl.style.width = "100%";
-        renderThinkingLive(false);
-        renderAnswer(state.answerBuffer || "暂时无法根据现有知识回答该问题。", false);
     }
 
-    function updateConversationHint() {
-        if (!conversationHintEl) return;
-        conversationHintEl.textContent = qaConversationId
-            ? "已接续会话（ID 前 8 位：" + qaConversationId.substring(0, 8) + "…）。追问会结合上一轮；换话题请点「新对话」。"
-            : "连续追问（如「具体是哪些证照？」）会自动带上上一轮上下文；换话题请点「新对话」。";
+    function setStatus(text, isError) {
+        statusText.textContent = text;
+        statusText.className = "status" + (text.includes("完成") ? " ok" : (isError || text.includes("失败") ? " error" : ""));
     }
 
-    newConversationBtnEl.addEventListener("click", () => {
-        qaConversationId = null;
-        sessionStorage.removeItem("qaConversationId");
-        updateConversationHint();
-        setStatus("已开启新对话", null);
-    });
+    /* ===== 发送 ===== */
+    sendBtn.addEventListener("click", async () => {
+        const question = questionInput.value.trim();
+        const scope = "enterprise";
+        if (!question) return;
 
-    updateConversationHint();
-
-    askBtnEl.addEventListener("click", async () => {
-        const question = questionEl.value.trim();
-        const scope = scopeModeEl();
-        if (!question) {
-            alert("请输入问题");
-            return;
-        }
         if (askAbortController) {
             askAbortController.abort();
         }
         askAbortController = new AbortController();
         const signal = askAbortController.signal;
 
-        askBtnEl.disabled = true;
-        clearResult();
+        sendBtn.disabled = true;
         setStatus("连接中…");
+
+        addMessage("user", question, null);
+
         try {
             await consumeAskStream(question, scope, signal);
             setStatus("完成");
@@ -1100,181 +971,216 @@
                 setStatus("已取消");
                 return;
             }
-            thinkingEl.innerHTML = '<div class="thinking-item" style="color:var(--error);">错误：' + escapeHtml(e.message) + '</div>';
-            answerEl.innerHTML = "";
+            const messages = chatContainer.querySelectorAll(".message.assistant");
+            if (messages.length > 0) {
+                const lastBubble = messages[messages.length - 1].querySelector(".message-bubble");
+                lastBubble.innerHTML = '<span style="color:var(--error)">错误：' + escapeHtml(e.message) + '</span>';
+            }
             setStatus("失败", true);
         } finally {
-            askBtnEl.disabled = false;
+            sendBtn.disabled = false;
             askAbortController = null;
+            questionInput.value = "";
+            autoResize();
         }
     });
 
-    showThinkingDetailEl.addEventListener("change", () => renderThinkingLive(false));
-
-    questionEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            askBtnEl.click();
-        }
+    newChatBtn.addEventListener("click", () => {
+        qaConversationId = null;
+        sessionStorage.removeItem("qaConversationId");
+        chatContainer.innerHTML = '<div class="welcome-hint"><div>向我提问，例如：</div><div class="welcome-hint-examples"><span class="example-chip" onclick="fillQuestion(\'戴先生是哪些主体的法定代表人\')">戴先生是哪些主体的法定代表人</span><span class="example-chip" onclick="fillQuestion(\'某公司有哪些证照\')">某公司有哪些证照</span><span class="example-chip" onclick="fillQuestion(\'周吴徐具体是哪些人\')">周吴徐具体是哪些人</span></div></div>';
+        setStatus("已开启新对话");
     });
 
-    learnTextBtnEl.addEventListener("click", async () => {
-        const content = (learnTextBodyEl.value || "").trim();
-        const title = (learnTextTitleEl.value || "").trim() || "粘贴文本";
-        const scope = scopeModeEl();
-        if (!content) {
-            alert("请输入内容");
-            return;
-        }
-        learnTextBtnEl.disabled = true;
-        learnTextStatusEl.textContent = "保存中…";
-        try {
-            const resp = await fetch("/qa/learn/text", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({content, title, scope})
-            });
-            const data = await resp.json();
-            const ok = !!data.ok;
-            learnTextStatusEl.textContent = ok ? "已保存" : "失败";
-            learnTextStatusEl.className = ok ? "status ok" : "status error";
-        } catch (e) {
-            learnTextStatusEl.textContent = e.message;
-            learnTextStatusEl.className = "status error";
-        } finally {
-            learnTextBtnEl.disabled = false;
-        }
+    /* ===== 同步面板 ===== */
+    syncToggleBtn.addEventListener("click", () => {
+        syncPanel.classList.toggle("open");
     });
 
-    const syncPreflightEl = document.getElementById("syncPreflight");
-    const syncClearLogsEl = document.getElementById("syncClearLogs");
-    const syncLimitEl = document.getElementById("syncLimit");
-    const syncMysqlHostEl = document.getElementById("syncMysqlHost");
-    const syncMysqlPortEl = document.getElementById("syncMysqlPort");
-    const syncMysqlDbEl = document.getElementById("syncMysqlDb");
-    const syncMysqlUserEl = document.getElementById("syncMysqlUser");
-    const syncMysqlPassEl = document.getElementById("syncMysqlPass");
-    const syncFromMysqlBtnEl = document.getElementById("syncFromMysqlBtn");
-    const syncResetBtnEl = document.getElementById("syncResetBtn");
-    const syncRebuildBtnEl = document.getElementById("syncRebuildBtn");
-    const syncStatusEl = document.getElementById("syncStatus");
-    const syncLogEl = document.getElementById("syncLog");
-    let syncPollTimer = null;
-
-    function renderSyncLog(lines) {
-        if (!lines || !lines.length) {
-            syncLogEl.textContent = "（暂无日志）";
-            return;
-        }
-        syncLogEl.textContent = lines.join("\n");
-        syncLogEl.scrollTop = syncLogEl.scrollHeight;
-    }
-
-    function setSyncStatus(text, ok) {
-        syncStatusEl.textContent = text;
-        syncStatusEl.className = ok === true ? "status ok" : (ok === false ? "status error" : "status");
-    }
-
-    async function refreshSyncPreflight() {
-        try {
-            const resp = await fetch("/qa/learn/knowledge-sync/status");
-            const data = await resp.json();
-            const lines = data.jsonlLineCount >= 0 ? data.jsonlLineCount : "?";
-            const py = data.pythonCommand || "未检测到";
-            const bm = data.businessMysql;
-            if (bm) {
-                if (!syncMysqlDbEl.value && bm.database) syncMysqlDbEl.value = bm.database;
-                if (syncMysqlHostEl.value === "localhost" && bm.host) syncMysqlHostEl.value = bm.host;
-                if (syncMysqlPortEl.value === "3306" && bm.port) syncMysqlPortEl.value = String(bm.port);
-                if (syncMysqlUserEl.value === "root" && bm.username) syncMysqlUserEl.value = bm.username;
-            }
-            syncPreflightEl.textContent = data.jsonlExists
-                ? "环境就绪（" + py + "），当前约 " + lines + " 条企业知识。"
-                : "环境就绪（" + py + "），尚未同步，请先执行全量同步。";
-            if (data.job) {
-                renderSyncLog(data.job.logs);
-                const running = data.job.status === "running";
-                setSyncButtonsDisabled(running);
-                if (running) setSyncStatus("同步中…", null);
-                else if (data.job.status === "success") setSyncStatus("同步完成", true);
-                else if (data.job.status === "failed") setSyncStatus("同步失败", false);
-                else setSyncStatus("就绪", null);
-            }
-        } catch (e) {
-            syncPreflightEl.textContent = "无法获取同步状态：" + e.message;
-        }
-    }
-
-    function startSyncPoll() {
-        if (syncPollTimer) clearInterval(syncPollTimer);
-        syncPollTimer = setInterval(refreshSyncPreflight, 2000);
-    }
+    const syncIncrementalBtn = document.getElementById("syncIncrementalBtn");
+    const syncIncrementalIfChangedBtn = document.getElementById("syncIncrementalIfChangedBtn");
+    const syncWatermarkProbeBtn = document.getElementById("syncWatermarkProbeBtn");
+    const syncFromMysqlBtn = document.getElementById("syncFromMysqlBtn");
+    const syncRefreshStatusBtn = document.getElementById("syncRefreshStatusBtn");
 
     function setSyncButtonsDisabled(disabled) {
-        syncFromMysqlBtnEl.disabled = disabled;
-        syncResetBtnEl.disabled = disabled;
-        syncRebuildBtnEl.disabled = disabled;
-        learnTextBtnEl.disabled = disabled;
-        askBtnEl.disabled = disabled;
+        syncIncrementalBtn.disabled = disabled;
+        syncIncrementalIfChangedBtn.disabled = disabled;
+        syncWatermarkProbeBtn.disabled = disabled;
+        syncFromMysqlBtn.disabled = disabled;
+        syncRefreshStatusBtn.disabled = disabled;
     }
 
-    async function postKnowledgeSync(url, body) {
+    function appendSyncLog(text) {
+        const log = document.getElementById("syncLog");
+        log.textContent = text;
+    }
+
+    syncIncrementalBtn.addEventListener("click", async () => {
+        const since = document.getElementById("syncSince").value.trim();
+        const companyIds = document.getElementById("syncCompanyIds").value.trim();
+        const hint = since ? "since=" + since : "默认水位/近24小时";
+        if (!confirm("执行增量同步（" + hint + "）？\n将调用 Python 拉取变更并 upsert Neo4j/Qdrant，可能需数分钟。")) return;
+        setSyncButtonsDisabled(true);
+        setSyncStatus("增量同步中…", null);
+        appendSyncLog("请求中…");
+        try {
+            const body = { async: false };
+            if (since) body.since = since;
+            if (companyIds) body.companyIds = companyIds;
+            const resp = await fetch("/qa/learn/knowledge-sync/incremental", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(body)
+            });
+            const data = await resp.json();
+            const lines = [];
+            if (data.batchId) lines.push("batchId: " + data.batchId);
+            if (data.domain) lines.push("domain: " + data.domain);
+            if (data.since) lines.push("since: " + data.since);
+            if (data.entitiesRecorded != null) lines.push("entitiesRecorded: " + data.entitiesRecorded);
+            if (data.entityStateTotal != null) lines.push("entityStateTotal: " + data.entityStateTotal);
+            if (Array.isArray(data.logs)) lines.push("", "--- logs ---", ...data.logs);
+            if (data.message) lines.push("", data.message);
+            appendSyncLog(lines.join("\n") || JSON.stringify(data, null, 2));
+            if (data.ok) {
+                setSyncStatus("增量同步完成", true);
+            } else {
+                setSyncStatus(data.message || "增量同步失败", false);
+            }
+        } catch (e) {
+            setSyncStatus(e.message, false);
+            appendSyncLog("错误: " + e.message);
+        } finally {
+            setSyncButtonsDisabled(false);
+        }
+    });
+
+    syncWatermarkProbeBtn.addEventListener("click", async () => {
+        setSyncButtonsDisabled(true);
+        setSyncStatus("探测中…", null);
+        try {
+            const resp = await fetch("/qa/learn/knowledge-sync/watermark-probe");
+            const data = await resp.json();
+            appendSyncLog(formatProbeOrStatus(data));
+            setSyncStatus(data.changed ? ("有 " + data.changedCount + " 条变更") : (data.message || "无变更"),
+                data.changed ? null : true);
+        } catch (e) {
+            setSyncStatus(e.message, false);
+        } finally {
+            setSyncButtonsDisabled(false);
+        }
+    });
+
+    syncIncrementalIfChangedBtn.addEventListener("click", async () => {
+        setSyncButtonsDisabled(true);
+        setSyncStatus("检查变更…", null);
+        try {
+            const resp = await fetch("/qa/learn/knowledge-sync/incremental-if-changed", { method: "POST" });
+            const data = await resp.json();
+            appendSyncLog(formatIncrementalResult(data));
+            if (data.skipped) setSyncStatus(data.message || "已跳过", true);
+            else if (data.ok) setSyncStatus("增量同步完成", true);
+            else setSyncStatus(data.message || "失败", false);
+        } catch (e) {
+            setSyncStatus(e.message, false);
+        } finally {
+            setSyncButtonsDisabled(false);
+        }
+    });
+
+    syncRefreshStatusBtn.addEventListener("click", () => refreshSyncStatus(true));
+
+    function formatProbeOrStatus(data) {
+        const lines = [];
+        if (data.knowledgeSyncAutoEnabled != null) {
+            lines.push("autoEnabled: " + data.knowledgeSyncAutoEnabled);
+            lines.push("watchOnly: " + data.knowledgeSyncWatermarkWatchOnly);
+            lines.push("pollIntervalMs: " + data.knowledgeSyncPollIntervalMs);
+        }
+        if (data.currentIncrementalSince) lines.push("since: " + data.currentIncrementalSince);
+        if (data.changedCount != null) lines.push("changedCount: " + data.changedCount);
+        if (data.maxUpdatedAt) lines.push("maxUpdatedAt: " + data.maxUpdatedAt);
+        if (data.anchorTable) lines.push("anchor: " + data.anchorTable);
+        if (data.lastWatermarkProbe) {
+            lines.push("", "--- lastWatermarkProbe ---");
+            lines.push(JSON.stringify(data.lastWatermarkProbe, null, 2));
+        }
+        if (data.message) lines.push(data.message);
+        return lines.length ? lines.join("\n") : JSON.stringify(data, null, 2);
+    }
+
+    function formatIncrementalResult(data) {
+        return formatProbeOrStatus(data);
+    }
+
+    document.getElementById("syncFromMysqlBtn").addEventListener("click", async () => {
+        const db = document.getElementById("syncMysqlDb").value.trim();
+        if (!db) {
+            alert("请填写数据库名");
+            return;
+        }
+        if (!confirm("将全量同步「" + db + "」，是否继续？")) return;
         setSyncButtonsDisabled(true);
         setSyncStatus("启动中…", null);
         try {
-            const resp = await fetch(url, {
+            const resp = await fetch("/qa/learn/knowledge-sync/from-mysql", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify(body || {})
+                body: JSON.stringify({
+                    host: document.getElementById("syncMysqlHost").value || "localhost",
+                    port: parseInt(document.getElementById("syncMysqlPort").value) || 3306,
+                    database: db,
+                    username: document.getElementById("syncMysqlUser").value || "root",
+                    password: document.getElementById("syncMysqlPass").value || ""
+                })
             });
             const data = await resp.json();
-            if (!data.ok) {
-                setSyncStatus(data.message || "启动失败", false);
-                alert(data.message || "无法启动");
-                setSyncButtonsDisabled(false);
-                return;
-            }
+            if (!data.ok) throw new Error(data.message || "启动失败");
             setSyncStatus("同步中…", null);
-            renderSyncLog(data.job && data.job.logs ? data.job.logs : ["任务已提交…"]);
             startSyncPoll();
         } catch (e) {
             setSyncStatus(e.message, false);
+        } finally {
             setSyncButtonsDisabled(false);
+        }
+    });
+
+    let syncPollTimer = null;
+    function startSyncPoll() {
+        if (syncPollTimer) clearInterval(syncPollTimer);
+        syncPollTimer = setInterval(refreshSyncStatus, 2000);
+    }
+
+    async function refreshSyncStatus(manual) {
+        try {
+            const resp = await fetch("/qa/learn/knowledge-sync/status");
+            const data = await resp.json();
+            const extra = [];
+            if (data.entityStateCount != null) extra.push("entityStateCount: " + data.entityStateCount);
+            if (data.qdrant) extra.push("qdrant: " + JSON.stringify(data.qdrant));
+            if (data.neo4j) extra.push("neo4j: " + JSON.stringify(data.neo4j));
+            if (data.job) {
+                extra.push("job: " + data.job.type + " / " + data.job.status);
+                if (data.job.logs) extra.push("", ...data.job.logs);
+                if (data.job.status === "running") setSyncStatus("同步中…", null);
+                else if (data.job.status === "success") { setSyncStatus("同步完成", true); clearInterval(syncPollTimer); }
+                else if (data.job.status === "failed") { setSyncStatus("同步失败", false); clearInterval(syncPollTimer); }
+            } else if (manual) {
+                setSyncStatus("已刷新状态", true);
+            }
+            const logText = formatProbeOrStatus(data) + (extra.length ? "\n" + extra.join("\n") : "");
+            appendSyncLog(logText);
+        } catch (e) {
+            setSyncStatus(e.message, false);
         }
     }
 
-    syncResetBtnEl.addEventListener("click", () => {
-        if (!confirm("将清空图谱、向量库与 assistant 系统表，不会重新灌库。是否继续？")) return;
-        postKnowledgeSync("/qa/learn/knowledge-sync/reset", {clearLogs: syncClearLogsEl.checked});
-    });
-
-    syncFromMysqlBtnEl.addEventListener("click", () => {
-        const db = (syncMysqlDbEl.value || "").trim();
-        if (!db) {
-            alert("请填写数据库名（如 tdcomp）");
-            return;
-        }
-        if (!confirm("将清空并全量同步「" + db + "」到知识库，可能需要数分钟。是否继续？")) return;
-        postKnowledgeSync("/qa/learn/knowledge-sync/from-mysql", {
-            host: (syncMysqlHostEl.value || "localhost").trim(),
-            port: parseInt(String(syncMysqlPortEl.value || "3306"), 10) || 3306,
-            database: db,
-            username: (syncMysqlUserEl.value || "root").trim(),
-            password: syncMysqlPassEl.value || "",
-            clearLogs: syncClearLogsEl.checked,
-            limit: parseInt(String(syncLimitEl.value || "0"), 10) || 0
-        });
-    });
-
-    syncRebuildBtnEl.addEventListener("click", () => {
-        if (!confirm("将从已有 JSONL 重建图谱与向量，是否继续？")) return;
-        postKnowledgeSync("/qa/learn/knowledge-sync/rebuild", {
-            clearLogs: syncClearLogsEl.checked,
-            limit: parseInt(String(syncLimitEl.value || "0"), 10) || 0
-        });
-    });
-
-    refreshSyncPreflight();
+    function setSyncStatus(text, ok) {
+        const el = document.getElementById("syncStatus");
+        el.textContent = text;
+        el.className = "sync-status status" + (ok === true ? " ok" : (ok === false ? " error" : ""));
+    }
 </script>
 </body>
 </html>

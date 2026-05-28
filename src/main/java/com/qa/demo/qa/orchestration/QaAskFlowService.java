@@ -11,6 +11,9 @@ import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.QaScopes;
+import com.qa.demo.qa.core.RetrievalPlan;
+import com.qa.demo.qa.domain.EntityRef;
+import com.qa.demo.qa.domain.EvidenceToEntityExtractor;
 import com.qa.demo.qa.embedding.TextEmbeddingService;
 import com.qa.demo.qa.intent.CompanyClarificationAdvisor;
 import com.qa.demo.qa.intent.IntentRouterService;
@@ -33,6 +36,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -276,9 +280,12 @@ public class QaAskFlowService {
                     unknownIntent ? "unknown_intent" : nullToEmpty(gate.rejectReason(), "insufficient_evidence"), evidence);
         }
         String focusPerson = intentDecision.hasPersonFocus() ? intentDecision.personName().trim() : "";
+        // 从证据中提取结构化实体，供后续轮次使用
+        Map<String, List<EntityRef>> retrievedEntities = EvidenceToEntityExtractor.extractForQueryType(
+                evidence, intentDecision.queryType());
         conversationService.appendTurn(
                 convId, scope, turnId, question, answer, evidence, List.of(), focusPerson,
-                intentDecision.intent(), intentDecision.queryType());
+                intentDecision.intent(), intentDecision.queryType(), retrievedEntities);
         return response;
     }
 
@@ -317,11 +324,6 @@ public class QaAskFlowService {
             IntentDecision intentDecision,
             boolean explicitCompanyHint
     ) throws IOException {
-        if (QaScopes.PERSONAL.equals(scope)) {
-            return learnedFirst.isEmpty()
-                    ? new QaRetrievalPipeline.RetrievalResult("personal_scope_no_memory", List.of())
-                    : new QaRetrievalPipeline.RetrievalResult("active_learning_personal", learnedFirst);
-        }
         if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
             return retrievalPipeline.retrieveUnifiedEnterprise(retrievalQuestion, learnedFirst, intentDecision);
         }
@@ -386,7 +388,7 @@ public class QaAskFlowService {
         putEvidenceAlignment(response, question, clarifyAnswer, List.of(), false);
         qaLogService.appendAskEvent(response);
         enqueueDeposit(turnId, question, "clarification", "none", "needs_company_clarification", List.of());
-        conversationService.appendTurn(convId, scope, turnId, question, clarifyAnswer, List.of());
+        conversationService.appendTurn(convId, scope, turnId, question, clarifyAnswer, List.of(), List.of(), "", "", "", Map.of());
         return response;
     }
 
@@ -432,7 +434,7 @@ public class QaAskFlowService {
         putEvidenceAlignment(response, question, clarifyAnswer, List.of(), false);
         qaLogService.appendAskEvent(response);
         enqueueDeposit(turnId, question, intentDecision.intent(), "none", "needs_person_clarification", List.of());
-        conversationService.appendTurn(convId, scope, turnId, question, clarifyAnswer, List.of(), personCandidates);
+        conversationService.appendTurn(convId, scope, turnId, question, clarifyAnswer, List.of(), personCandidates, "", "", "", Map.of());
         return response;
     }
 
@@ -472,6 +474,7 @@ public class QaAskFlowService {
         response.put("scope", scope);
         response.put("conversationId", convId);
         response.put("followUpApplied", followUpApplied);
+        putRoutingTrace(response, intentDecision, followUpApplied, evidence);
         response.put("embeddingProvider", textEmbeddingService.activeProvider());
         response.put("unifiedRetrieval", properties.isUnifiedRetrievalEnabled());
         response.put("rerankProvider", retrievalSource.contains("rerank")
@@ -525,6 +528,50 @@ public class QaAskFlowService {
 
     private static String nullToEmpty(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private void putRoutingTrace(
+            Map<String, Object> response,
+            IntentDecision intentDecision,
+            boolean followUpApplied,
+            List<ContextChunk> evidence
+    ) {
+        Map<String, Object> routing = new HashMap<>();
+        routing.put("queryType", nullToEmpty(intentDecision.queryType(), ""));
+        routing.put("routeSource", resolveRouteSource(intentDecision.reason()));
+        routing.put("followUpApplied", followUpApplied);
+        routing.put("intentConfidence", intentDecision.confidence());
+        routing.put("evidenceCount", evidence == null ? 0 : evidence.size());
+        if (intentDecision.hasPersonFocus()) {
+            routing.put("personName", intentDecision.personName());
+        }
+        if (intentDecision.hasCompanyHints()) {
+            routing.put("companyHintCount", intentDecision.companyHints().size());
+        }
+        response.put("routing", routing);
+    }
+
+    private static String resolveRouteSource(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "unknown";
+        }
+        String r = reason.toLowerCase(Locale.ROOT);
+        if (r.contains("followup_llm")) {
+            return "followup_llm";
+        }
+        if (r.contains("session_inherit") || r.contains("session_entity_merge")) {
+            return "session_inherit";
+        }
+        if (r.contains("llm_timeout")) {
+            return "llm_timeout";
+        }
+        if (r.contains("llm")) {
+            return "llm";
+        }
+        if (r.contains("rule")) {
+            return "rule";
+        }
+        return "other";
     }
 
     private void putIntentMetadata(Map<String, Object> response, IntentDecision intentDecision) {

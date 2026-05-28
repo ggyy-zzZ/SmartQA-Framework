@@ -2,6 +2,7 @@ package com.qa.demo.qa.response;
 
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.EntityRef;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
 import com.qa.demo.qa.domain.ConversationSessionSupport;
 import com.qa.demo.qa.intent.IntentLlmClassifier;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -50,10 +52,11 @@ public class QaConversationService {
             List<String> personCandidates,
             String focusPersonName,
             String lastQueryType,
-            String lastIntent
+            String lastIntent,
+            Map<String, List<EntityRef>> retrievedEntities
     ) {
         public ConversationTurn(String turnId, String question, String answer, List<String> focusCompanyNames) {
-            this(turnId, question, answer, focusCompanyNames, List.of(), "", "", "");
+            this(turnId, question, answer, focusCompanyNames, List.of(), "", "", "", Map.of());
         }
 
         public ConversationTurn(
@@ -63,7 +66,7 @@ public class QaConversationService {
                 List<String> focusCompanyNames,
                 List<String> personCandidates
         ) {
-            this(turnId, question, answer, focusCompanyNames, personCandidates, "", "", "");
+            this(turnId, question, answer, focusCompanyNames, personCandidates, "", "", "", Map.of());
         }
 
         public ConversationTurn(
@@ -74,7 +77,44 @@ public class QaConversationService {
                 List<String> personCandidates,
                 String focusPersonName
         ) {
-            this(turnId, question, answer, focusCompanyNames, personCandidates, focusPersonName, "", "");
+            this(turnId, question, answer, focusCompanyNames, personCandidates, focusPersonName, "", "", Map.of());
+        }
+
+        public ConversationTurn(
+                String turnId,
+                String question,
+                String answer,
+                List<String> focusCompanyNames,
+                List<String> personCandidates,
+                String focusPersonName,
+                String lastQueryType,
+                String lastIntent
+        ) {
+            this(turnId, question, answer, focusCompanyNames, personCandidates, focusPersonName, lastQueryType, lastIntent, Map.of());
+        }
+
+        /**
+         * 获取指定类型的实体列表。
+         */
+        public List<EntityRef> getEntities(String type) {
+            if (retrievedEntities == null || !retrievedEntities.containsKey(type)) {
+                return List.of();
+            }
+            return retrievedEntities.get(type);
+        }
+
+        /**
+         * 获取公司实体列表。
+         */
+        public List<EntityRef> getCompanies() {
+            return getEntities(EntityRef.TYPE_COMPANY);
+        }
+
+        /**
+         * 获取人物实体列表。
+         */
+        public List<EntityRef> getPersons() {
+            return getEntities(EntityRef.TYPE_PERSON);
         }
     }
 
@@ -202,7 +242,7 @@ public class QaConversationService {
             String answer,
             List<ContextChunk> evidence
     ) {
-        appendTurn(conversationId, scope, turnId, question, answer, evidence, List.of(), "");
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, List.of(), "", "", "", Map.of());
     }
 
     public void appendTurn(
@@ -214,7 +254,7 @@ public class QaConversationService {
             List<ContextChunk> evidence,
             List<String> personCandidates
     ) {
-        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, "", "", "");
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, "", "", "", Map.of());
     }
 
     public void appendTurn(
@@ -227,7 +267,21 @@ public class QaConversationService {
             List<String> personCandidates,
             String focusPersonName
     ) {
-        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, focusPersonName, "", "");
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, focusPersonName, "", "", Map.of());
+    }
+
+    public void appendTurn(
+            String conversationId,
+            String scope,
+            String turnId,
+            String question,
+            String answer,
+            List<ContextChunk> evidence,
+            List<String> personCandidates,
+            String focusPersonName,
+            String lastIntent
+    ) {
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, focusPersonName, lastIntent, "", Map.of());
     }
 
     public void appendTurn(
@@ -241,6 +295,22 @@ public class QaConversationService {
             String focusPersonName,
             String lastIntent,
             String lastQueryType
+    ) {
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, focusPersonName, lastIntent, lastQueryType, Map.of());
+    }
+
+    public void appendTurn(
+            String conversationId,
+            String scope,
+            String turnId,
+            String question,
+            String answer,
+            List<ContextChunk> evidence,
+            List<String> personCandidates,
+            String focusPersonName,
+            String lastIntent,
+            String lastQueryType,
+            Map<String, List<EntityRef>> retrievedEntities
     ) {
         Conversation c = store.get(conversationId);
         if (c == null) {
@@ -263,7 +333,8 @@ public class QaConversationService {
                 persons,
                 person,
                 lastQueryType == null ? "" : lastQueryType.trim(),
-                lastIntent == null ? "" : lastIntent.trim()
+                lastIntent == null ? "" : lastIntent.trim(),
+                retrievedEntities != null ? retrievedEntities : Map.of()
         ));
         touch(conversationId);
         trimConversationsIfNeeded();
@@ -313,6 +384,28 @@ public class QaConversationService {
         }
         List<String> n = prior.get(prior.size() - 1).focusCompanyNames();
         return n != null && !n.isEmpty();
+    }
+
+    /**
+     * 获取上一轮检索到的公司实体列表（用于后续轮次检索）。
+     */
+    public List<EntityRef> priorRetrievedCompanies(String conversationId) {
+        List<ConversationTurn> prior = recentTurns(conversationId, 1);
+        if (prior.isEmpty()) {
+            return List.of();
+        }
+        return prior.get(prior.size() - 1).getCompanies();
+    }
+
+    /**
+     * 获取上一轮检索到的实体列表。
+     */
+    public List<EntityRef> priorRetrievedEntities(String conversationId, String type) {
+        List<ConversationTurn> prior = recentTurns(conversationId, 1);
+        if (prior.isEmpty()) {
+            return List.of();
+        }
+        return prior.get(prior.size() - 1).getEntities(type);
     }
 
     private boolean guessFollowUp(String question, List<ConversationTurn> prior) {
@@ -390,17 +483,32 @@ public class QaConversationService {
         String priorAnswer = last.answer();
         String personName = current.personName() != null ? current.personName()
                 : (resolveFocusPerson(last) != null ? resolveFocusPerson(last) : "");
-        List<String> companyHints = current.companyHints() != null ? current.companyHints()
+        // 使用上一轮检索到的公司实体（含状态元数据）传给 LLM
+        List<EntityRef> priorCompanies = last.getCompanies();
+        List<String> fallbackHints = current.companyHints() != null ? current.companyHints()
                 : (last.focusCompanyNames() != null ? last.focusCompanyNames() : List.of());
 
-        // 使用 LLM 判断本轮 queryType（带上下文）
+        // 使用 LLM 判断本轮 queryType（带上下文和结构化实体）
         try {
-            IntentDecision llmDecision = llmClassifier.classifyWithContext(
-                    question, priorQuestion, priorQueryType, priorAnswer, personName, companyHints);
+            IntentDecision llmDecision = llmClassifier.classifyWithEntities(
+                    question, priorQuestion, priorQueryType, priorAnswer, personName, priorCompanies);
             if (llmDecision != null) {
                 String reason = llmDecision.reason() == null ? "" : llmDecision.reason();
                 if (!reason.contains("followup_llm")) {
                     reason = (reason.isBlank() ? "" : reason + "; ") + "followup_llm";
+                }
+                // 合并：LLM 返回的公司 hints + 上一轮的公司实体
+                List<String> mergedHints = new ArrayList<>();
+                if (llmDecision.companyHints() != null) {
+                    mergedHints.addAll(llmDecision.companyHints());
+                }
+                // 将 priorCompanies 的名称加入（去重）
+                if (priorCompanies != null) {
+                    for (EntityRef ref : priorCompanies) {
+                        if (ref.name() != null && !ref.name().isBlank() && !mergedHints.contains(ref.name())) {
+                            mergedHints.add(ref.name());
+                        }
+                    }
                 }
                 return new IntentDecision(
                         llmDecision.intent(),
@@ -409,7 +517,7 @@ public class QaConversationService {
                         llmDecision.queryType(),
                         llmDecision.personName() != null && !llmDecision.personName().isBlank()
                                 ? llmDecision.personName() : personName,
-                        llmDecision.companyHints() != null ? llmDecision.companyHints() : companyHints,
+                        mergedHints,
                         llmDecision.roleFocus(),
                         current.personEmployeeId()
                 );
@@ -426,13 +534,13 @@ public class QaConversationService {
                 priorQueryType,
                 resolveFocusPerson(last)
         );
-        return mergeSessionCompanyHints(inherited, last, question);
+        return mergeSessionEntityHints(inherited, last, question);
     }
 
     /**
-     * 追问「这些主体/公司…证照」时，把上一轮答案中的关注主体并入 companyHints，避免仅依赖 LLM 漏列。
+     * 多轮追问时，将上一轮检索到的实体并入当前槽位（领域无关，不限于证照场景）。
      */
-    private IntentDecision mergeSessionCompanyHints(
+    private IntentDecision mergeSessionEntityHints(
             IntentDecision decision,
             ConversationTurn last,
             String question
@@ -441,14 +549,23 @@ public class QaConversationService {
             return decision;
         }
         String q = question.strip();
-        boolean subjectFollowUp = q.contains("这些") || q.contains("上面") || q.contains("刚才")
-                || q.contains("存续") || q.contains("主体");
-        if (!subjectFollowUp || !q.contains("证照")) {
+        if (!isSubjectReferenceFollowUp(q) && !ConversationSessionSupport.isContinuationUtterance(q)) {
             return decision;
         }
         List<String> merged = new ArrayList<>();
         if (decision.companyHints() != null) {
             merged.addAll(decision.companyHints());
+        }
+        List<EntityRef> priorCompanies = last.getCompanies();
+        if (priorCompanies != null && !priorCompanies.isEmpty()) {
+            for (EntityRef ref : priorCompanies) {
+                if (ref != null && ref.name() != null && !ref.name().isBlank()) {
+                    String name = ref.name().trim();
+                    if (!merged.contains(name)) {
+                        merged.add(name);
+                    }
+                }
+            }
         }
         if (last.focusCompanyNames() != null) {
             for (String name : last.focusCompanyNames()) {
@@ -457,13 +574,12 @@ public class QaConversationService {
                 }
             }
         }
-        int priorHintCount = decision.companyHints() == null ? 0 : decision.companyHints().size();
-        if (merged.size() <= priorHintCount) {
+        if (merged.isEmpty() || merged.equals(decision.companyHints())) {
             return decision;
         }
         String reason = decision.reason() == null ? "" : decision.reason();
-        if (!reason.contains("session_company_hints")) {
-            reason = (reason.isBlank() ? "" : reason + "; ") + "session_company_hints";
+        if (!reason.contains("session_entity_merge")) {
+            reason = (reason.isBlank() ? "" : reason + "; ") + "session_entity_merge";
         }
         return new IntentDecision(
                 decision.intent(),
@@ -471,10 +587,20 @@ public class QaConversationService {
                 reason,
                 decision.queryType(),
                 decision.personName(),
-                List.copyOf(merged),
+                merged,
                 decision.roleFocus(),
                 decision.personEmployeeId()
         );
+    }
+
+    private static boolean isSubjectReferenceFollowUp(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String q = question.strip();
+        return q.contains("这些") || q.contains("上面") || q.contains("刚才")
+                || q.contains("存续") || q.contains("主体") || q.contains("它们")
+                || q.contains("那些") || q.contains("这几") || q.contains("那几");
     }
 
     private static List<String> extractFocusCompanyNames(List<ContextChunk> evidence) {

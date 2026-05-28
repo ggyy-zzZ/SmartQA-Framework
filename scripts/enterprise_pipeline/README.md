@@ -2,6 +2,8 @@
 
 将 MySQL（`tdcomp`）结构化数据编排为知识文档，并同步到 Neo4j 图谱 + Qdrant 向量库。
 
+> **演进方向**：当前为全量 wipe 灌库；增量同步、合同/客户/商机等域扩展方案见 [`docs/enterprise-knowledge-sync-platform.md`](../docs/enterprise-knowledge-sync-platform.md)（EKSP）。
+
 ## 1) 安装依赖
 
 ```bash
@@ -135,3 +137,36 @@ python scripts/enterprise_pipeline/run_pipeline.py \
 ```bash
 python scripts/enterprise_pipeline/run_pipeline.py --limit 100 --wipe --with-vector --recreate-vector
 ```
+
+## 8) 增量同步（本地验证 MVP，无 wipe）
+
+日常变更同步请使用增量编排，**不要**对 Neo4j/Qdrant 使用 `--wipe` / `--recreate`：
+
+```bash
+# 默认拉取过去 24h 内 updated_at 有变化的公司
+python scripts/enterprise_pipeline/run_incremental_sync.py \
+  --host localhost --schema tdcomp \
+  --username root --password root
+
+# 指定水位或公司范围
+python scripts/enterprise_pipeline/run_incremental_sync.py \
+  --since "2026-05-01 00:00:00" \
+  --company-ids "11280,11281"
+```
+
+说明见 [`docs/local-validation-mvp-roadmap.md`](../../docs/local-validation-mvp-roadmap.md)。清单配置：`sync_manifest.yaml`。
+
+### HTTP 增量同步（Java 编排）
+
+```bash
+# 同步执行（默认 business-mysql 连接 + 24h 水位）
+curl -X POST http://localhost:8080/qa/learn/knowledge-sync/incremental \
+  -H "Content-Type: application/json" -d "{}"
+
+# 指定 since 与 async
+curl -X POST http://localhost:8080/qa/learn/knowledge-sync/incremental \
+  -H "Content-Type: application/json" \
+  -d '{"since":"2026-05-01 00:00:00","async":false}'
+```
+
+启动时 Flyway 会自动迁移 `assistant` 库（`qa.assistant.flyway-enabled=true`）。

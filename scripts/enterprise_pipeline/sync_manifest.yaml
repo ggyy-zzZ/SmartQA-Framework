@@ -1,0 +1,46 @@
+# EKSP 同步清单 — 本地验证 MVP（org_master 域）
+# 详见 docs/local-validation-mvp-roadmap.md
+
+version: 1
+
+defaults:
+  domain: org_master
+  entity_type: Company
+  source_schema: tdcomp
+  watermark_column: modifytime
+  batch_size: 500
+
+domains:
+  org_master:
+    description: 企业主体主数据（company 锚点）
+    anchor_table: company
+    anchor_id_column: id
+    related_tables:
+      - certificate_management
+      - seal_management
+      - company_shareholder_info
+      - company_directors_supervisors
+      - company_product_line
+      - bank_account
+      - employee
+    sinks:
+      neo4j:
+        enabled: true
+        wipe_on_full_rebuild_only: true
+      qdrant:
+        enabled: true
+        collection: enterprise_knowledge_v2
+        recreate_on_full_rebuild_only: true
+    payload_fields:
+      - company_id
+      - company_name
+      - status
+      - entity_type
+      - entity_category
+      - registered_area
+      - domain
+      - entity_type_key
+
+incremental:
+  mode: watermark  # watermark | company_ids | full
+  default_since_hours: 24

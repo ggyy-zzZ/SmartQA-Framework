@@ -8,7 +8,9 @@
 
 ## 已知问题盘点（文档）
 
-企业问答实测问题、根因与改进方向见 **[`docs/enterprise-qa-known-issues.md`](../docs/enterprise-qa-known-issues.md)**（2026-05-27）。立项 P0 多轮证照 / 会话结构化主体前请先阅读该文档。
+企业问答实测问题、根因与改进方向见 **[`docs/enterprise-qa-known-issues.md`](../docs/enterprise-qa-known-issues.md)**（2026-05-27）。
+
+**本地验证 MVP 调整线路**（知识落库 + 意图路由 + 简单回答，权限/CDC 推迟）见 **[`docs/local-validation-mvp-roadmap.md`](../docs/local-validation-mvp-roadmap.md)**；OpenSpec 变更 **`openspec/changes/2026-local-validation-mvp/`**。
 
 ---
 
@@ -16,7 +18,9 @@
 
 | 状态 | 模块 | 条目 |
 |------|------|------|
-| 待办 | 意图与路由 / 多轮 | **追问证照题型切换 + 会话结构化主体列表 + 证照闸门**（见 `docs/enterprise-qa-known-issues.md` Q-02） |
+| 进行中 | 本地验证 MVP | **Track A 知识落库 Sprint 1**：`sync_entity_state`、`sync_manifest.yaml`、稳定 Qdrant point id、`--since`、`run_incremental_sync.py`（见 [`docs/local-validation-mvp-roadmap.md`](../docs/local-validation-mvp-roadmap.md)） |
+| 进行中 | 本地验证 MVP | **Track B 意图 Sprint 1**：多轮实体继承泛化、响应 `routing` 可观测；Sprint 3 路由场景矩阵 |
+| 待办 | 意图与路由 / 多轮 | **通用 queryType 路由稳定化 + 会话结构化槽位**（不以单一业务案例定义边界；见 MVP 线路 §4） |
 | 已完成 | 学习与接入 | **结构化接入流水线（本应用范围）**：`POST /qa/structured/row-audit`、`POST /qa/structured/csv-ingest`；**`POST /qa/structured/ingest-gate`**、**`POST /qa/structured/job/run`**、**`POST /qa/structured/job/run-from-config`**；可选 **`qa.assistant.structured-ingest-schedule-*`** 定时清单门禁 + 作业日志（见 `openspec/design/structured-ingest-gate.md`）。**对业务表的 DML/LOAD 自动入库**不在本应用 SHALL 内，由外部 ETL 在 `allowedToProceed=true` 后执行；若需本进程内写业务表，另起变更与规格 |
 | 已完成 | 沉淀与反馈 | **待沉淀队列** MySQL 表 `qa_pending_knowledge`、写入与 `GET /qa/sedimentation/pending`；与 jsonl 并行。**消费/审核/再学习状态机**可后续迭代 |
 | 已完成 | 意图与路由 / 检索编排 / 回答与追问 | 主流程已迁至 `orchestration.QaAskOrchestrator`；检索管道 `retrieval.QaRetrievalPipeline`；学习指令 `learning.ChatLearningCommandParser`；澄清 `intent.CompanyClarificationAdvisor`；兜底 `answer.QaAnswerFallbackService`；`web.QaController` 仅 HTTP。SSE 事件封装在 `orchestration.QaSseStreamSupport` |
@@ -27,8 +31,9 @@
 
 | 状态 | 模块 | 条目 |
 |------|------|------|
+| 进行中 | 学习与接入 / 灌库 | **EKSP 本地 MVP**：Sprint 1～2 增量 upsert、`sync_entity_state`、`POST /qa/learn/knowledge-sync/incremental`、重写 `ScheduledSyncService`；Domain Pack 扩展仍见 [`docs/enterprise-knowledge-sync-platform.md`](../docs/enterprise-knowledge-sync-platform.md) |
 | 已完成 | 沉淀与反馈 | **点赞/点踩**：`qa_user_feedback` 表 + `FeedbackPersistenceService`（与 jsonl 并行）；**分析看板/去重**可后续迭代 |
-| 进行中 | 学习与接入 | **Flyway 可选迁移**已接入（`qa.assistant.flyway-enabled`、`db/migration/assistant`）；与 `assistant_bootstrap.sql` 的职责划分见 `openspec/AGENTS.md` 与 `spec.md`（基线+样例以 bootstrap 为主）。Liquibase 等价物不设为强制 |
+| 已完成 | 学习与接入 | **Flyway**：本地默认 `qa.assistant.flyway-enabled=true`，启动迁移 V1～V4；与 `assistant_bootstrap.sql` 见 `openspec/AGENTS.md` |
 | 已完成 | 检索编排 | `SqlQueryService` 人员-角色预检表名可配：`qa.assistant.mysql-person-role-employee-table` / `mysql-person-role-company-table`（默认 `employee`/`company`）；**多租户 / 全元数据驱动**仍为后续 |
 | 已完成 | Neo4j 与部署 | 版本口径：推荐 **Neo4j 5.x**、4.x 须自行核对，已写入 `spec.md` 与 `AGENTS.md`。**业务主键/companyId 跨库命名规范**若需单列 Requirement 可另起 backlog |
 

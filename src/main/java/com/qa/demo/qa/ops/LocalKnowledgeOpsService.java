@@ -250,6 +250,10 @@ public class LocalKnowledgeOpsService {
     }
 
     private void runPythonScript(List<String> scriptArgs) throws Exception {
+        runPythonScriptWithLogSink(scriptArgs, null);
+    }
+
+    private void runPythonScriptWithLogSink(List<String> scriptArgs, List<String> logSink) throws Exception {
         if (pythonCommand == null) {
             throw new IllegalStateException("未找到 Python，请安装 Python 3 并加入 PATH。");
         }
@@ -257,8 +261,7 @@ public class LocalKnowledgeOpsService {
         command.add(pythonCommand);
         command.addAll(scriptArgs);
 
-        OpsJob job = currentJob.get();
-        appendLog("执行: " + String.join(" ", command));
+        appendLogOrSink("执行: " + String.join(" ", command), logSink);
 
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(projectRoot.toFile());
@@ -270,14 +273,25 @@ public class LocalKnowledgeOpsService {
                 new InputStreamReader(process.getInputStream(), charset))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                appendLog(line);
+                appendLogOrSink(line, logSink);
             }
         }
         int code = process.waitFor();
         if (code != 0) {
             throw new IllegalStateException("脚本退出码 " + code + "，详见任务日志。");
         }
-        appendLog("脚本执行成功。");
+        appendLogOrSink("脚本执行成功。", logSink);
+    }
+
+    private void appendLogOrSink(String line, List<String> logSink) {
+        if (line == null) {
+            return;
+        }
+        if (logSink != null) {
+            logSink.add(line);
+            return;
+        }
+        appendLog(line);
     }
 
     private void appendLog(String line) {
@@ -359,6 +373,107 @@ public class LocalKnowledgeOpsService {
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    /**
+     * 增量同步：build（--since）→ Neo4j upsert → Qdrant upsert（无 wipe/recreate）。
+     * 返回脚本日志行，供 {@link com.qa.demo.qa.learning.EnterpriseKnowledgeSyncService} 记录状态。
+     */
+    public List<String> runIncrementalSyncScript(IncrementalSyncParams params) throws Exception {
+        List<String> logs = new ArrayList<>();
+        runPythonScriptWithLogSink(buildIncrementalBuildArgs(params), logs);
+        Path jsonl = projectRoot.resolve(DEFAULT_JSONL);
+        if (!Files.exists(jsonl)) {
+            logs.add("无增量数据，跳过 Neo4j/Qdrant upsert");
+            return logs;
+        }
+        runPythonScriptWithLogSink(buildIncrementalNeo4jArgs(), logs);
+        runPythonScriptWithLogSink(buildIncrementalVectorArgs(params), logs);
+        return logs;
+    }
+
+    public Map<String, Object> startIncrementalSync(IncrementalSyncParams params) {
+        return startJob("incremental_sync", () -> {
+            try {
+                runIncrementalSyncScript(params);
+            } catch (Exception e) {
+                throw new RuntimeException(e.getMessage() != null ? e.getMessage() : e.toString(), e);
+            }
+        });
+    }
+
+    public Path projectRootPath() {
+        return projectRoot;
+    }
+
+    public record IncrementalSyncParams(
+            String host,
+            int port,
+            String schema,
+            String username,
+            String password,
+            String since,
+            String companyIds,
+            String qdrantCollection,
+            String embeddingProvider,
+            String embeddingModel,
+            int embeddingDim,
+            String embeddingApiKey
+    ) {
+    }
+
+    private List<String> buildIncrementalBuildArgs(IncrementalSyncParams params) {
+        List<String> args = new ArrayList<>();
+        args.add(scriptPath("scripts/enterprise_pipeline/build_knowledge_from_mysql.py"));
+        args.add("--host");
+        args.add(params.host());
+        args.add("--port");
+        args.add(String.valueOf(params.port()));
+        args.add("--username");
+        args.add(params.username());
+        args.add("--password");
+        args.add(params.password());
+        args.add("--schema");
+        args.add(params.schema());
+        if (params.since() != null && !params.since().isBlank()) {
+            args.add("--since");
+            args.add(params.since());
+        }
+        if (params.companyIds() != null && !params.companyIds().isBlank()) {
+            args.add("--company-ids");
+            args.add(params.companyIds());
+        }
+        return args;
+    }
+
+    private List<String> buildIncrementalNeo4jArgs() {
+        List<String> args = new ArrayList<>();
+        args.add(scriptPath("scripts/enterprise_pipeline/sync_neo4j.py"));
+        args.add("--input");
+        args.add(DEFAULT_JSONL);
+        return args;
+    }
+
+    private List<String> buildIncrementalVectorArgs(IncrementalSyncParams params) {
+        List<String> args = new ArrayList<>();
+        args.add(scriptPath("scripts/enterprise_pipeline/sync_vectors_qdrant.py"));
+        args.add("--input");
+        args.add(DEFAULT_JSONL);
+        args.add("--collection");
+        args.add(params.qdrantCollection());
+        args.add("--embedding-provider");
+        args.add(params.embeddingProvider());
+        args.add("--embedding-model");
+        args.add(params.embeddingModel());
+        args.add("--embedding-dim");
+        args.add(String.valueOf(params.embeddingDim()));
+        if ("dashscope".equalsIgnoreCase(params.embeddingProvider())
+                && params.embeddingApiKey() != null
+                && !params.embeddingApiKey().isBlank()) {
+            args.add("--embedding-api-key");
+            args.add(params.embeddingApiKey());
+        }
+        return args;
     }
 
     private record OpsJob(

@@ -55,6 +55,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--schema", default="tdcomp")
     parser.add_argument("--output-dir", default="data/knowledge")
     parser.add_argument("--limit", type=int, default=0, help="Limit companies for debugging")
+    parser.add_argument(
+        "--since",
+        default="",
+        help="Incremental watermark (datetime/date). Uses modifytime/updated_at on company table.",
+    )
+    parser.add_argument(
+        "--company-ids",
+        default="",
+        help="Comma-separated company ids to restrict scope (optional)",
+    )
     return parser.parse_args()
 
 
@@ -176,7 +186,19 @@ def append_select_alias(selected: list[str], cols: set[str], canonical: str, can
         selected.append(f"`{physical}` AS {canonical}")
 
 
-def query_companies(conn, schema: str, limit: int) -> list[dict[str, Any]]:
+def parse_company_ids(raw: str) -> list[str]:
+    if not raw or not raw.strip():
+        return []
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def query_companies(
+    conn,
+    schema: str,
+    limit: int,
+    since: str = "",
+    company_ids: list[str] | None = None,
+) -> list[dict[str, Any]]:
     table = choose_company_table(conn, schema)
     if table is None:
         return []
@@ -213,19 +235,40 @@ def query_companies(conn, schema: str, limit: int) -> list[dict[str, Any]]:
     if "assigned_it_ids" in cols and "assigned_it_ids" not in selected_canonical:
         selected.append("`assigned_it_ids` AS assigned_it_ids")
 
-    delete_flag_sql = ""
+    where_parts: list[str] = []
+    params: list[Any] = []
     if "deleteflag" in cols:
-        delete_flag_sql = "WHERE deleteflag = 0"
+        where_parts.append("deleteflag = 0")
+    if since and since.strip():
+        updated_col = choose_first(
+            cols,
+            [
+                "modifytime",
+                "modifyTime",
+                "updated_at",
+                "update_time",
+                "gmt_modified",
+                "modify_time",
+            ],
+        )
+        if updated_col:
+            where_parts.append(f"`{updated_col}` > %s")
+            params.append(since.strip())
+    if company_ids:
+        placeholders = ", ".join(["%s"] * len(company_ids))
+        where_parts.append(f"`{id_col}` IN ({placeholders})")
+        params.extend(company_ids)
 
+    where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
     limit_sql = f"LIMIT {int(limit)}" if limit > 0 else ""
     sql = f"""
     SELECT {", ".join(selected)}
     FROM `{schema}`.`{table}`
-    {delete_flag_sql}
+    {where_sql}
     {limit_sql}
     """
     with conn.cursor() as cur:
-        cur.execute(sql)
+        cur.execute(sql, params)
         return cur.fetchall()
 
 
@@ -767,6 +810,7 @@ def build_company_rows(
             parent_company = f"{parent_name}（ID {parent_id}）" if parent_name else f"总公司ID {parent_id}"
 
         row = {
+            "domain": "org_master",
             "company_id": company_id,
             "company_name": company_name,
             "company_short_name": str(c.get("company_short_name") or ""),
@@ -913,8 +957,16 @@ def main() -> None:
         output_dir = root / output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    company_id_filter = parse_company_ids(args.company_ids)
+
     with open_conn(args) as conn:
-        companies = query_companies(conn, args.schema, args.limit)
+        companies = query_companies(
+            conn,
+            args.schema,
+            args.limit,
+            since=args.since,
+            company_ids=company_id_filter or None,
+        )
         bank_accounts = query_bank_accounts(conn, args.schema)
         directors_supervisors = query_directors_supervisors(conn, args.schema)
         certificate_management = query_certificate_management(conn, args.schema)

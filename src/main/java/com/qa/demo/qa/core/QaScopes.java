@@ -6,19 +6,12 @@ package com.qa.demo.qa.core;
 public final class QaScopes {
 
     public static final String ENTERPRISE = "enterprise";
-    public static final String PERSONAL = "personal";
 
     private QaScopes() {
     }
 
+    /** 统一归一化为企业知识库 scope（不再区分 personal）。 */
     public static String normalize(String scope) {
-        if (scope == null || scope.isBlank()) {
-            return ENTERPRISE;
-        }
-        String raw = scope.trim().toLowerCase();
-        if (raw.contains("个人") || raw.equals("personal") || raw.equals("me")) {
-            return PERSONAL;
-        }
         return ENTERPRISE;
     }
 }
