@@ -4,6 +4,7 @@ import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
 import com.qa.demo.qa.domain.ConversationSessionSupport;
+import com.qa.demo.qa.intent.IntentLlmClassifier;
 import com.qa.demo.qa.retrieval.GraphContextService;
 import org.springframework.stereotype.Service;
 
@@ -29,10 +30,13 @@ public class QaConversationService {
     private final ConcurrentHashMap<String, Conversation> store = new ConcurrentHashMap<>();
     private final GraphContextService graphContextService;
     private final ScenarioRuleEngine ruleEngine;
+    private final IntentLlmClassifier llmClassifier;
 
-    public QaConversationService(GraphContextService graphContextService, ScenarioRuleEngine ruleEngine) {
+    public QaConversationService(GraphContextService graphContextService, ScenarioRuleEngine ruleEngine,
+            IntentLlmClassifier llmClassifier) {
         this.graphContextService = graphContextService;
         this.ruleEngine = ruleEngine;
+        this.llmClassifier = llmClassifier;
     }
 
     private static final Pattern DIGIT_ONLY = Pattern.compile("^\\d{1,2}$");
@@ -381,12 +385,95 @@ public class QaConversationService {
             return current;
         }
         ConversationTurn last = prior.get(prior.size() - 1);
-        return ConversationSessionSupport.inheritIntentSlots(
+        String priorQuestion = last.question();
+        String priorQueryType = last.lastQueryType();
+        String priorAnswer = last.answer();
+        String personName = current.personName() != null ? current.personName()
+                : (resolveFocusPerson(last) != null ? resolveFocusPerson(last) : "");
+        List<String> companyHints = current.companyHints() != null ? current.companyHints()
+                : (last.focusCompanyNames() != null ? last.focusCompanyNames() : List.of());
+
+        // 使用 LLM 判断本轮 queryType（带上下文）
+        try {
+            IntentDecision llmDecision = llmClassifier.classifyWithContext(
+                    question, priorQuestion, priorQueryType, priorAnswer, personName, companyHints);
+            if (llmDecision != null) {
+                String reason = llmDecision.reason() == null ? "" : llmDecision.reason();
+                if (!reason.contains("followup_llm")) {
+                    reason = (reason.isBlank() ? "" : reason + "; ") + "followup_llm";
+                }
+                return new IntentDecision(
+                        llmDecision.intent(),
+                        llmDecision.confidence(),
+                        reason,
+                        llmDecision.queryType(),
+                        llmDecision.personName() != null && !llmDecision.personName().isBlank()
+                                ? llmDecision.personName() : personName,
+                        llmDecision.companyHints() != null ? llmDecision.companyHints() : companyHints,
+                        llmDecision.roleFocus(),
+                        current.personEmployeeId()
+                );
+            }
+        } catch (Exception ignored) {
+            // LLM 失败时 fallback 到继承逻辑
+        }
+
+        // Fallback：使用原有的继承逻辑
+        IntentDecision inherited = ConversationSessionSupport.inheritIntentSlots(
                 current,
                 question,
-                last.question(),
-                last.lastQueryType(),
+                priorQuestion,
+                priorQueryType,
                 resolveFocusPerson(last)
+        );
+        return mergeSessionCompanyHints(inherited, last, question);
+    }
+
+    /**
+     * 追问「这些主体/公司…证照」时，把上一轮答案中的关注主体并入 companyHints，避免仅依赖 LLM 漏列。
+     */
+    private IntentDecision mergeSessionCompanyHints(
+            IntentDecision decision,
+            ConversationTurn last,
+            String question
+    ) {
+        if (decision == null || last == null || question == null || question.isBlank()) {
+            return decision;
+        }
+        String q = question.strip();
+        boolean subjectFollowUp = q.contains("这些") || q.contains("上面") || q.contains("刚才")
+                || q.contains("存续") || q.contains("主体");
+        if (!subjectFollowUp || !q.contains("证照")) {
+            return decision;
+        }
+        List<String> merged = new ArrayList<>();
+        if (decision.companyHints() != null) {
+            merged.addAll(decision.companyHints());
+        }
+        if (last.focusCompanyNames() != null) {
+            for (String name : last.focusCompanyNames()) {
+                if (name != null && !name.isBlank() && !merged.contains(name.trim())) {
+                    merged.add(name.trim());
+                }
+            }
+        }
+        int priorHintCount = decision.companyHints() == null ? 0 : decision.companyHints().size();
+        if (merged.size() <= priorHintCount) {
+            return decision;
+        }
+        String reason = decision.reason() == null ? "" : decision.reason();
+        if (!reason.contains("session_company_hints")) {
+            reason = (reason.isBlank() ? "" : reason + "; ") + "session_company_hints";
+        }
+        return new IntentDecision(
+                decision.intent(),
+                decision.confidence(),
+                reason,
+                decision.queryType(),
+                decision.personName(),
+                List.copyOf(merged),
+                decision.roleFocus(),
+                decision.personEmployeeId()
         );
     }
 

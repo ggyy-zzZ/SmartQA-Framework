@@ -275,7 +275,8 @@ public class QaController {
                 request.question(),
                 QaScopes.normalize(request.scope()),
                 request.conversationId(),
-                request.followUp()
+                request.followUp(),
+                response
         );
     }
 
@@ -284,9 +285,11 @@ public class QaController {
             @RequestParam("question") String question,
             @RequestParam(defaultValue = QaScopes.ENTERPRISE) String scope,
             @RequestParam(required = false) String conversationId,
-            @RequestParam(required = false) Boolean followUp
+            @RequestParam(required = false) Boolean followUp,
+            jakarta.servlet.http.HttpServletResponse response
     ) {
-        return askOrchestrator.startAskStream(question, QaScopes.normalize(scope), conversationId, followUp);
+        applySseResponseHeaders(response);
+        return askOrchestrator.startAskStream(question, QaScopes.normalize(scope), conversationId, followUp, response);
     }
 
     /**

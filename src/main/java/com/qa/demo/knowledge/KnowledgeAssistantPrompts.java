@@ -53,6 +53,39 @@ public final class KnowledgeAssistantPrompts {
                 + "不要输出 JSON 以外的任何文字。\n";
     }
 
+    /**
+     * 追问场景的意图解析 prompt：带会话上下文，让 LLM 判断本轮 queryType。
+     */
+    public static String followUpIntentRouterSystemPrompt() {
+        return "你是企业知识库问答的「追问意图解析器」。根据会话历史与当前问题，判断本轮查询形态。\n\n"
+                + "会话历史中的「上一轮 queryType」供参考，不决定本轮判断。\n"
+                + "必须根据当前问题的实际语义判断，尤其是：\n"
+                + "- 用户说「证」「证照」「许可证」「执照」→ 应为证照类 queryType\n"
+                + "- 用户说「哪些主体」「任职」「担任」→ 任职类 queryType\n"
+                + "- 若当前问题与上一轮是不同维度（如首轮问任职，本轮问证照），应切换 queryType\n\n"
+                + "可选 queryType：\n"
+                + "- person_role_list: 某人担任哪些主体/公司的法人、董事、监事等（列表型）\n"
+                + "- person_certificate_list: 某人负责/管理哪些证照（需输出证照类型+公司+角色）\n"
+                + "- company_certificate: 某公司有哪些证照/许可证、有效期、保管人/监管人\n"
+                + "- company_profile: 某一公司/主体的概况、状态、地址、经营范围等\n"
+                + "- company_seal: 某公司印章类型、保管部门、用印相关人员\n"
+                + "- shareholder: 股东、持股、股权结构\n"
+                + "- relation: 关联、穿透、母子关系\n"
+                + "- aggregate: 数量、统计、汇总\n"
+                + "- policy: 制度流程\n"
+                + "- semantic: 泛语义检索\n"
+                + "- mixed: 多形态混合\n"
+                + "- unknown: 无法判断形态\n\n"
+                + "roleFocus（任职类问题时必填具体值）：legal_rep | director | supervisor | shareholder | any\n"
+                + "personName: 当前问题中出现的自然人指称，照实抽取；无则空字符串\n"
+                + "companyHints: 当前问题中的公司/主体名称片段数组，无则 []\n"
+                + "confidence: 槽位齐全且意图明确时建议 >= 0.8\n\n"
+                + "输出必须是单行 JSON：\n"
+                + "{\"intent\":\"graph|mysql|...\",\"queryType\":\"person_certificate_list|...\","
+                + "\"personName\":\"\",\"companyHints\":[],\"roleFocus\":\"any\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
+                + "不要输出 JSON 以外的任何文字。\n";
+    }
+
     public static String sqlGeneratorSystemPrompt(int limit) {
         return String.format(
                 "你是 SQL 生成器：根据用户自然语言问题与提供的 MySQL 表结构摘要，生成一条可执行的只读查询。\n"

@@ -47,7 +47,7 @@ public class QaAnswerGateService {
             return new GateDecision(false, false, "unknown_intent");
         }
         if (intent != null && intent.isPersonCertificateListQuery()) {
-            if (!hasEvidenceForSchema(evidence, PersonCertificateStewardship.SCHEMA_ID)) {
+            if (!hasPersonCertificateEvidence(evidence)) {
                 return new GateDecision(false, false, "person_certificate_no_evidence");
             }
         }
@@ -59,6 +59,25 @@ public class QaAnswerGateService {
             return new GateDecision(false, false, "top_score_below_min");
         }
         return GateDecision.allow();
+    }
+
+    private boolean hasPersonCertificateEvidence(List<ContextChunk> evidence) {
+        if (evidence == null || evidence.isEmpty()) {
+            return false;
+        }
+        for (ContextChunk c : evidence) {
+            if (c == null || c.snippet() == null || c.snippet().isBlank()) {
+                continue;
+            }
+            String source = c.source() == null ? "" : c.source();
+            if (!"mysql-person-certificate".equals(source) && !"mysql-company-certificate".equals(source)) {
+                continue;
+            }
+            if (PersonCertificateStewardship.SCHEMA_ID.equals(c.evidenceSchema())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasEvidenceForSchema(List<ContextChunk> evidence, String schemaId) {

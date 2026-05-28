@@ -77,6 +77,7 @@ External services (must be running):
 
 ## Documentation References
 
+- `docs/enterprise-qa-known-issues.md` - Known QA issues (multi-turn, retrieval, config vs learning)
 - `openspec/AGENTS.md` - Development conventions
 - `openspec/project.md` - Project architecture details
 - `openspec/specs/knowledge-assistant/spec.md` - Technical specification

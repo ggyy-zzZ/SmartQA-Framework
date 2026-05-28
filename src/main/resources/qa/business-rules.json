@@ -19,31 +19,33 @@
     },
     "queryTypeConditions": [
       {
+        "id": "person_role_list",
+        "description": "人物角色列表查询",
+        "keywords": [
+          "任职", "担任", "职位", "角色", "负责", "管", "监管",
+          "法人", "法定代表人", "董事", "监事", "股东", "哪些主体", "主体"
+        ],
+        "queryType": "person_role_list",
+        "requiresPerson": true,
+        "weakQueryTypes": [
+          "semantic",
+          "unknown",
+          "mixed",
+          "person_certificate_list"
+        ]
+      },
+      {
         "id": "person_certificate_list",
         "description": "人物证照列表查询",
         "keywords": [
           "证照", "许可证", "执照", "资质", "备案", "证书",
-          "哪些", "负责", "管", "列出", "多少", "什么", "啥", "涉及"
+          "负责", "管", "列出", "多少", "什么", "啥", "涉及"
         ],
         "queryType": "person_certificate_list",
         "requiresPerson": true,
         "weakQueryTypes": [
           "company_certificate",
           "company_profile",
-          "semantic",
-          "unknown",
-          "mixed"
-        ]
-      },
-      {
-        "id": "person_role_list",
-        "description": "人物角色列表查询",
-        "keywords": [
-          "任职", "担任", "职位", "角色", "负责", "管", "监管"
-        ],
-        "queryType": "person_role_list",
-        "requiresPerson": true,
-        "weakQueryTypes": [
           "semantic",
           "unknown",
           "mixed"

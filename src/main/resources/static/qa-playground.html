@@ -1012,7 +1012,7 @@
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
         const state = {answerBuffer: "", streamedDelta: false, lastEventAt: Date.now()};
-        const idleLimitMs = 120000;
+        const idleLimitMs = 180000;
 
         while (true) {
             if (Date.now() - state.lastEventAt > idleLimitMs) {

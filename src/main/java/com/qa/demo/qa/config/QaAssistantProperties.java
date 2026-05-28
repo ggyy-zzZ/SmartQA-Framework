@@ -80,6 +80,9 @@ public class QaAssistantProperties {
     /** 是否用 MiniMax 做意图+实体抽取（无 API Key 时自动走规则） */
     private boolean intentLlmEnabled = true;
 
+    /** 任职/证照等列表型问句槽位可由规则填满时，跳过意图 LLM（避免首包长时间无响应） */
+    private boolean intentRuleFirstForStructured = true;
+
     /**
      * LLM 意图置信度不低于该值且槽位已齐备时，跳过规则 enrich（仅补 reason 前缀）。
      */
@@ -547,6 +550,14 @@ public class QaAssistantProperties {
 
     public void setIntentLlmEnabled(boolean intentLlmEnabled) {
         this.intentLlmEnabled = intentLlmEnabled;
+    }
+
+    public boolean isIntentRuleFirstForStructured() {
+        return intentRuleFirstForStructured;
+    }
+
+    public void setIntentRuleFirstForStructured(boolean intentRuleFirstForStructured) {
+        this.intentRuleFirstForStructured = intentRuleFirstForStructured;
     }
 
     public double getIntentLlmEnrichMinConfidence() {

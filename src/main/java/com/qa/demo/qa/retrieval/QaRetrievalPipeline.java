@@ -93,10 +93,18 @@ public class QaRetrievalPipeline {
         base = appendSupplementalTables(base, question, plan);
         base = appendEmployeeBaseInfo(base, question, plan);
         base = appendPersonIdentityEvidence(base, question, intent);
+        base = appendPersonCertificateIfNeeded(base, plan, question);
 
         // 使用配置化的截断阈值
         String queryType = intent != null ? intent.queryType() : "";
         base = applyConfigDrivenTruncation(base, queryType);
+
+        if (plan.personCertificateList()) {
+            return new RetrievalResult("unified_person_certificate", base.evidence());
+        }
+        if (plan.personRoleList()) {
+            return trimEvidence(base.evidence(), plan.finalEvidenceTopK(), "unified_person_role");
+        }
 
         List<ContextChunk> forRerank = applyCorrectionNarrow(question, base.evidence(), "company");
         List<ContextChunk> reranked = evidenceRerankService.rerank(
@@ -106,7 +114,8 @@ public class QaRetrievalPipeline {
     }
 
     private RetrievalResult applyConfigDrivenTruncation(RetrievalResult base, String queryType) {
-        if ("person_role_list".equalsIgnoreCase(queryType)) {
+        if ("person_role_list".equalsIgnoreCase(queryType)
+                || "person_certificate_list".equalsIgnoreCase(queryType)) {
             return base;
         }
         List<ContextChunk> evidence = base.evidence();
@@ -152,7 +161,7 @@ public class QaRetrievalPipeline {
             case "unknown" -> new RetrievalResult("unknown", List.of());
             default -> retrieveHybrid(question, plan);
         };
-        RetrievalResult withPersonCert = appendPersonCertificateIfNeeded(base, plan);
+        RetrievalResult withPersonCert = appendPersonCertificateIfNeeded(base, plan, question);
         RetrievalResult withSupplemental = appendSupplementalTables(withPersonCert, question, plan);
         RetrievalResult withEmployee = appendEmployeeBaseInfo(withSupplemental, question, plan);
         RetrievalResult withIdentity = appendPersonIdentityEvidence(withEmployee, question, intent);
@@ -595,7 +604,15 @@ public class QaRetrievalPipeline {
 
     private List<ContextChunk> collectHybridCandidatesExpanded(String question, RetrievalPlan plan) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
-        appendPersonCertificateEvidence(merged, plan);
+        appendPersonCertificateEvidence(merged, plan, question);
+        if (plan.personRoleList()) {
+            appendUnique(merged, safeSqlRetrieve(question, plan));
+            appendUnique(merged, safeGraphRetrieve(question, plan));
+            if (merged.isEmpty()) {
+                appendUnique(merged, vectorContextService.retrieveTopChunks(question, properties.getRecallVectorTopK()));
+            }
+            return merged;
+        }
         List<ContextChunk> graph = safeGraphRetrieve(question, plan);
         appendUnique(merged, graph);
         if (plan.preferGraphOnly() && !graph.isEmpty()) {
@@ -612,27 +629,49 @@ public class QaRetrievalPipeline {
         return merged;
     }
 
-    private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan) {
+    private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan, String question) {
         IntentDecision intent = plan.intent();
-        if (intent == null || !intent.isPersonCertificateListQuery() || !intent.hasPersonFocus()) {
+        if (intent == null || !intent.isPersonCertificateListQuery()) {
             return;
         }
-        int maxRows = Math.max(properties.getRecallGraphTopK() * 8, 64);
-        appendUnique(merged, personCertificateQueryService.retrieve(
-                intent.personEmployeeId(),
-                intent.personName(),
-                maxRows
-        ));
+        int maxRows = resolvePersonCertificateMaxRows(intent);
+        boolean activeCompaniesOnly = question != null && question.contains("存续");
+        if (intent.hasCompanyHints()) {
+            appendUnique(merged, personCertificateQueryService.retrieveByCompanyNames(
+                    intent.companyHints(),
+                    activeCompaniesOnly,
+                    maxRows
+            ));
+        }
+        if (intent.hasPersonFocus()) {
+            appendUnique(merged, personCertificateQueryService.retrieve(
+                    intent.personEmployeeId(),
+                    intent.personName(),
+                    maxRows
+            ));
+        }
     }
 
-    private RetrievalResult appendPersonCertificateIfNeeded(RetrievalResult base, RetrievalPlan plan) {
+    private int resolvePersonCertificateMaxRows(IntentDecision intent) {
+        int base = Math.max(properties.getRecallGraphTopK() * 8, 64);
+        if (intent != null && intent.hasCompanyHints()) {
+            return Math.min(Math.max(base, intent.companyHints().size() * 12), 256);
+        }
+        return base;
+    }
+
+    private RetrievalResult appendPersonCertificateIfNeeded(
+            RetrievalResult base,
+            RetrievalPlan plan,
+            String question
+    ) {
         if (!plan.personCertificateList()) {
             return base;
         }
         List<ContextChunk> merged = new ArrayList<>(base.evidence());
-        appendPersonCertificateEvidence(merged, plan);
+        appendPersonCertificateEvidence(merged, plan, question);
         long personCertRows = merged.stream()
-                .filter(c -> c != null && "mysql-person-certificate".equals(c.source()))
+                .filter(c -> c != null && isStructuredCertificateSource(c.source()))
                 .count();
         if (personCertRows >= 1) {
             return trimEvidence(merged, plan.finalEvidenceTopK(), "person_certificate_" + base.retrievalSource());
@@ -641,6 +680,10 @@ public class QaRetrievalPipeline {
             return base;
         }
         return new RetrievalResult("person_certificate_partial_" + base.retrievalSource(), merged);
+    }
+
+    private static boolean isStructuredCertificateSource(String source) {
+        return "mysql-person-certificate".equals(source) || "mysql-company-certificate".equals(source);
     }
 
     private static void appendUnique(List<ContextChunk> merged, List<ContextChunk> items) {

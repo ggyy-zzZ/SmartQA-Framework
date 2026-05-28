@@ -155,6 +155,8 @@ public class ActiveLearningService {
                     where
             );
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                int seconds = Math.max(1, properties.getMysqlQueryTimeoutSeconds());
+                ps.setQueryTimeout(seconds);
                 int idx = 1;
                 if (hasScope && !normalizedScope.isBlank()) {
                     ps.setString(idx++, normalizedScope);

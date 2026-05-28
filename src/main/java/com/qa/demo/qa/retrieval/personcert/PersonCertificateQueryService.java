@@ -30,6 +30,7 @@ import java.util.Set;
 public class PersonCertificateQueryService {
 
     private static final String SOURCE = "mysql-person-certificate";
+    private static final String COMPANY_SOURCE = "mysql-company-certificate";
     private static final double ROW_SCORE = 28.0;
 
     private final QaAssistantProperties properties;
@@ -56,7 +57,33 @@ public class PersonCertificateQueryService {
             }
             Map<String, String> companyNames = loadCompanyNames(connection);
             List<PersonCertificateStewardship> rows = matchStewardships(connection, employeeIds, companyNames, limit);
-            return toContextChunks(rows);
+            return toContextChunks(rows, SOURCE);
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    /**
+     * 按公司名批量查询登记证照（用于多轮追问「这些主体有哪些证照」）。
+     */
+    public List<ContextChunk> retrieveByCompanyNames(
+            List<String> companyNames,
+            boolean activeCompaniesOnly,
+            int maxRows
+    ) {
+        if (companyNames == null || companyNames.isEmpty()) {
+            return List.of();
+        }
+        int limit = Math.max(1, Math.min(maxRows, 256));
+        try (Connection connection = openBusinessConnection()) {
+            Map<String, String> allCompanyNames = loadCompanyNames(connection);
+            Set<String> companyIds = resolveCompanyIds(connection, companyNames, activeCompaniesOnly);
+            if (companyIds.isEmpty()) {
+                return List.of();
+            }
+            List<PersonCertificateStewardship> rows = loadCertificatesForCompanies(
+                    connection, companyIds, allCompanyNames, limit);
+            return toContextChunks(rows, COMPANY_SOURCE);
         } catch (Exception ignored) {
             return List.of();
         }
@@ -194,7 +221,112 @@ public class PersonCertificateQueryService {
         return text;
     }
 
-    private List<ContextChunk> toContextChunks(List<PersonCertificateStewardship> rows) {
+    private Set<String> resolveCompanyIds(
+            Connection connection,
+            List<String> companyNames,
+            boolean activeOnly
+    ) throws SQLException {
+        Set<String> ids = new java.util.LinkedHashSet<>();
+        String statusClause = activeOnly ? " AND operating_status = 0" : "";
+        String exactSql = """
+                SELECT company_id FROM company
+                WHERE deleteflag = 0%s AND company_name = ?
+                LIMIT 1
+                """.formatted(statusClause);
+        String likeSql = """
+                SELECT company_id FROM company
+                WHERE deleteflag = 0%s AND company_name LIKE ?
+                LIMIT 3
+                """.formatted(statusClause);
+        for (String raw : companyNames) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            String name = raw.trim();
+            try (PreparedStatement ps = connection.prepareStatement(exactSql)) {
+                ps.setString(1, name);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        ids.add(String.valueOf(rs.getObject("company_id")));
+                    }
+                }
+            }
+            if (ids.size() >= 64) {
+                break;
+            }
+            try (PreparedStatement ps = connection.prepareStatement(likeSql)) {
+                ps.setString(1, "%" + name + "%");
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        ids.add(String.valueOf(rs.getObject("company_id")));
+                    }
+                }
+            }
+            if (ids.size() >= 64) {
+                break;
+            }
+        }
+        return ids;
+    }
+
+    private List<PersonCertificateStewardship> loadCertificatesForCompanies(
+            Connection connection,
+            Set<String> companyIds,
+            Map<String, String> companyNames,
+            int limit
+    ) throws SQLException {
+        if (companyIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = buildPlaceholders(companyIds.size());
+        String sql = """
+                SELECT id, company_id, certificate_type, status
+                FROM certificate_management
+                WHERE deleteflag = 0 AND company_id IN (%s)
+                ORDER BY company_id, id
+                """.formatted(placeholders);
+        List<PersonCertificateStewardship> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            int idx = 1;
+            for (String companyId : companyIds) {
+                ps.setString(idx++, companyId);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next() && result.size() < limit) {
+                    String certRecordId = String.valueOf(rs.getObject("id"));
+                    String companyId = String.valueOf(rs.getObject("company_id"));
+                    String typeCode = rs.getString("certificate_type");
+                    String certTypeLabel = enumCatalog.resolveCertificateLabel(typeCode == null ? "" : typeCode);
+                    String statusLabel = normalizeStatus(rs.getObject("status"));
+                    String companyName = companyNames.getOrDefault(companyId, "");
+                    result.add(new PersonCertificateStewardship(
+                            certTypeLabel,
+                            companyName.isBlank() ? "（公司名称未加载）" : companyName,
+                            "登记证照",
+                            statusLabel,
+                            certRecordId,
+                            companyId,
+                            ""
+                    ));
+                }
+            }
+        }
+        return result;
+    }
+
+    private static String buildPlaceholders(int size) {
+        int n = Math.max(1, size);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append('?');
+        }
+        return sb.toString();
+    }
+
+    private List<ContextChunk> toContextChunks(List<PersonCertificateStewardship> rows, String source) {
         List<ContextChunk> chunks = new ArrayList<>();
         for (PersonCertificateStewardship row : rows) {
             chunks.add(ContextChunk.ofCompany(
@@ -203,7 +335,7 @@ public class PersonCertificateQueryService {
                     "人物证照",
                     row.toEvidenceLine(evidenceSchemas),
                     ROW_SCORE,
-                    SOURCE,
+                    source,
                     PersonCertificateStewardship.SCHEMA_ID
             ));
         }

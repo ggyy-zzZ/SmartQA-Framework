@@ -109,7 +109,9 @@ public class IntentDecisionEnricher {
             companyHints.addAll(entityExtractor.extractCompanyHints(question));
         }
         String inferredQueryType = ruleEngine.inferQueryType(question, personName);
-        if (ruleEngine.isQueryType(question, personName, "person_certificate_list")) {
+        if (ruleEngine.isQueryType(question, personName, "person_role_list")) {
+            queryType = "person_role_list";
+        } else if (ruleEngine.isQueryType(question, personName, "person_certificate_list")) {
             queryType = "person_certificate_list";
         } else if (queryType == null || queryType.isBlank()) {
             queryType = inferredQueryType;

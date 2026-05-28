@@ -46,6 +46,10 @@ public class IntentRouterService {
      * @param learnedForAlias 本轮主动学习命中，用于别名→实名解析
      */
     public IntentRoutingOutcome decide(String question, boolean explicitCompanyHint, List<ContextChunk> learnedForAlias) {
+        IntentDecision ruleFirst = ruleEngine.classify(question, explicitCompanyHint, "rule");
+        if (properties.isIntentRuleFirstForStructured() && isStructuredListReady(ruleFirst)) {
+            return enricher.enrich(ruleFirst, question, explicitCompanyHint, "rule", learnedForAlias);
+        }
         if (properties.isIntentLlmEnabled() && hasMinimaxKey()) {
             try {
                 int timeoutMs = Math.max(5_000, properties.getIntentLlmTimeoutMs());
@@ -64,7 +68,8 @@ public class IntentRouterService {
                     return enricher.enrich(llmDecision, question, explicitCompanyHint, "llm", learnedForAlias);
                 }
             } catch (ExecutionException ex) {
-                if (ex.getCause() instanceof TimeoutException) {
+                Throwable cause = ex.getCause();
+                if (cause instanceof TimeoutException || cause instanceof java.util.concurrent.CancellationException) {
                     return enricher.enrich(
                             ruleEngine.classify(question, explicitCompanyHint, "llm_timeout"),
                             question,
@@ -73,6 +78,8 @@ public class IntentRouterService {
                             learnedForAlias
                     );
                 }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
             } catch (Exception ignored) {
                 // fallback to rule route
             }
@@ -99,5 +106,15 @@ public class IntentRouterService {
     private boolean hasMinimaxKey() {
         String key = properties.getApiKey();
         return key != null && !key.isBlank();
+    }
+
+    private static boolean isStructuredListReady(IntentDecision decision) {
+        if (decision == null) {
+            return false;
+        }
+        if (decision.isPersonRoleListQuery() || decision.isPersonCertificateListQuery()) {
+            return IntentSlots.isRetrievalReady(decision);
+        }
+        return false;
     }
 }

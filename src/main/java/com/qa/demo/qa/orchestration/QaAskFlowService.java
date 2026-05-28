@@ -114,6 +114,7 @@ public class QaAskFlowService {
             Boolean followUpFlag,
             QaAskProgress progress
     ) throws IOException {
+        progress.onThinking("prep", "正在初始化会话…", null);
         String turnId = qaLogService.nextTurnId();
         String convId = conversationService.resolveConversationId(conversationId);
         List<QaConversationService.ConversationTurn> prior = conversationService.recentTurns(convId, 4);
@@ -150,24 +151,26 @@ public class QaAskFlowService {
                 canonicalFactsRegistry.retrieve(sessionRetrievalSeed, scope),
                 canonicalFactsRegistry.retrieve(question, scope)
         );
-        List<ContextChunk> activeLearningHits =
-                retrievalPipeline.safeActiveLearningRetrieve(sessionRetrievalSeed, scope);
+        List<ContextChunk> activeLearningHits = shouldSkipActiveLearningBootstrap(question, sessionRetrievalSeed)
+                ? List.of()
+                : retrievalPipeline.safeActiveLearningRetrieve(question, scope);
         List<ContextChunk> learnedFirst = mergeBootstrapKnowledge(canonicalHits, activeLearningHits);
         QaRetrievalOrchestrator.RetrievalPlan retrievalPlan =
                 retrievalOrchestrator.prepareRetrievalQuestion(sessionRetrievalSeed, learnedFirst);
         String retrievalQuestion = retrievalPlan.retrievalQuestion();
+        String intentQuestion = intentInputForLlm(question, retrievalQuestion);
 
+        progress.onThinking(
+                "recall",
+                "常识与记忆",
+                QaThinkingDigest.bootstrapRecall(canonicalHits, activeLearningHits)
+        );
         progress.onThinking(
                 "decompose",
                 "问题理解",
                 QaThinkingDigest.decompose(
                         question, retrievalQuestion, followUpApplied, modelContextBlock, retrievalPlan
                 )
-        );
-        progress.onThinking(
-                "recall",
-                "常识与记忆",
-                QaThinkingDigest.bootstrapRecall(canonicalHits, activeLearningHits)
         );
 
         if (!explicitCompanyHint
@@ -179,9 +182,11 @@ public class QaAskFlowService {
                     turnId, question, scope, convId, followUpApplied, graphContextService.suggestCompanyCandidates(question, 5));
         }
 
-        IntentRoutingOutcome routing = intentRouterService.decide(retrievalQuestion, explicitCompanyHint, learnedFirst);
+        progress.onThinking("intent_wait", "正在理解问题意图…", null);
+        IntentRoutingOutcome routing = intentRouterService.decide(intentQuestion, explicitCompanyHint, learnedFirst);
         IntentDecision intentDecision = conversationService.enrichIntentForFollowUp(
                 routing.decision(), prior, followUpApplied, question);
+        progress.onThinking("intent_done", "意图识别完成。", null);
         progress.onThinking(
                 "route",
                 "意图与实体",
@@ -194,6 +199,15 @@ public class QaAskFlowService {
                     turnId, question, scope, convId, followUpApplied, intentDecision, routing.personResolution());
         }
 
+        progress.onThinking(
+                "retrieve",
+                intentDecision.isPersonRoleListQuery()
+                        ? "正在查询任职关系（业务库 + 图谱）…"
+                        : intentDecision.isPersonCertificateListQuery()
+                        ? "正在查询证照明细（业务库）…"
+                        : "正在多路召回并重排证据…",
+                null
+        );
         QaRetrievalPipeline.RetrievalResult retrievalResult = retrieve(scope, question, retrievalQuestion, learnedFirst, intentDecision, explicitCompanyHint);
         String retrievalSource = retrievalResult.retrievalSource();
         List<ContextChunk> evidence = new ArrayList<>(retrievalResult.evidence());
@@ -266,6 +280,33 @@ public class QaAskFlowService {
                 convId, scope, turnId, question, answer, evidence, List.of(), focusPerson,
                 intentDecision.intent(), intentDecision.queryType());
         return response;
+    }
+
+    /**
+     * 任职/法人/证照等结构化问句走业务库与图谱，跳过主动学习 MySQL 扫描以免阻塞首包。
+     */
+    private static boolean shouldSkipActiveLearningBootstrap(String question, String retrievalSeed) {
+        String q = question == null ? "" : question.strip();
+        if (q.isBlank()) {
+            return false;
+        }
+        if (retrievalSeed != null && retrievalSeed.length() > 600) {
+            return looksLikeStructuredEnterpriseQuery(q);
+        }
+        return looksLikeStructuredEnterpriseQuery(q);
+    }
+
+    private static boolean looksLikeStructuredEnterpriseQuery(String q) {
+        return q.contains("法人") || q.contains("董事") || q.contains("监事")
+                || q.contains("证照") || q.contains("任职") || q.contains("法定代表人");
+    }
+
+    /** 多轮检索句过长时，意图 LLM 仅用用户原问，避免超长 prompt 卡死。 */
+    private static String intentInputForLlm(String userQuestion, String retrievalQuestion) {
+        if (retrievalQuestion == null || retrievalQuestion.length() <= 600) {
+            return retrievalQuestion == null || retrievalQuestion.isBlank() ? userQuestion : retrievalQuestion;
+        }
+        return userQuestion == null ? "" : userQuestion.strip();
     }
 
     private QaRetrievalPipeline.RetrievalResult retrieve(
