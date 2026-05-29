@@ -13,6 +13,10 @@ public final class IntentSlots {
 
     private static final Pattern PERSON_NAME = Pattern.compile("^[\\p{IsHan}·]{2,12}$");
     private static final Pattern PERSON_NOISE_SUFFIX = Pattern.compile("(是|的|在)$");
+    private static final Set<String> PERSON_NAME_BLOCKLIST = Set.of(
+            "现在", "刚才", "这些", "那些", "上面", "下面", "它们", "他们", "她们", "我们", "你们",
+            "这里", "那里", "这个", "那个", "哪些", "什么", "怎么", "为何", "为什么"
+    );
 
     static final Set<String> VALID_INTENTS = Set.of(
             "graph", "document", "vector", "mysql", "sql", "hybrid", "unknown"
@@ -100,6 +104,9 @@ public final class IntentSlots {
         String n = name.trim();
         n = PERSON_NOISE_SUFFIX.matcher(n).replaceAll("").trim();
         if (n.isEmpty()) {
+            return "";
+        }
+        if (PERSON_NAME_BLOCKLIST.contains(n)) {
             return "";
         }
         return PERSON_NAME.matcher(n).matches() ? n : "";

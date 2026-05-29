@@ -1,5 +1,6 @@
 package com.qa.demo.qa.ops;
 
+import com.qa.demo.qa.cdc.CdcWriteGate;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import org.springframework.stereotype.Service;
 
@@ -32,6 +33,7 @@ public class LocalKnowledgeOpsService {
     private static final int MAX_LOG_LINES = 500;
 
     private final QaAssistantProperties properties;
+    private final CdcWriteGate cdcWriteGate;
     private final Path projectRoot;
     private final String pythonCommand;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
@@ -42,8 +44,9 @@ public class LocalKnowledgeOpsService {
 
     private final AtomicReference<OpsJob> currentJob = new AtomicReference<>(OpsJob.idle());
 
-    public LocalKnowledgeOpsService(QaAssistantProperties properties) {
+    public LocalKnowledgeOpsService(QaAssistantProperties properties, CdcWriteGate cdcWriteGate) {
         this.properties = properties;
+        this.cdcWriteGate = cdcWriteGate;
         this.projectRoot = resolveProjectRoot();
         this.pythonCommand = detectPythonCommand();
     }
@@ -231,11 +234,16 @@ public class LocalKnowledgeOpsService {
         OpsJob job = OpsJob.started(jobId, type);
         currentJob.set(job);
         CompletableFuture.runAsync(() -> {
+            cdcWriteGate.pause();
             try {
                 task.run();
-                currentJob.set(job.succeeded());
+                OpsJob finished = currentJob.get();
+                currentJob.set(finished.succeeded());
             } catch (Exception e) {
-                currentJob.set(job.failed(e.getMessage()));
+                OpsJob finished = currentJob.get();
+                currentJob.set(finished.failed(e.getMessage()));
+            } finally {
+                cdcWriteGate.resume();
             }
         }, executor);
         return Map.of("ok", true, "message", "任务已启动", "job", job.toMap());

@@ -23,12 +23,19 @@
         "alias": "别称",
         "role": "角色"
       }
+    },
+    "catalog_v1": {
+      "fields": {
+        "entryType": "条目类型",
+        "entryName": "名称"
+      }
     }
   },
   "sourceToSchema": {
     "mysql-person-certificate": "person_certificate_v1",
     "employee_identity": "employee_identity_v1",
     "employee_base": "employee_identity_v1",
-    "enterprise_canonical": "enterprise_fact_v1"
+    "enterprise_canonical": "enterprise_fact_v1",
+    "catalog-enum": "catalog_v1"
   }
 }

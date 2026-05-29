@@ -15,6 +15,16 @@ public record RetrievalPlan(
     public static RetrievalPlan of(IntentDecision intent, int graphRecallTopK, int finalEvidenceTopK) {
         boolean personRoleList = intent != null && intent.isPersonRoleListQuery();
         boolean personCertificateList = intent != null && intent.isPersonCertificateListQuery();
+        return of(intent, graphRecallTopK, finalEvidenceTopK, personRoleList, personCertificateList);
+    }
+
+    public static RetrievalPlan of(
+            IntentDecision intent,
+            int graphRecallTopK,
+            int finalEvidenceTopK,
+            boolean personRoleList,
+            boolean personCertificateList
+    ) {
         return new RetrievalPlan(
                 intent,
                 graphRecallTopK,

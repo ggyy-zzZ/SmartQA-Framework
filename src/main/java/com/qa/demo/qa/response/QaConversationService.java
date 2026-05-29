@@ -5,7 +5,8 @@ import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.domain.EntityRef;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
 import com.qa.demo.qa.domain.ConversationSessionSupport;
-import com.qa.demo.qa.intent.IntentLlmClassifier;
+import com.qa.demo.qa.intent.FollowUpIntentContext;
+import com.qa.demo.qa.intent.IntentSlots;
 import com.qa.demo.qa.retrieval.GraphContextService;
 import org.springframework.stereotype.Service;
 
@@ -32,13 +33,10 @@ public class QaConversationService {
     private final ConcurrentHashMap<String, Conversation> store = new ConcurrentHashMap<>();
     private final GraphContextService graphContextService;
     private final ScenarioRuleEngine ruleEngine;
-    private final IntentLlmClassifier llmClassifier;
 
-    public QaConversationService(GraphContextService graphContextService, ScenarioRuleEngine ruleEngine,
-            IntentLlmClassifier llmClassifier) {
+    public QaConversationService(GraphContextService graphContextService, ScenarioRuleEngine ruleEngine) {
         this.graphContextService = graphContextService;
         this.ruleEngine = ruleEngine;
-        this.llmClassifier = llmClassifier;
     }
 
     private static final Pattern DIGIT_ONLY = Pattern.compile("^\\d{1,2}$");
@@ -318,9 +316,9 @@ public class QaConversationService {
         }
         List<String> names = extractFocusCompanyNames(evidence);
         List<String> persons = personCandidates == null ? List.of() : List.copyOf(personCandidates);
-        String person = focusPersonName == null ? "" : focusPersonName.trim();
+        String person = IntentSlots.sanitizePersonName(focusPersonName == null ? "" : focusPersonName.trim());
         if (person.isBlank()) {
-            person = extractPersonFromQuestion(question);
+            person = IntentSlots.sanitizePersonName(extractPersonFromQuestion(question));
         }
         while (c.turns.size() >= MAX_TURNS) {
             c.turns.remove(0);
@@ -442,9 +440,12 @@ public class QaConversationService {
             return "";
         }
         if (turn.focusPersonName() != null && !turn.focusPersonName().isBlank()) {
-            return turn.focusPersonName().trim();
+            String stored = IntentSlots.sanitizePersonName(turn.focusPersonName().trim());
+            if (!stored.isBlank()) {
+                return stored;
+            }
         }
-        return extractPersonFromQuestion(turn.question());
+        return IntentSlots.sanitizePersonName(extractPersonFromQuestion(turn.question()));
     }
 
     private static String extractPersonFromQuestion(String question) {
@@ -468,139 +469,26 @@ public class QaConversationService {
         return false;
     }
 
-    public IntentDecision enrichIntentForFollowUp(
-            IntentDecision current,
-            List<ConversationTurn> prior,
-            boolean followUp,
-            String question
-    ) {
-        if (!followUp || prior.isEmpty() || current == null) {
-            return current;
+    /**
+     * 构建多轮追问上下文，供 {@link com.qa.demo.qa.intent.IntentRouterService} 做 LLM 追问解析。
+     */
+    public FollowUpIntentContext buildFollowUpContext(List<ConversationTurn> prior, IntentDecision current) {
+        if (prior == null || prior.isEmpty()) {
+            return FollowUpIntentContext.inactive();
         }
         ConversationTurn last = prior.get(prior.size() - 1);
-        String priorQuestion = last.question();
-        String priorQueryType = last.lastQueryType();
-        String priorAnswer = last.answer();
-        String personName = current.personName() != null ? current.personName()
+        String personName = current != null && current.hasPersonFocus()
+                ? current.personName()
                 : (resolveFocusPerson(last) != null ? resolveFocusPerson(last) : "");
-        // 使用上一轮检索到的公司实体（含状态元数据）传给 LLM
-        List<EntityRef> priorCompanies = last.getCompanies();
-        List<String> fallbackHints = current.companyHints() != null ? current.companyHints()
-                : (last.focusCompanyNames() != null ? last.focusCompanyNames() : List.of());
-
-        // 使用 LLM 判断本轮 queryType（带上下文和结构化实体）
-        try {
-            IntentDecision llmDecision = llmClassifier.classifyWithEntities(
-                    question, priorQuestion, priorQueryType, priorAnswer, personName, priorCompanies);
-            if (llmDecision != null) {
-                String reason = llmDecision.reason() == null ? "" : llmDecision.reason();
-                if (!reason.contains("followup_llm")) {
-                    reason = (reason.isBlank() ? "" : reason + "; ") + "followup_llm";
-                }
-                // 合并：LLM 返回的公司 hints + 上一轮的公司实体
-                List<String> mergedHints = new ArrayList<>();
-                if (llmDecision.companyHints() != null) {
-                    mergedHints.addAll(llmDecision.companyHints());
-                }
-                // 将 priorCompanies 的名称加入（去重）
-                if (priorCompanies != null) {
-                    for (EntityRef ref : priorCompanies) {
-                        if (ref.name() != null && !ref.name().isBlank() && !mergedHints.contains(ref.name())) {
-                            mergedHints.add(ref.name());
-                        }
-                    }
-                }
-                return new IntentDecision(
-                        llmDecision.intent(),
-                        llmDecision.confidence(),
-                        reason,
-                        llmDecision.queryType(),
-                        llmDecision.personName() != null && !llmDecision.personName().isBlank()
-                                ? llmDecision.personName() : personName,
-                        mergedHints,
-                        llmDecision.roleFocus(),
-                        current.personEmployeeId()
-                );
-            }
-        } catch (Exception ignored) {
-            // LLM 失败时 fallback 到继承逻辑
-        }
-
-        // Fallback：使用原有的继承逻辑
-        IntentDecision inherited = ConversationSessionSupport.inheritIntentSlots(
-                current,
-                question,
-                priorQuestion,
-                priorQueryType,
-                resolveFocusPerson(last)
+        List<String> focusNames = last.focusCompanyNames() != null ? last.focusCompanyNames() : List.of();
+        return FollowUpIntentContext.of(
+                last.question(),
+                last.lastQueryType(),
+                last.answer(),
+                personName,
+                last.getCompanies(),
+                focusNames
         );
-        return mergeSessionEntityHints(inherited, last, question);
-    }
-
-    /**
-     * 多轮追问时，将上一轮检索到的实体并入当前槽位（领域无关，不限于证照场景）。
-     */
-    private IntentDecision mergeSessionEntityHints(
-            IntentDecision decision,
-            ConversationTurn last,
-            String question
-    ) {
-        if (decision == null || last == null || question == null || question.isBlank()) {
-            return decision;
-        }
-        String q = question.strip();
-        if (!isSubjectReferenceFollowUp(q) && !ConversationSessionSupport.isContinuationUtterance(q)) {
-            return decision;
-        }
-        List<String> merged = new ArrayList<>();
-        if (decision.companyHints() != null) {
-            merged.addAll(decision.companyHints());
-        }
-        List<EntityRef> priorCompanies = last.getCompanies();
-        if (priorCompanies != null && !priorCompanies.isEmpty()) {
-            for (EntityRef ref : priorCompanies) {
-                if (ref != null && ref.name() != null && !ref.name().isBlank()) {
-                    String name = ref.name().trim();
-                    if (!merged.contains(name)) {
-                        merged.add(name);
-                    }
-                }
-            }
-        }
-        if (last.focusCompanyNames() != null) {
-            for (String name : last.focusCompanyNames()) {
-                if (name != null && !name.isBlank() && !merged.contains(name.trim())) {
-                    merged.add(name.trim());
-                }
-            }
-        }
-        if (merged.isEmpty() || merged.equals(decision.companyHints())) {
-            return decision;
-        }
-        String reason = decision.reason() == null ? "" : decision.reason();
-        if (!reason.contains("session_entity_merge")) {
-            reason = (reason.isBlank() ? "" : reason + "; ") + "session_entity_merge";
-        }
-        return new IntentDecision(
-                decision.intent(),
-                decision.confidence(),
-                reason,
-                decision.queryType(),
-                decision.personName(),
-                merged,
-                decision.roleFocus(),
-                decision.personEmployeeId()
-        );
-    }
-
-    private static boolean isSubjectReferenceFollowUp(String question) {
-        if (question == null || question.isBlank()) {
-            return false;
-        }
-        String q = question.strip();
-        return q.contains("这些") || q.contains("上面") || q.contains("刚才")
-                || q.contains("存续") || q.contains("主体") || q.contains("它们")
-                || q.contains("那些") || q.contains("这几") || q.contains("那几");
     }
 
     private static List<String> extractFocusCompanyNames(List<ContextChunk> evidence) {

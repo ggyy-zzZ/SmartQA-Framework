@@ -30,6 +30,8 @@
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <!-- 3.0.8+ 修复 MySQL 8.4 移除 SHOW MASTER STATUS（DBZ-7838） -->
+        <debezium.version>3.0.8.Final</debezium.version>
     </properties>
     <dependencies>
         <dependency>
@@ -85,12 +87,17 @@
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-embedded</artifactId>
-            <version>2.4.0.Final</version>
+            <version>${debezium.version}</version>
         </dependency>
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-connector-mysql</artifactId>
-            <version>2.4.0.Final</version>
+            <version>${debezium.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-storage-kafka</artifactId>
+            <version>${debezium.version}</version>
         </dependency>
     </dependencies>
 

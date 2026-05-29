@@ -946,6 +946,11 @@
         statusText.className = "status" + (text.includes("完成") ? " ok" : (isError || text.includes("失败") ? " error" : ""));
     }
 
+    function clearQuestionInput() {
+        questionInput.value = "";
+        autoResize();
+    }
+
     /* ===== 发送 ===== */
     sendBtn.addEventListener("click", async () => {
         const question = questionInput.value.trim();
@@ -962,6 +967,7 @@
         setStatus("连接中…");
 
         addMessage("user", question, null);
+        clearQuestionInput();
 
         try {
             await consumeAskStream(question, scope, signal);
@@ -980,8 +986,6 @@
         } finally {
             sendBtn.disabled = false;
             askAbortController = null;
-            questionInput.value = "";
-            autoResize();
         }
     });
 

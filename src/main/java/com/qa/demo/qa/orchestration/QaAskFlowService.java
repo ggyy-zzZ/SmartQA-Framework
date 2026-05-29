@@ -9,6 +9,7 @@ import com.qa.demo.qa.alignment.EvidenceAlignmentService;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.QaScopes;
 import com.qa.demo.qa.core.RetrievalPlan;
@@ -16,6 +17,7 @@ import com.qa.demo.qa.domain.EntityRef;
 import com.qa.demo.qa.domain.EvidenceToEntityExtractor;
 import com.qa.demo.qa.embedding.TextEmbeddingService;
 import com.qa.demo.qa.intent.CompanyClarificationAdvisor;
+import com.qa.demo.qa.intent.FollowUpIntentContext;
 import com.qa.demo.qa.intent.IntentRouterService;
 import com.qa.demo.qa.intent.IntentRoutingOutcome;
 import com.qa.demo.qa.intent.PersonClarificationAdvisor;
@@ -28,6 +30,7 @@ import com.qa.demo.qa.response.QaLogService;
 import com.qa.demo.qa.retrieval.GraphContextService;
 import com.qa.demo.qa.retrieval.QaRetrievalOrchestrator;
 import com.qa.demo.qa.retrieval.QaRetrievalPipeline;
+import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
 import com.qa.demo.qa.sedimentation.SedimentationQueueService;
 import org.springframework.stereotype.Service;
 
@@ -68,6 +71,7 @@ public class QaAskFlowService {
     private final QaAnswerGateService answerGateService;
     private final TextEmbeddingService textEmbeddingService;
     private final EnterpriseCanonicalFactsRegistry canonicalFactsRegistry;
+    private final NeedInferenceService needInferenceService;
 
     public QaAskFlowService(
             IntentRouterService intentRouterService,
@@ -88,7 +92,8 @@ public class QaAskFlowService {
             SedimentationQueueService sedimentationQueueService,
             QaAnswerGateService answerGateService,
             TextEmbeddingService textEmbeddingService,
-            EnterpriseCanonicalFactsRegistry canonicalFactsRegistry
+            EnterpriseCanonicalFactsRegistry canonicalFactsRegistry,
+            NeedInferenceService needInferenceService
     ) {
         this.intentRouterService = intentRouterService;
         this.activeLearningService = activeLearningService;
@@ -109,6 +114,7 @@ public class QaAskFlowService {
         this.answerGateService = answerGateService;
         this.textEmbeddingService = textEmbeddingService;
         this.canonicalFactsRegistry = canonicalFactsRegistry;
+        this.needInferenceService = needInferenceService;
     }
 
     public Map<String, Object> run(
@@ -187,9 +193,13 @@ public class QaAskFlowService {
         }
 
         progress.onThinking("intent_wait", "正在理解问题意图…", null);
-        IntentRoutingOutcome routing = intentRouterService.decide(intentQuestion, explicitCompanyHint, learnedFirst);
-        IntentDecision intentDecision = conversationService.enrichIntentForFollowUp(
-                routing.decision(), prior, followUpApplied, question);
+        FollowUpIntentContext followUpContext = followUpApplied
+                ? conversationService.buildFollowUpContext(prior, null)
+                : FollowUpIntentContext.inactive();
+        IntentRoutingOutcome routing = intentRouterService.decide(
+                intentQuestion, explicitCompanyHint, learnedFirst, followUpContext);
+        IntentDecision intentDecision = routing.decision();
+        InformationNeed informationNeed = needInferenceService.infer(question, intentDecision);
         progress.onThinking("intent_done", "意图识别完成。", null);
         progress.onThinking(
                 "route",
@@ -205,14 +215,17 @@ public class QaAskFlowService {
 
         progress.onThinking(
                 "retrieve",
-                intentDecision.isPersonRoleListQuery()
+                informationNeed.isTypeCatalog()
+                        ? "正在查询类型目录（枚举字典）…"
+                        : intentDecision.isPersonRoleListQuery()
                         ? "正在查询任职关系（业务库 + 图谱）…"
                         : intentDecision.isPersonCertificateListQuery()
                         ? "正在查询证照明细（业务库）…"
                         : "正在多路召回并重排证据…",
                 null
         );
-        QaRetrievalPipeline.RetrievalResult retrievalResult = retrieve(scope, question, retrievalQuestion, learnedFirst, intentDecision, explicitCompanyHint);
+        QaRetrievalPipeline.RetrievalResult retrievalResult = retrieve(
+                scope, question, retrievalQuestion, learnedFirst, intentDecision, explicitCompanyHint, informationNeed);
         String retrievalSource = retrievalResult.retrievalSource();
         List<ContextChunk> evidence = new ArrayList<>(retrievalResult.evidence());
         if (QaScopes.ENTERPRISE.equals(scope) && retrievalPlan.appliedLearningRewrite()) {
@@ -222,7 +235,7 @@ public class QaAskFlowService {
             );
         }
 
-        QaAnswerGateService.GateDecision gate = answerGateService.evaluate(intentDecision, evidence);
+        QaAnswerGateService.GateDecision gate = answerGateService.evaluate(intentDecision, informationNeed, evidence);
         boolean canAnswer = gate.canAnswer();
         boolean allowGenerate = gate.allowGenerate();
         boolean unknownIntent = "unknown".equalsIgnoreCase(intentDecision.intent());
@@ -271,7 +284,7 @@ public class QaAskFlowService {
         }
 
         Map<String, Object> response = assembleResponse(
-                turnId, question, scope, convId, followUpApplied, intentDecision, evidence,
+                turnId, question, scope, convId, followUpApplied, intentDecision, informationNeed, evidence,
                 answer, canAnswer, confidence, route, retrievalSource, retrievalResult, gate, degraded, fallbackReason, unknownIntent
         );
         qaLogService.appendAskEvent(response);
@@ -322,10 +335,11 @@ public class QaAskFlowService {
             String retrievalQuestion,
             List<ContextChunk> learnedFirst,
             IntentDecision intentDecision,
-            boolean explicitCompanyHint
+            boolean explicitCompanyHint,
+            InformationNeed need
     ) throws IOException {
         if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
-            return retrievalPipeline.retrieveUnifiedEnterprise(retrievalQuestion, learnedFirst, intentDecision);
+            return retrievalPipeline.retrieveUnifiedEnterprise(retrievalQuestion, learnedFirst, intentDecision, need);
         }
         if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             return new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
@@ -445,6 +459,7 @@ public class QaAskFlowService {
             String convId,
             boolean followUpApplied,
             IntentDecision intentDecision,
+            InformationNeed informationNeed,
             List<ContextChunk> evidence,
             String answer,
             boolean canAnswer,
@@ -474,7 +489,7 @@ public class QaAskFlowService {
         response.put("scope", scope);
         response.put("conversationId", convId);
         response.put("followUpApplied", followUpApplied);
-        putRoutingTrace(response, intentDecision, followUpApplied, evidence);
+        putRoutingTrace(response, intentDecision, informationNeed, followUpApplied, evidence);
         response.put("embeddingProvider", textEmbeddingService.activeProvider());
         response.put("unifiedRetrieval", properties.isUnifiedRetrievalEnabled());
         response.put("rerankProvider", retrievalSource.contains("rerank")
@@ -533,11 +548,17 @@ public class QaAskFlowService {
     private void putRoutingTrace(
             Map<String, Object> response,
             IntentDecision intentDecision,
+            InformationNeed informationNeed,
             boolean followUpApplied,
             List<ContextChunk> evidence
     ) {
         Map<String, Object> routing = new HashMap<>();
         routing.put("queryType", nullToEmpty(intentDecision.queryType(), ""));
+        if (informationNeed != null) {
+            routing.put("needFacet", nullToEmpty(informationNeed.facet(), ""));
+            routing.put("needGranularity", nullToEmpty(informationNeed.granularity(), ""));
+            routing.put("inferenceReason", nullToEmpty(informationNeed.reason(), ""));
+        }
         routing.put("routeSource", resolveRouteSource(intentDecision.reason()));
         routing.put("followUpApplied", followUpApplied);
         routing.put("intentConfidence", intentDecision.confidence());

@@ -149,8 +149,23 @@ public class DebeziumEngineRunner {
         debeziumProps.setProperty("topic.prefix", "demo");
         debeziumProps.setProperty("format", "json");
         debeziumProps.setProperty("time.precision.mode", "connect");
+        // 扁平 JSON（无 schema 信封），便于 Consumer 直接读 op/after
+        debeziumProps.setProperty("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+        debeziumProps.setProperty("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+        debeziumProps.setProperty("key.converter.schemas.enable", "false");
+        debeziumProps.setProperty("value.converter.schemas.enable", "false");
         // JDBC 时区配置（解决 MySQL connector 时区识别问题）
-        debeziumProps.setProperty("database.connectionTimeZone", "Asia/Shanghai");
+        debeziumProps.setProperty("database.connectionTimeZone", "UTC");
+        // Offset 存储配置（使用 Kafka 而非文件系统，避免权限问题）
+        debeziumProps.setProperty("offset.storage", "org.apache.kafka.connect.storage.KafkaOffsetBackingStore");
+        debeziumProps.setProperty("offset.storage.topic", "demo-offsets");
+        debeziumProps.setProperty("offset.storage.replication.factor", "1");
+        debeziumProps.setProperty("offset.storage.partitions", "1");
+        debeziumProps.setProperty("bootstrap.servers", props.getCdcKafkaBootstrapServers());
+        // Schema history（与 Kafka offset 配套，Debezium 2.4 必填）
+        debeziumProps.setProperty("schema.history.internal", "io.debezium.storage.kafka.history.KafkaSchemaHistory");
+        debeziumProps.setProperty("schema.history.internal.kafka.topic", "demo-schema-history");
+        debeziumProps.setProperty("schema.history.internal.kafka.bootstrap.servers", props.getCdcKafkaBootstrapServers());
 
         log.info("[CDC] Debezium config: db={}, tables={}, server.id=85744", database, tableIncludeList);
 

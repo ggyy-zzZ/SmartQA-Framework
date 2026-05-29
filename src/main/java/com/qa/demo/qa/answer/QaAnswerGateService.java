@@ -3,8 +3,10 @@ package com.qa.demo.qa.answer;
 import com.qa.demo.knowledge.EvidenceSchemaRegistry;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
-import com.qa.demo.qa.retrieval.personcert.PersonCertificateStewardship;
+import com.qa.demo.qa.intent.QueryTypeRoutingPolicy;
+import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,13 +29,26 @@ public class QaAnswerGateService {
 
     private final QaAssistantProperties properties;
     private final EvidenceSchemaRegistry evidenceSchemas;
+    private final QueryTypeRoutingPolicy routingPolicy;
+    private final RetrievalCatalogRegistry catalogRegistry;
 
-    public QaAnswerGateService(QaAssistantProperties properties, EvidenceSchemaRegistry evidenceSchemas) {
+    public QaAnswerGateService(
+            QaAssistantProperties properties,
+            EvidenceSchemaRegistry evidenceSchemas,
+            QueryTypeRoutingPolicy routingPolicy,
+            RetrievalCatalogRegistry catalogRegistry
+    ) {
         this.properties = properties;
         this.evidenceSchemas = evidenceSchemas;
+        this.routingPolicy = routingPolicy;
+        this.catalogRegistry = catalogRegistry;
     }
 
     public GateDecision evaluate(IntentDecision intent, List<ContextChunk> evidence) {
+        return evaluate(intent, null, evidence);
+    }
+
+    public GateDecision evaluate(IntentDecision intent, InformationNeed need, List<ContextChunk> evidence) {
         if (!properties.isAnswerGateEnabled()) {
             boolean hasEvidence = evidence != null && !evidence.isEmpty();
             return hasEvidence ? GateDecision.allow() : new GateDecision(false, false, "insufficient_evidence");
@@ -46,9 +61,17 @@ public class QaAnswerGateService {
                 && "unknown".equalsIgnoreCase(intent.intent())) {
             return new GateDecision(false, false, "unknown_intent");
         }
-        if (intent != null && intent.isPersonCertificateListQuery()) {
-            if (!hasPersonCertificateEvidence(evidence)) {
-                return new GateDecision(false, false, "person_certificate_no_evidence");
+        boolean catalogGateSatisfied = false;
+        if (need != null) {
+            if (!catalogRegistry.satisfiesGate(need, evidence)) {
+                return new GateDecision(false, false, "need_evidence_mismatch");
+            }
+            catalogGateSatisfied = catalogRegistry.hasGateRule(need);
+        }
+        if (!catalogGateSatisfied && intent != null) {
+            var requiredSchemas = routingPolicy.requiredEvidenceSchemaIds(intent.queryType());
+            if (!requiredSchemas.isEmpty() && !hasEvidenceForSchemas(evidence, requiredSchemas)) {
+                return new GateDecision(false, false, "query_type_evidence_mismatch");
             }
         }
         if (evidence.size() < properties.getAnswerGateMinEvidenceCount()) {
@@ -61,19 +84,12 @@ public class QaAnswerGateService {
         return GateDecision.allow();
     }
 
-    private boolean hasPersonCertificateEvidence(List<ContextChunk> evidence) {
-        if (evidence == null || evidence.isEmpty()) {
+    private boolean hasEvidenceForSchemas(List<ContextChunk> evidence, java.util.Set<String> schemaIds) {
+        if (evidence == null || evidence.isEmpty() || schemaIds == null || schemaIds.isEmpty()) {
             return false;
         }
-        for (ContextChunk c : evidence) {
-            if (c == null || c.snippet() == null || c.snippet().isBlank()) {
-                continue;
-            }
-            String source = c.source() == null ? "" : c.source();
-            if (!"mysql-person-certificate".equals(source) && !"mysql-company-certificate".equals(source)) {
-                continue;
-            }
-            if (PersonCertificateStewardship.SCHEMA_ID.equals(c.evidenceSchema())) {
+        for (String schemaId : schemaIds) {
+            if (hasEvidenceForSchema(evidence, schemaId)) {
                 return true;
             }
         }

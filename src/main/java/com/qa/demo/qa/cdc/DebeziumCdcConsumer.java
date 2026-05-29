@@ -41,6 +41,8 @@ public class DebeziumCdcConsumer {
     private final QaAssistantProperties props;
     private final Neo4jCdcWriter neo4jWriter;
     private final QdrantCdcWriter qdrantWriter;
+    private final CdcSyncAuditLogger auditLogger;
+    private final CdcWriteGate cdcWriteGate;
     private final ObjectMapper objectMapper;
 
     private KafkaConsumer<String, String> kafkaConsumer;
@@ -54,10 +56,14 @@ public class DebeziumCdcConsumer {
     public DebeziumCdcConsumer(
             QaAssistantProperties props,
             Neo4jCdcWriter neo4jWriter,
-            QdrantCdcWriter qdrantWriter) {
+            QdrantCdcWriter qdrantWriter,
+            CdcSyncAuditLogger auditLogger,
+            CdcWriteGate cdcWriteGate) {
         this.props = props;
         this.neo4jWriter = neo4jWriter;
         this.qdrantWriter = qdrantWriter;
+        this.auditLogger = auditLogger;
+        this.cdcWriteGate = cdcWriteGate;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -93,6 +99,8 @@ public class DebeziumCdcConsumer {
         kafkaConsumer.subscribe(topics);
 
         log.info("[CDC Consumer] Subscribed to topics: {}", topics);
+        auditLogger.sessionStarted();
+        log.info("[CDC Consumer] Audit log file: {}", props.getCdcAuditLogPath());
 
         // 启动消费循环
         executorLoop();
@@ -143,6 +151,23 @@ public class DebeziumCdcConsumer {
                     // 按 entityId 聚合事件
                     Map<String, List<ParsedEvent>> entityBatches = groupByEntityId(records);
 
+                    if (entityBatches.isEmpty()) {
+                        if (allRecordsAreTombstones(records)) {
+                            commitOffsets(records);
+                        } else {
+                            log.warn("[CDC Consumer] {} records polled but none writable, skip commit for retry",
+                                    records.count());
+                        }
+                        continue;
+                    }
+
+                    if (cdcWriteGate.isPaused()) {
+                        log.debug("[CDC Consumer] Writes paused for knowledge sync, skip {} batches (commit offset)",
+                                entityBatches.size());
+                        commitOffsets(records);
+                        continue;
+                    }
+
                     // 并行写三库
                     boolean allSuccess = writeToAllStoresWithRetry(entityBatches);
 
@@ -182,13 +207,30 @@ public class DebeziumCdcConsumer {
     /**
      * 解析 Debezium 事件。
      */
+    private boolean allRecordsAreTombstones(ConsumerRecords<String, String> records) {
+        for (ConsumerRecord<String, String> record : records) {
+            String value = record.value();
+            if (value != null && !value.isBlank()) {
+                return false;
+            }
+        }
+        return !records.isEmpty();
+    }
+
     private ParsedEvent parseEvent(String key, String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
         try {
             JsonNode root = objectMapper.readTree(value);
-            String op = root.path("op").asText("r"); // c=create, u=update, d=delete, r=snapshot
-            JsonNode after = root.path("after");
-            JsonNode before = root.path("before");
-            JsonNode source = root.path("source");
+            // Debezium 3.x / Connect JSON 带 schema 时，业务字段在 payload 内
+            JsonNode event = root.has("payload") && root.get("payload").isObject()
+                    ? root.get("payload")
+                    : root;
+            String op = event.path("op").asText("r"); // c=create, u=update, d=delete, r=snapshot
+            JsonNode after = event.path("after");
+            JsonNode before = event.path("before");
+            JsonNode source = event.path("source");
             String table = source.path("table").asText();
 
             return new ParsedEvent(table, op, after, before);
@@ -208,9 +250,16 @@ public class DebeziumCdcConsumer {
             ParsedEvent event = parseEvent(record.key(), record.value());
             if (event == null) continue;
 
-            String entityId = event.extractEntityId();
+            JsonNode row = CdcEntityIdResolver.dataRow(event.after(), event.before(), event.op());
+            if (!CdcEntityIdResolver.hasRowData(row)) {
+                log.debug("[CDC Consumer] No row payload for op={}, table={}, skipping",
+                        event.op(), event.table());
+                continue;
+            }
+            String entityId = CdcEntityIdResolver.resolveEntityId(event.table(), row);
             if (entityId == null || entityId.isBlank()) {
-                log.warn("[CDC Consumer] Cannot extract entityId from event, skipping");
+                log.warn("[CDC Consumer] Cannot extract entityId from event, table={}, op={}",
+                        event.table(), event.op());
                 continue;
             }
 
@@ -284,13 +333,9 @@ public class DebeziumCdcConsumer {
         // 取最后一个事件的 after 作为最终状态
         ParsedEvent lastEvent = events.get(events.size() - 1);
 
-        // 跳过删除事件（after 为空）
-        if (lastEvent.op().equals("d") && lastEvent.after().isMissingNode()) {
-            log.debug("[CDC Consumer] Skipping delete event for {}", batchKey);
-            return;
-        }
-
         String table = lastEvent.table();
+        String entityId = entityIdFromBatchKey(batchKey);
+        auditLogger.mysqlChangeDetected(table, lastEvent.op(), entityId, events.size());
 
         // 1. 写 Neo4j
         try {
@@ -302,7 +347,7 @@ public class DebeziumCdcConsumer {
 
         // 2. 写 Qdrant
         try {
-            qdrantWriter.write(table, lastEvent.op(), lastEvent.after());
+            qdrantWriter.write(table, lastEvent.op(), lastEvent.after(), lastEvent.before());
         } catch (Exception e) {
             log.error("[CDC Consumer] Qdrant write failed for {}: {}", batchKey, e.getMessage());
             throw e;
@@ -349,16 +394,11 @@ public class DebeziumCdcConsumer {
 
     // ==================== 内部类 ====================
 
-    private record ParsedEvent(String table, String op, JsonNode after, JsonNode before) {
+    private static String entityIdFromBatchKey(String batchKey) {
+        int colon = batchKey.indexOf(':');
+        return colon >= 0 ? batchKey.substring(colon + 1) : batchKey;
+    }
 
-        String extractEntityId() {
-            return switch (table) {
-                case "company" -> after.path("company_id").asText(null);
-                case "employee" -> after.path("employee_id").asText(null);
-                case "branch" -> after.path("branch_id").asText(null);
-                case "partner" -> after.path("partner_id").asText(null);
-                default -> null;
-            };
-        }
+    private record ParsedEvent(String table, String op, JsonNode after, JsonNode before) {
     }
 }

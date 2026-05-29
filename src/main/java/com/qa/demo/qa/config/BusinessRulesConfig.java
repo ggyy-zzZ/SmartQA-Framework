@@ -18,10 +18,18 @@ import java.util.regex.Pattern;
 public class BusinessRulesConfig {
 
     private IntentRules intentRules = new IntentRules();
+    private IntentRouting intentRouting = new IntentRouting();
+    private AnswerGate answerGate = new AnswerGate();
     private DataSources dataSources = new DataSources();
     private List<CorrectionRule> correctionRules = new ArrayList<>();
     private RetrievalThresholds retrievalThresholds = new RetrievalThresholds();
     private Map<String, String> outputContracts = new HashMap<>();
+
+    public IntentRouting getIntentRouting() { return intentRouting; }
+    public void setIntentRouting(IntentRouting intentRouting) { this.intentRouting = intentRouting; }
+
+    public AnswerGate getAnswerGate() { return answerGate; }
+    public void setAnswerGate(AnswerGate answerGate) { this.answerGate = answerGate; }
 
     // ============= Intent Rules =============
 
@@ -102,6 +110,62 @@ public class BusinessRulesConfig {
         public void setRequiresPerson(boolean r) { this.requiresPerson = r; }
         public List<String> getWeakQueryTypes() { return weakQueryTypes; }
         public void setWeakQueryTypes(List<String> w) { this.weakQueryTypes = w; }
+    }
+
+    // ============= Intent routing (queryType 槽位 / 追问 / 结构化列表) =============
+
+    public static class IntentRouting {
+        private List<String> structuredListQueryTypes = new ArrayList<>();
+        private List<String> certificateQueryTypes = new ArrayList<>();
+        private Map<String, String> defaultIntentByQueryType = new HashMap<>();
+        private List<QueryTypeSlotRequirement> queryTypeSlotRequirements = new ArrayList<>();
+        private List<String> followUpReferenceMarkers = new ArrayList<>();
+
+        public List<String> getStructuredListQueryTypes() { return structuredListQueryTypes; }
+        public void setStructuredListQueryTypes(List<String> s) { this.structuredListQueryTypes = s; }
+        public List<String> getCertificateQueryTypes() { return certificateQueryTypes; }
+        public void setCertificateQueryTypes(List<String> c) { this.certificateQueryTypes = c; }
+        public Map<String, String> getDefaultIntentByQueryType() { return defaultIntentByQueryType; }
+        public void setDefaultIntentByQueryType(Map<String, String> m) { this.defaultIntentByQueryType = m; }
+        public List<QueryTypeSlotRequirement> getQueryTypeSlotRequirements() { return queryTypeSlotRequirements; }
+        public void setQueryTypeSlotRequirements(List<QueryTypeSlotRequirement> r) { this.queryTypeSlotRequirements = r; }
+        public List<String> getFollowUpReferenceMarkers() { return followUpReferenceMarkers; }
+        public void setFollowUpReferenceMarkers(List<String> f) { this.followUpReferenceMarkers = f; }
+    }
+
+    public static class QueryTypeSlotRequirement {
+        private String queryType;
+        private boolean requiresPerson;
+        private boolean requiresCompany;
+        private boolean requiresRoleFocus;
+
+        public String getQueryType() { return queryType; }
+        public void setQueryType(String q) { this.queryType = q; }
+        public boolean isRequiresPerson() { return requiresPerson; }
+        public void setRequiresPerson(boolean r) { this.requiresPerson = r; }
+        public boolean isRequiresCompany() { return requiresCompany; }
+        public void setRequiresCompany(boolean r) { this.requiresCompany = r; }
+        public boolean isRequiresRoleFocus() { return requiresRoleFocus; }
+        public void setRequiresRoleFocus(boolean r) { this.requiresRoleFocus = r; }
+    }
+
+    public static class AnswerGate {
+        private List<AnswerGateQueryTypeRule> requiredEvidenceByQueryType = new ArrayList<>();
+
+        public List<AnswerGateQueryTypeRule> getRequiredEvidenceByQueryType() { return requiredEvidenceByQueryType; }
+        public void setRequiredEvidenceByQueryType(List<AnswerGateQueryTypeRule> r) {
+            this.requiredEvidenceByQueryType = r;
+        }
+    }
+
+    public static class AnswerGateQueryTypeRule {
+        private String queryType;
+        private List<String> schemaIds = new ArrayList<>();
+
+        public String getQueryType() { return queryType; }
+        public void setQueryType(String q) { this.queryType = q; }
+        public List<String> getSchemaIds() { return schemaIds; }
+        public void setSchemaIds(List<String> s) { this.schemaIds = s; }
     }
 
     // ============= Data Sources =============

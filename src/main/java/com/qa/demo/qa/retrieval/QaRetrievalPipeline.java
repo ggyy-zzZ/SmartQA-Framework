@@ -2,6 +2,7 @@ package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
 import com.qa.demo.qa.domain.EntityRef;
@@ -9,6 +10,10 @@ import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
 import com.qa.demo.qa.domain.PersonAliasIdentityParser;
 import com.qa.demo.qa.learning.ActiveLearningService;
+import com.qa.demo.qa.retrieval.catalog.CatalogEvidenceRetriever;
+import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
+import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogConfig;
+import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
 import com.qa.demo.qa.retrieval.personcert.PersonCertificateQueryService;
 import org.springframework.stereotype.Service;
 
@@ -43,6 +48,9 @@ public class QaRetrievalPipeline {
     private final SqlTopKResolver sqlTopKResolver;
     private final ScenarioRuleEngine ruleEngine;
     private final PersonCertificateQueryService personCertificateQueryService;
+    private final NeedInferenceService needInferenceService;
+    private final RetrievalCatalogRegistry catalogRegistry;
+    private final CatalogEvidenceRetriever catalogEvidenceRetriever;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -58,7 +66,10 @@ public class QaRetrievalPipeline {
             RetrievalPlanFactory retrievalPlanFactory,
             SqlTopKResolver sqlTopKResolver,
             ScenarioRuleEngine ruleEngine,
-            PersonCertificateQueryService personCertificateQueryService
+            PersonCertificateQueryService personCertificateQueryService,
+            NeedInferenceService needInferenceService,
+            RetrievalCatalogRegistry catalogRegistry,
+            CatalogEvidenceRetriever catalogEvidenceRetriever
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -74,6 +85,9 @@ public class QaRetrievalPipeline {
         this.sqlTopKResolver = sqlTopKResolver;
         this.ruleEngine = ruleEngine;
         this.personCertificateQueryService = personCertificateQueryService;
+        this.needInferenceService = needInferenceService;
+        this.catalogRegistry = catalogRegistry;
+        this.catalogEvidenceRetriever = catalogEvidenceRetriever;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -87,6 +101,16 @@ public class QaRetrievalPipeline {
             List<ContextChunk> learned,
             IntentDecision intent
     ) throws IOException {
+        InformationNeed need = needInferenceService.infer(question, intent);
+        return retrieveUnifiedEnterprise(question, learned, intent, need);
+    }
+
+    public RetrievalResult retrieveUnifiedEnterprise(
+            String question,
+            List<ContextChunk> learned,
+            IntentDecision intent,
+            InformationNeed need
+    ) throws IOException {
         RetrievalPlan plan = retrievalPlanFactory.from(intent);
         List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan);
         merged = mergeLearnedUnconditionally(learned, merged);
@@ -94,13 +118,18 @@ public class QaRetrievalPipeline {
         base = appendSupplementalTables(base, question, plan);
         base = appendEmployeeBaseInfo(base, question, plan);
         base = appendPersonIdentityEvidence(base, question, intent);
-        base = appendPersonCertificateIfNeeded(base, plan, question);
+        if (need == null || !need.isTypeCatalog()) {
+            base = appendPersonCertificateIfNeeded(base, plan, question);
+        }
+        base = appendCatalogEvidence(base, need);
 
-        // 使用配置化的截断阈值
         String queryType = intent != null ? intent.queryType() : "";
         base = applyConfigDrivenTruncation(base, queryType);
 
-        if (plan.personCertificateList()) {
+        if (need != null && need.isTypeCatalog() && hasEvidenceSchema(base.evidence(), "catalog_v1")) {
+            return trimTypeCatalogEvidence(base.evidence(), plan.finalEvidenceTopK());
+        }
+        if (plan.personCertificateList() && (need == null || !need.isTypeCatalog())) {
             return new RetrievalResult("unified_person_certificate", base.evidence());
         }
         if (plan.personRoleList()) {
@@ -112,6 +141,31 @@ public class QaRetrievalPipeline {
                 question, forRerank, plan.finalEvidenceTopK());
         String source = "unified_rerank_" + evidenceRerankService.activeProvider();
         return new RetrievalResult(source, reranked);
+    }
+
+    private RetrievalResult appendCatalogEvidence(RetrievalResult base, InformationNeed need) {
+        if (base == null || need == null) {
+            return base;
+        }
+        List<RetrievalCatalogConfig.DimensionDef> dimensions = catalogRegistry.matchDimensions(need);
+        if (dimensions.isEmpty()) {
+            return base;
+        }
+        List<ContextChunk> catalog = catalogEvidenceRetriever.retrieve(dimensions);
+        if (catalog.isEmpty()) {
+            return base;
+        }
+        List<ContextChunk> merged = new ArrayList<>(base.evidence());
+        appendUnique(merged, catalog);
+        String source = base.retrievalSource() == null ? "catalog" : base.retrievalSource() + "+catalog";
+        return new RetrievalResult(source, merged);
+    }
+
+    private static boolean hasEvidenceSchema(List<ContextChunk> evidence, String schemaId) {
+        if (evidence == null || schemaId == null || schemaId.isBlank()) {
+            return false;
+        }
+        return evidence.stream().anyMatch(c -> c != null && schemaId.equals(c.evidenceSchema()));
     }
 
     private RetrievalResult applyConfigDrivenTruncation(RetrievalResult base, String queryType) {
@@ -166,11 +220,16 @@ public class QaRetrievalPipeline {
         RetrievalResult withSupplemental = appendSupplementalTables(withPersonCert, question, plan);
         RetrievalResult withEmployee = appendEmployeeBaseInfo(withSupplemental, question, plan);
         RetrievalResult withIdentity = appendPersonIdentityEvidence(withEmployee, question, intent);
-        List<ContextChunk> narrowed = applyCorrectionNarrow(question, withIdentity.evidence(), "company");
-        if (narrowed == withIdentity.evidence()) {
-            return withIdentity;
+        InformationNeed need = needInferenceService.infer(question, intent);
+        RetrievalResult withCatalog = appendCatalogEvidence(withIdentity, need);
+        List<ContextChunk> narrowed = applyCorrectionNarrow(question, withCatalog.evidence(), "company");
+        if (narrowed == withCatalog.evidence()) {
+            if (need.isTypeCatalog() && hasEvidenceSchema(withCatalog.evidence(), "catalog_v1")) {
+                return new RetrievalResult("type_catalog_" + withCatalog.retrievalSource(), withCatalog.evidence());
+            }
+            return withCatalog;
         }
-        return new RetrievalResult(withIdentity.retrievalSource() + "+correction_narrow", narrowed);
+        return new RetrievalResult(withCatalog.retrievalSource() + "+correction_narrow", narrowed);
     }
 
     /**
@@ -369,6 +428,26 @@ public class QaRetrievalPipeline {
             }
         }
         return new RetrievalResult("employee_identity_appended_" + base.retrievalSource(), merged);
+    }
+
+    private RetrievalResult trimTypeCatalogEvidence(List<ContextChunk> merged, int cap) {
+        List<ContextChunk> catalog = new ArrayList<>();
+        List<ContextChunk> other = new ArrayList<>();
+        for (ContextChunk chunk : merged) {
+            if (chunk != null && "catalog_v1".equals(chunk.evidenceSchema())) {
+                catalog.add(chunk);
+            } else if (chunk != null) {
+                other.add(chunk);
+            }
+        }
+        if (!catalog.isEmpty()) {
+            return new RetrievalResult("unified_type_catalog", catalog);
+        }
+        int limit = Math.max(1, cap);
+        if (other.size() > limit) {
+            other = new ArrayList<>(other.subList(0, limit));
+        }
+        return new RetrievalResult("unified_type_catalog", other);
     }
 
     private RetrievalResult trimEvidence(List<ContextChunk> merged, int cap, String retrievalSource) {
@@ -632,7 +711,7 @@ public class QaRetrievalPipeline {
 
     private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan, String question) {
         IntentDecision intent = plan.intent();
-        if (intent == null || !intent.isPersonCertificateListQuery()) {
+        if (intent == null || !plan.personCertificateList()) {
             return;
         }
         int maxRows = resolvePersonCertificateMaxRows(intent);

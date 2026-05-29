@@ -9,30 +9,38 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
- * 在意图决策上补全 personName、queryType 等槽位，并将敬称/别名解析为规范姓名；高置信 LLM 可跳过规则覆盖。
- * <p>
- * 核心逻辑已迁移到 {@link ScenarioRuleEngine}，此处仅做编排和结果合并。
+ * 在意图决策上补全槽位，并将敬称/别名解析为规范姓名。
+ * 规则仅补全空缺或升级占位 queryType，不覆盖 LLM 已给出的具体 queryType。
  */
 @Component
 public class IntentDecisionEnricher {
+
+    private static final Set<String> PLACEHOLDER_QUERY_TYPES = Set.of(
+            "", "unknown", "semantic", "mixed"
+    );
 
     private final QaAssistantProperties properties;
     private final QuestionEntityExtractor entityExtractor;
     private final PersonNameResolver personNameResolver;
     private final ScenarioRuleEngine ruleEngine;
+    private final QueryTypeRoutingPolicy routingPolicy;
 
     public IntentDecisionEnricher(
             QaAssistantProperties properties,
             QuestionEntityExtractor entityExtractor,
             PersonNameResolver personNameResolver,
-            ScenarioRuleEngine ruleEngine
+            ScenarioRuleEngine ruleEngine,
+            QueryTypeRoutingPolicy routingPolicy
     ) {
         this.properties = properties;
         this.entityExtractor = entityExtractor;
         this.personNameResolver = personNameResolver;
         this.ruleEngine = ruleEngine;
+        this.routingPolicy = routingPolicy;
     }
 
     public IntentRoutingOutcome enrich(
@@ -56,41 +64,36 @@ public class IntentDecisionEnricher {
         if (shouldSkipRuleEnrich(normalized, source, question)) {
             working = withSourcePrefix(normalized, source);
         } else {
-            working = withSourcePrefix(fillMissingSlots(normalized, question, explicitCompanyHint), source);
+            working = withSourcePrefix(fillMissingSlots(normalized, question, explicitCompanyHint, source), source);
         }
         return applyCanonicalPersonName(working, learnedForAlias, question);
     }
 
     private boolean shouldSkipRuleEnrich(IntentDecision decision, String source, String question) {
-        if (!"llm".equals(source)) {
+        if (!isLlmSourced(source)) {
             return false;
         }
         if (decision.confidence() < properties.getIntentLlmEnrichMinConfidence()
-                || !IntentSlots.isRetrievalReady(decision)) {
+                || !routingPolicy.isRetrievalReady(decision)) {
             return false;
         }
-        // 问句里能抽到人名但 LLM 未填 personName 时，仍须规则补槽
         String rulePerson = ruleEngine.extractPersonName(question);
         if (rulePerson != null && !rulePerson.isBlank() && !decision.hasPersonFocus()) {
             return false;
         }
-        if (entityExtractor.isRoleRelationQuery(question)
-                && !decision.isPersonRoleListQuery()
-                && !decision.isPersonCertificateListQuery()
-                && rulePerson != null) {
-            return false;
-        }
-        // 使用配置化的规则引擎判断
-        if (ruleEngine.isQueryType(question, decision.personName(), "person_certificate_list")
-                || ruleEngine.isQueryType(question, decision.personName(), "person_role_list")) {
-            if (!decision.isPersonCertificateListQuery() && !decision.isPersonRoleListQuery()) {
-                return false;
-            }
-        }
         return true;
     }
 
-    private IntentDecision fillMissingSlots(IntentDecision base, String question, boolean explicitCompanyHint) {
+    private static boolean isLlmSourced(String source) {
+        return "llm".equals(source) || "followup_llm".equals(source);
+    }
+
+    private IntentDecision fillMissingSlots(
+            IntentDecision base,
+            String question,
+            boolean explicitCompanyHint,
+            String source
+    ) {
         String queryType = base.queryType();
         String personName = base.personName();
         List<String> companyHints = base.companyHints() == null
@@ -108,29 +111,17 @@ public class IntentDecisionEnricher {
         if (explicitCompanyHint && companyHints.isEmpty()) {
             companyHints.addAll(entityExtractor.extractCompanyHints(question));
         }
+
         String inferredQueryType = ruleEngine.inferQueryType(question, personName);
-        if (ruleEngine.isQueryType(question, personName, "person_role_list")) {
-            queryType = "person_role_list";
-        } else if (ruleEngine.isQueryType(question, personName, "person_certificate_list")) {
-            queryType = "person_certificate_list";
-        } else if (queryType == null || queryType.isBlank()) {
-            queryType = inferredQueryType;
-        } else if (!inferredQueryType.isBlank()
-                && ruleEngine.isWeakQueryType(queryType, "person_role_list")) {
-            queryType = inferredQueryType;
-        } else if (!inferredQueryType.isBlank()
-                && ruleEngine.isWeakQueryType(queryType, "person_certificate_list")) {
-            queryType = inferredQueryType;
-        }
+        queryType = resolveQueryType(queryType, inferredQueryType, source);
+
         if ("any".equalsIgnoreCase(roleFocus)) {
             roleFocus = entityExtractor.inferRoleFocus(question);
         }
 
-        String intent = base.intent();
-        if ("person_certificate_list".equalsIgnoreCase(queryType)
-                && (intent == null || intent.isBlank() || "unknown".equalsIgnoreCase(intent))) {
-            intent = "hybrid";
-        }
+        companyHints = filterCompanyHints(companyHints, personName);
+
+        String intent = resolveIntent(base.intent(), queryType);
         return new IntentDecision(
                 intent,
                 base.confidence(),
@@ -141,6 +132,65 @@ public class IntentDecisionEnricher {
                 roleFocus,
                 base.personEmployeeId()
         );
+    }
+
+    /**
+     * 规则只填补空白或升级占位类型；LLM 已给出的具体 queryType 不被另一具体规则类型覆盖。
+     */
+    private String resolveQueryType(String current, String inferred, String source) {
+        String qt = current == null ? "" : current.trim();
+        String inf = inferred == null ? "" : inferred.trim();
+        if (inf.isBlank()) {
+            return qt;
+        }
+        if (isPlaceholderQueryType(qt)) {
+            return inf;
+        }
+        if (qt.equalsIgnoreCase(inf)) {
+            return qt;
+        }
+        if (isLlmSourced(source) && isConcreteQueryType(qt)) {
+            return qt;
+        }
+        if (isPlaceholderQueryType(qt) || ruleEngine.isWeakQueryType(qt, inf)) {
+            return inf;
+        }
+        return qt;
+    }
+
+    private static boolean isPlaceholderQueryType(String queryType) {
+        if (queryType == null || queryType.isBlank()) {
+            return true;
+        }
+        return PLACEHOLDER_QUERY_TYPES.contains(queryType.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static boolean isConcreteQueryType(String queryType) {
+        return !isPlaceholderQueryType(queryType);
+    }
+
+    private static List<String> filterCompanyHints(List<String> hints, String personName) {
+        if (hints == null || hints.isEmpty()) {
+            return List.of();
+        }
+        String person = personName == null ? "" : personName.trim();
+        return hints.stream()
+                .map(h -> h == null ? "" : h.trim())
+                .filter(h -> !h.isBlank())
+                .filter(h -> person.isBlank() || !person.equals(h))
+                .distinct()
+                .toList();
+    }
+
+    private String resolveIntent(String baseIntent, String queryType) {
+        String intent = baseIntent == null ? "" : baseIntent.trim();
+        if (queryType == null || queryType.isBlank()) {
+            return intent;
+        }
+        if (intent.isBlank() || "unknown".equalsIgnoreCase(intent)) {
+            return routingPolicy.defaultIntentForQueryType(queryType).orElse(intent);
+        }
+        return intent;
     }
 
     private IntentRoutingOutcome applyCanonicalPersonName(

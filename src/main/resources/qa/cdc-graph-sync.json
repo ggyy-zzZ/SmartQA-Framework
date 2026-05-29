@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "description": "CDC 写入 Neo4j 的节点与关系规则；人员角色列与 qa/sql-role-columns.json 对齐，避免业务硬编码。",
+  "nodeTypes": {
+    "company": {
+      "label": "Company",
+      "idProperty": "companyId",
+      "resolveEntityTable": "company"
+    },
+    "person": {
+      "label": "Person",
+      "idProperty": "personKey",
+      "personIdProperty": "personId",
+      "nameProperty": "name"
+    },
+    "branch": {
+      "label": "Branch",
+      "idProperty": "branchId",
+      "resolveEntityTable": "branch"
+    },
+    "partner": {
+      "label": "Partner",
+      "idProperty": "partnerKey",
+      "resolveEntityTable": "partner"
+    }
+  },
+  "relationshipRules": [
+    {
+      "id": "company_person_role_slots",
+      "tables": ["company"],
+      "relationshipType": "HAS_ROLE_IN",
+      "fromNodeType": "person",
+      "toNodeType": "company",
+      "toId": { "resolveEntityTable": "company" },
+      "personIdBindings": {
+        "mode": "role_column_catalog",
+        "catalog": "sql-role-columns",
+        "exclusiveRoleLabel": true,
+        "stampSourceColumn": true
+      }
+    },
+    {
+      "id": "employee_to_company_role",
+      "tables": ["employee"],
+      "relationshipType": "HAS_ROLE_IN",
+      "fromNodeType": "person",
+      "toNodeType": "company",
+      "fromId": { "resolveEntityTable": "employee", "personKeyStrategy": "employee_row" },
+      "toId": { "columns": ["sign_company_id", "company_id"] },
+      "roleLabel": { "columns": ["role"], "default": "员工" },
+      "exclusiveRoleLabel": false,
+      "stampSourceColumn": true
+    },
+    {
+      "id": "company_has_branch",
+      "tables": ["branch"],
+      "relationshipType": "HAS_BRANCH",
+      "fromNodeType": "company",
+      "toNodeType": "branch",
+      "fromId": { "columns": ["company_id", "sign_company_id"] },
+      "toId": { "resolveEntityTable": "branch" }
+    },
+    {
+      "id": "company_partner_of",
+      "tables": ["partner"],
+      "relationshipType": "PARTNER_OF",
+      "fromNodeType": "company",
+      "toNodeType": "partner",
+      "fromId": { "columns": ["company_id", "sign_company_id"] },
+      "toId": { "resolveEntityTable": "partner" },
+      "properties": [
+        { "name": "type", "columns": ["relation_type"] }
+      ]
+    }
+  ],
+  "vectorDocumentEnrichment": {
+    "company": {
+      "roleBindingsRef": "sql-role-columns",
+      "sections": [
+        { "label": "法定代表人", "roleLabels": ["法定代表人"], "join": "、" },
+        { "label": "关键人员", "roleLabels": ["*"], "format": "{role}:{personId}", "join": ", " }
+      ]
+    }
+  }
+}

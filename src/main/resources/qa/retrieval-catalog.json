@@ -1,0 +1,112 @@
+{
+  "needInferenceRules": [
+    {
+      "id": "type_catalog",
+      "anyKeywords": ["类型", "种类", "有哪些证", "什么证", "哪些证", "什么类型", "有哪些类型", "资质证照"],
+      "contextKeywords": ["证照", "许可证", "资质", "执照", "备案", "证书", "证"],
+      "need": {
+        "facet": "certificate",
+        "granularity": "type_catalog",
+        "listExpected": true
+      }
+    },
+    {
+      "id": "instance_list",
+      "anyKeywords": ["哪些", "列出", "名单", "多少", "分别"],
+      "contextKeywords": ["担任", "任职", "角色", "法人", "董事", "监事"],
+      "need": {
+        "facet": "role",
+        "granularity": "list",
+        "listExpected": true
+      }
+    }
+  ],
+  "queryTypeMapping": {
+    "person_role_list": {
+      "facet": "role",
+      "granularity": "list",
+      "listExpected": true
+    },
+    "person_certificate_list": {
+      "facet": "certificate",
+      "granularity": "instance",
+      "listExpected": true
+    },
+    "company_certificate": {
+      "facet": "certificate",
+      "granularity": "instance",
+      "listExpected": true
+    },
+    "company_profile": {
+      "facet": "profile",
+      "granularity": "single_fact",
+      "listExpected": false
+    },
+    "aggregate": {
+      "facet": "aggregate",
+      "granularity": "single_fact",
+      "listExpected": false
+    },
+    "policy": {
+      "facet": "policy",
+      "granularity": "narrative",
+      "listExpected": false
+    },
+    "semantic": {
+      "facet": "semantic",
+      "granularity": "narrative",
+      "listExpected": false
+    }
+  },
+  "dimensions": [
+    {
+      "dimensionId": "certificate_type_catalog",
+      "evidenceSchema": "catalog_v1",
+      "source": "catalog-enum",
+      "match": {
+        "facets": ["certificate"],
+        "granularities": ["type_catalog", "definition"]
+      },
+      "retriever": {
+        "type": "enum_labels",
+        "resource": "classpath:qa/certificate-seal-enums.json",
+        "jsonField": "certificateTypes",
+        "displayLabel": "类型目录",
+        "anchorId": "catalog:certificate_types"
+      }
+    },
+    {
+      "dimensionId": "seal_type_catalog",
+      "evidenceSchema": "catalog_v1",
+      "source": "catalog-enum",
+      "match": {
+        "facets": ["seal", "compliance"],
+        "granularities": ["type_catalog", "definition"]
+      },
+      "retriever": {
+        "type": "enum_labels",
+        "resource": "classpath:qa/certificate-seal-enums.json",
+        "jsonField": "sealTypes",
+        "displayLabel": "印章类型目录",
+        "anchorId": "catalog:seal_types"
+      }
+    }
+  ],
+  "gateRules": [
+    {
+      "granularities": ["type_catalog", "definition"],
+      "requiredSchemas": ["catalog_v1"]
+    },
+    {
+      "granularities": ["instance", "list"],
+      "facets": ["certificate"],
+      "requiredSchemas": ["person_certificate_v1", "catalog_v1"],
+      "acceptableSources": [
+        "mysql-person-certificate",
+        "mysql-company-certificate",
+        "catalog-enum",
+        "enterprise_mysql_compiled.txt"
+      ]
+    }
+  ]
+}

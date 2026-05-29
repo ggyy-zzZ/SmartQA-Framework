@@ -71,6 +71,16 @@ public class BusinessRulesConfiguration {
                 }
             }
 
+            JsonNode intentRoutingNode = root.get("intentRouting");
+            if (intentRoutingNode != null) {
+                loadIntentRouting(config, intentRoutingNode);
+            }
+
+            JsonNode answerGateNode = root.get("answerGate");
+            if (answerGateNode != null) {
+                loadAnswerGate(config, answerGateNode);
+            }
+
             // 加载 retrievalThresholds
             JsonNode thresholdsNode = root.get("retrievalThresholds");
             if (thresholdsNode != null) {
@@ -172,6 +182,49 @@ public class BusinessRulesConfiguration {
                 }
                 config.getDataSources().getStructuredQueries().add(queryConfig);
             }
+        }
+    }
+
+    private void loadIntentRouting(BusinessRulesConfig config, JsonNode node) {
+        BusinessRulesConfig.IntentRouting routing = config.getIntentRouting();
+        if (node.get("structuredListQueryTypes") != null && node.get("structuredListQueryTypes").isArray()) {
+            node.get("structuredListQueryTypes").forEach(t -> routing.getStructuredListQueryTypes().add(t.asText()));
+        }
+        if (node.get("certificateQueryTypes") != null && node.get("certificateQueryTypes").isArray()) {
+            node.get("certificateQueryTypes").forEach(t -> routing.getCertificateQueryTypes().add(t.asText()));
+        }
+        if (node.get("defaultIntentByQueryType") != null && node.get("defaultIntentByQueryType").isObject()) {
+            node.get("defaultIntentByQueryType").fields().forEachRemaining(e ->
+                    routing.getDefaultIntentByQueryType().put(e.getKey(), e.getValue().asText())
+            );
+        }
+        if (node.get("followUpReferenceMarkers") != null && node.get("followUpReferenceMarkers").isArray()) {
+            node.get("followUpReferenceMarkers").forEach(m -> routing.getFollowUpReferenceMarkers().add(m.asText()));
+        }
+        if (node.get("queryTypeSlotRequirements") != null && node.get("queryTypeSlotRequirements").isArray()) {
+            for (JsonNode reqNode : node.get("queryTypeSlotRequirements")) {
+                BusinessRulesConfig.QueryTypeSlotRequirement req = new BusinessRulesConfig.QueryTypeSlotRequirement();
+                req.setQueryType(reqNode.path("queryType").asText(""));
+                req.setRequiresPerson(reqNode.path("requiresPerson").asBoolean(false));
+                req.setRequiresCompany(reqNode.path("requiresCompany").asBoolean(false));
+                req.setRequiresRoleFocus(reqNode.path("requiresRoleFocus").asBoolean(false));
+                routing.getQueryTypeSlotRequirements().add(req);
+            }
+        }
+    }
+
+    private void loadAnswerGate(BusinessRulesConfig config, JsonNode node) {
+        JsonNode rulesNode = node.get("requiredEvidenceByQueryType");
+        if (rulesNode == null || !rulesNode.isArray()) {
+            return;
+        }
+        for (JsonNode ruleNode : rulesNode) {
+            BusinessRulesConfig.AnswerGateQueryTypeRule rule = new BusinessRulesConfig.AnswerGateQueryTypeRule();
+            rule.setQueryType(ruleNode.path("queryType").asText(""));
+            if (ruleNode.get("schemaIds") != null && ruleNode.get("schemaIds").isArray()) {
+                ruleNode.get("schemaIds").forEach(s -> rule.getSchemaIds().add(s.asText()));
+            }
+            config.getAnswerGate().getRequiredEvidenceByQueryType().add(rule);
         }
     }
 

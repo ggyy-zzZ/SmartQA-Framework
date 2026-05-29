@@ -257,6 +257,16 @@ public class QaAssistantProperties {
     private String cdcDltTopic = "cdc_dlt";
 
     /**
+     * 是否将 CDC 变更与 Neo4j/Qdrant 写入审计写入本地文件。
+     */
+    private boolean cdcAuditLogEnabled = true;
+
+    /**
+     * CDC 审计日志路径（JSONL）；相对路径基于进程工作目录。
+     */
+    private String cdcAuditLogPath = "data/qa_logs/cdc_sync.jsonl";
+
+    /**
      * 清单 JSON 文件路径（仅运维配置本地路径）；含 {@code tables} 数组与可选 {@code jobName}。
      */
     private String structuredIngestManifestPath = "";
@@ -979,5 +989,21 @@ public class QaAssistantProperties {
 
     public void setCdcDltTopic(String cdcDltTopic) {
         this.cdcDltTopic = cdcDltTopic;
+    }
+
+    public boolean isCdcAuditLogEnabled() {
+        return cdcAuditLogEnabled;
+    }
+
+    public void setCdcAuditLogEnabled(boolean cdcAuditLogEnabled) {
+        this.cdcAuditLogEnabled = cdcAuditLogEnabled;
+    }
+
+    public String getCdcAuditLogPath() {
+        return cdcAuditLogPath;
+    }
+
+    public void setCdcAuditLogPath(String cdcAuditLogPath) {
+        this.cdcAuditLogPath = cdcAuditLogPath;
     }
 }

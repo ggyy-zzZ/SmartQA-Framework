@@ -1,6 +1,7 @@
 package com.qa.demo.qa.cdc;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qa.demo.qa.cdc.graph.CdcGraphRelationshipSync;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Value;
@@ -13,9 +14,7 @@ import java.util.Map;
 
 /**
  * CDC 事件写入 Neo4j 图谱。
- *
- * 将 Debezium CDC 事件的 after 字段 MERGE 到 Neo4j。
- * 支持 Company、Person、Branch、Partner 等节点及关系。
+ * 节点属性仍按表写入；人-企等关系由 {@link CdcGraphRelationshipSync} 按 qa/cdc-graph-sync.json 驱动。
  */
 @Component
 public class Neo4jCdcWriter {
@@ -23,17 +22,25 @@ public class Neo4jCdcWriter {
     private static final Logger log = LoggerFactory.getLogger(Neo4jCdcWriter.class);
 
     private final Driver driver;
+    private final CdcSyncAuditLogger auditLogger;
+    private final CdcGraphRelationshipSync relationshipSync;
 
-    public Neo4jCdcWriter(Driver driver) {
+    public Neo4jCdcWriter(
+            Driver driver,
+            CdcSyncAuditLogger auditLogger,
+            CdcGraphRelationshipSync relationshipSync
+    ) {
         this.driver = driver;
+        this.auditLogger = auditLogger;
+        this.relationshipSync = relationshipSync;
     }
 
-    /**
-     * 将 CDC 事件写入 Neo4j。
-     */
     public void write(String table, String op, JsonNode after, JsonNode before) {
+        JsonNode row = CdcEntityIdResolver.dataRow(after, before, op);
+        String entityId = CdcEntityIdResolver.resolveEntityId(table, row);
+
         if (after == null && "d".equals(op)) {
-            deleteEntity(table, before);
+            deleteEntity(table, before, entityId);
             return;
         }
 
@@ -50,30 +57,37 @@ public class Neo4jCdcWriter {
                 case "partner" -> upsertPartner(session, after);
                 default -> log.debug("[Neo4j CDC] Unsupported table: {}", table);
             }
+            relationshipSync.syncTable(session, table, after);
+            auditLogger.storeWriteSuccess("neo4j", table, op, entityId, "MERGE ok");
         } catch (Exception e) {
+            auditLogger.storeWriteFailed("neo4j", table, op, entityId, e.getMessage());
             log.error("[Neo4j CDC] Failed to write table={}, op={}", table, op, e);
             throw new RuntimeException("Neo4j CDC write failed", e);
         }
     }
 
-    private void deleteEntity(String table, JsonNode before) {
+    private void deleteEntity(String table, JsonNode before, String entityId) {
         if (before == null) {
             log.warn("[Neo4j CDC] No before data for delete, ignoring");
             return;
         }
+        if (entityId == null) {
+            entityId = CdcEntityIdResolver.resolveEntityId(table, before);
+        }
+        if (entityId == null) {
+            log.warn("[Neo4j CDC] Cannot extract entity id for delete, table={}", table);
+            return;
+        }
 
         try (Session session = driver.session()) {
-            String entityId = extractEntityId(table, before);
-            if (entityId == null) {
-                log.warn("[Neo4j CDC] Cannot extract entity id for delete, table={}", table);
-                return;
-            }
-
             String label = toLabel(table);
-            session.run("MATCH (n:" + label + " {companyId: $id}) DETACH DELETE n",
+            String idProperty = idProperty(table);
+            session.run("MATCH (n:" + label + " {" + idProperty + ": $id}) DETACH DELETE n",
                     Map.of("id", entityId));
-            log.info("[Neo4j CDC] Deleted {} id={}", label, entityId);
+            auditLogger.storeWriteSuccess("neo4j", table, "d", entityId, "DETACH DELETE ok");
+            log.info("[Neo4j CDC] Deleted {} {}={}", label, idProperty, entityId);
         } catch (Exception e) {
+            auditLogger.storeWriteFailed("neo4j", table, "d", entityId, e.getMessage());
             log.error("[Neo4j CDC] Failed to delete table={}", table, e);
             throw new RuntimeException("Neo4j CDC delete failed", e);
         }
@@ -83,10 +97,8 @@ public class Neo4jCdcWriter {
         return s == null ? Values.NULL : Values.value(s);
     }
 
-    // ==================== Company ====================
-
     private void upsertCompany(Session session, JsonNode row) {
-        String companyId = getText(row, "company_id");
+        String companyId = CdcEntityIdResolver.resolveEntityId("company", row);
         if (companyId == null || companyId.isBlank()) {
             log.warn("[Neo4j CDC] company_id is null, skipping");
             return;
@@ -104,25 +116,21 @@ public class Neo4jCdcWriter {
             """,
                 Map.of(
                         "companyId", v(companyId),
-                        "name", v(getText(row, "company_name")),
-                        "shortName", v(getText(row, "company_short_name")),
-                        "creditCode", v(getText(row, "credit_code")),
-                        "status", v(getText(row, "status")),
-                        "entityType", v(getText(row, "entity_type")),
-                        "entityCategory", v(getText(row, "entity_category")),
-                        "modifytime", v(getText(row, "modifytime"))
+                        "name", v(CdcTdcompFields.firstText(row, "company_name", "name")),
+                        "shortName", v(CdcTdcompFields.firstText(row, "company_short_name", "short_name")),
+                        "creditCode", v(CdcTdcompFields.creditCode(row)),
+                        "status", v(CdcTdcompFields.operatingStatus(row)),
+                        "entityType", v(CdcTdcompFields.entityType(row)),
+                        "entityCategory", v(CdcTdcompFields.entityCategory(row)),
+                        "modifytime", v(CdcTdcompFields.firstText(row, "modifytime", "updated_at"))
                 ));
 
         log.debug("[Neo4j CDC] Upserted Company: {}", companyId);
     }
 
-    // ==================== Person (Employee) ====================
-
     private void upsertPerson(Session session, JsonNode row) {
-        String personId = getText(row, "employee_id");
-        String name = getText(row, "name");
-        String companyId = getText(row, "company_id");
-
+        String personId = CdcEntityIdResolver.resolveEntityId("employee", row);
+        String name = CdcTdcompFields.employeeName(row);
         String personKey = (personId != null && !personId.isBlank())
                 ? personId
                 : "NAME::" + (name != null ? name : "UNKNOWN");
@@ -138,28 +146,11 @@ public class Neo4jCdcWriter {
                         "personId", v(personId)
                 ));
 
-        if (companyId != null && !companyId.isBlank()) {
-            String role = getText(row, "role");
-            session.run("""
-                MATCH (p:Person {personKey: $personKey})
-                MATCH (c:Company {companyId: $companyId})
-                MERGE (p)-[r:HAS_ROLE_IN {role: $role}]->(c)
-                """,
-                    Map.of(
-                            "personKey", v(personKey),
-                            "companyId", v(companyId),
-                            "role", v(role != null ? role : "员工")
-                    ));
-        }
-
         log.debug("[Neo4j CDC] Upserted Person: {}", personKey);
     }
 
-    // ==================== Branch ====================
-
     private void upsertBranch(Session session, JsonNode row) {
-        String branchId = getText(row, "branch_id");
-        String companyId = getText(row, "company_id");
+        String branchId = CdcEntityIdResolver.resolveEntityId("branch", row);
         if (branchId == null || branchId.isBlank()) {
             log.warn("[Neo4j CDC] branch_id is null, skipping");
             return;
@@ -172,28 +163,16 @@ public class Neo4jCdcWriter {
             """,
                 Map.of(
                         "branchId", v(branchId),
-                        "name", v(getText(row, "branch_name")),
-                        "status", v(getText(row, "status"))
+                        "name", v(CdcTdcompFields.firstText(row, "branch_name", "name")),
+                        "status", v(CdcTdcompFields.operatingStatus(row))
                 ));
-
-        if (companyId != null && !companyId.isBlank()) {
-            session.run("""
-                MATCH (b:Branch {branchId: $branchId})
-                MATCH (c:Company {companyId: $companyId})
-                MERGE (c)-[:HAS_BRANCH]->(b)
-                """,
-                    Map.of("branchId", v(branchId), "companyId", v(companyId)));
-        }
 
         log.debug("[Neo4j CDC] Upserted Branch: {}", branchId);
     }
 
-    // ==================== Partner ====================
-
     private void upsertPartner(Session session, JsonNode row) {
-        String partnerId = getText(row, "partner_id");
-        String companyId = getText(row, "company_id");
-        String partnerName = getText(row, "partner_name");
+        String partnerId = CdcEntityIdResolver.resolveEntityId("partner", row);
+        String partnerName = CdcTdcompFields.firstText(row, "partner_name", "name");
 
         if (partnerId == null || partnerId.isBlank()) {
             partnerId = "NAME::" + (partnerName != null ? partnerName : "UNKNOWN");
@@ -208,32 +187,15 @@ public class Neo4jCdcWriter {
                         "name", v(partnerName)
                 ));
 
-        if (companyId != null && !companyId.isBlank()) {
-            String relationType = getText(row, "relation_type");
-            session.run("""
-                MATCH (p:Partner {partnerKey: $partnerKey})
-                MATCH (c:Company {companyId: $companyId})
-                MERGE (c)-[r:PARTNER_OF {type: $relationType}]->(p)
-                """,
-                    Map.of(
-                            "partnerKey", v(partnerId),
-                            "companyId", v(companyId),
-                            "relationType", v(relationType)
-                    ));
-        }
-
         log.debug("[Neo4j CDC] Upserted Partner: {}", partnerId);
     }
 
-    // ==================== Helpers ====================
-
-    private String extractEntityId(String table, JsonNode row) {
+    private String idProperty(String table) {
         return switch (table) {
-            case "company" -> getText(row, "company_id");
-            case "employee" -> getText(row, "employee_id");
-            case "branch" -> getText(row, "branch_id");
-            case "partner" -> getText(row, "partner_id");
-            default -> null;
+            case "employee" -> "personKey";
+            case "branch" -> "branchId";
+            case "partner" -> "partnerKey";
+            default -> "companyId";
         };
     }
 
@@ -245,10 +207,5 @@ public class Neo4jCdcWriter {
             case "partner" -> "Partner";
             default -> "Unknown";
         };
-    }
-
-    private String getText(JsonNode node, String field) {
-        JsonNode n = node.path(field);
-        return n.isMissingNode() ? null : n.asText(null);
     }
 }

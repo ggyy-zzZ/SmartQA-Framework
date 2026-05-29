@@ -138,17 +138,28 @@ public class PersonNameResolver {
      * 使用 LLM 辅助解析人物指代。
      */
     private String resolveByLlm(String personHint, String question) {
+        if (personHint == null || personHint.isBlank()) {
+            return "";
+        }
+        String hint = personHint.trim();
+        if (IntentSlots.sanitizePersonName(hint).isBlank() && !PersonNameParser.hasHonorificSuffix(hint)) {
+            return "";
+        }
         try {
-            String userMessage = String.format("问句：%s\n人物指代：%s\n请找出这个指代对应的员工姓名。", question, personHint);
+            String userMessage = String.format("问句：%s\n人物指代：%s\n请找出这个指代对应的员工姓名。", question, hint);
             String response = miniMaxClient.completeChat(LLM_SYSTEM_PROMPT, userMessage);
             if (response != null && !response.isBlank()) {
-                // 简单清理返回结果
                 String cleaned = response.trim();
-                // 去除可能的引号
                 cleaned = cleaned.replaceAll("^\"|\"$", "");
                 cleaned = cleaned.replaceAll("^「|」$", "");
                 cleaned = cleaned.trim();
-                return cleaned;
+                String sanitized = IntentSlots.sanitizePersonName(cleaned);
+                if (!sanitized.isBlank()) {
+                    return sanitized;
+                }
+                if (PersonNameParser.hasHonorificSuffix(cleaned) && cleaned.length() <= 12) {
+                    return cleaned;
+                }
             }
         } catch (Exception ignored) {
             // LLM 调用失败，忽略

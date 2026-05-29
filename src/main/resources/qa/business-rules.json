@@ -30,15 +30,14 @@
         "weakQueryTypes": [
           "semantic",
           "unknown",
-          "mixed",
-          "person_certificate_list"
+          "mixed"
         ]
       },
       {
         "id": "person_certificate_list",
         "description": "人物证照列表查询",
         "keywords": [
-          "证照", "许可证", "执照", "资质", "备案", "证书",
+          "证照", "许可证", "执照", "资质", "备案", "证书", "证",
           "负责", "管", "列出", "多少", "什么", "啥", "涉及"
         ],
         "queryType": "person_certificate_list",
@@ -55,7 +54,7 @@
         "id": "company_certificate",
         "description": "企业证照查询",
         "keywords": [
-          "证照", "许可证", "执照", "资质", "备案", "证书", "印章", "公章"
+          "证照", "许可证", "执照", "资质", "备案", "证书", "证", "印章", "公章"
         ],
         "queryType": "company_certificate",
         "requiresPerson": false,
@@ -180,6 +179,78 @@
       ]
     }
   ],
+  "intentRouting": {
+    "structuredListQueryTypes": [
+      "person_role_list",
+      "person_certificate_list"
+    ],
+    "certificateQueryTypes": [
+      "person_certificate_list",
+      "company_certificate"
+    ],
+    "defaultIntentByQueryType": {
+      "person_certificate_list": "hybrid"
+    },
+    "followUpReferenceMarkers": [
+      "这些", "上面", "刚才", "存续", "主体", "它们", "那些", "这几", "那几"
+    ],
+    "queryTypeSlotRequirements": [
+      {
+        "queryType": "person_role_list",
+        "requiresPerson": true,
+        "requiresCompany": false,
+        "requiresRoleFocus": true
+      },
+      {
+        "queryType": "person_certificate_list",
+        "requiresPerson": true,
+        "requiresCompany": false,
+        "requiresRoleFocus": false
+      },
+      {
+        "queryType": "company_certificate",
+        "requiresPerson": false,
+        "requiresCompany": true,
+        "requiresRoleFocus": false
+      },
+      {
+        "queryType": "company_profile",
+        "requiresPerson": false,
+        "requiresCompany": true,
+        "requiresRoleFocus": false
+      },
+      {
+        "queryType": "company_seal",
+        "requiresPerson": false,
+        "requiresCompany": true,
+        "requiresRoleFocus": false
+      },
+      {
+        "queryType": "shareholder",
+        "requiresPerson": false,
+        "requiresCompany": false,
+        "requiresRoleFocus": false
+      },
+      {
+        "queryType": "relation",
+        "requiresPerson": false,
+        "requiresCompany": false,
+        "requiresRoleFocus": false
+      }
+    ]
+  },
+  "answerGate": {
+    "requiredEvidenceByQueryType": [
+      {
+        "queryType": "person_certificate_list",
+        "schemaIds": ["person_certificate_v1"]
+      },
+      {
+        "queryType": "company_certificate",
+        "schemaIds": ["person_certificate_v1"]
+      }
+    ]
+  },
   "retrievalThresholds": {
     "sourceThresholds": [
       {

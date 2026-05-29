@@ -1,11 +1,13 @@
 package com.qa.demo.qa.cdc;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qa.demo.qa.cdc.graph.CdcVectorRoleDocumentEnricher;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.util.*;
@@ -23,16 +25,88 @@ public class QdrantCdcWriter {
     private static final Logger log = LoggerFactory.getLogger(QdrantCdcWriter.class);
 
     private static final String DEFAULT_DOMAIN = "org_master";
-    private static final String DEFAULT_ENTITY_TYPE = "Company";
-
     private final QaAssistantProperties props;
+    private final CdcSyncAuditLogger auditLogger;
+    private final CdcVectorRoleDocumentEnricher roleDocumentEnricher;
     private final RestClient restClient;
+    private volatile boolean collectionEnsured;
 
-    public QdrantCdcWriter(QaAssistantProperties props) {
+    public QdrantCdcWriter(
+            QaAssistantProperties props,
+            CdcSyncAuditLogger auditLogger,
+            CdcVectorRoleDocumentEnricher roleDocumentEnricher
+    ) {
         this.props = props;
+        this.auditLogger = auditLogger;
+        this.roleDocumentEnricher = roleDocumentEnricher;
         this.restClient = RestClient.builder()
                 .baseUrl(props.getQdrantUrl())
                 .build();
+    }
+
+    private void ensureCollection() {
+        if (collectionEnsured) {
+            return;
+        }
+        synchronized (this) {
+            if (collectionEnsured) {
+                return;
+            }
+            createCollectionIfMissing(props.getQdrantCollection());
+            collectionEnsured = true;
+        }
+    }
+
+    private void createCollectionIfMissing(String collection) {
+        if (collectionExists(collection)) {
+            return;
+        }
+        int dim = Math.max(64, props.getVectorEmbeddingDim());
+        Map<String, Object> createBody = Map.of(
+                "vectors", Map.of("size", dim, "distance", "Cosine")
+        );
+        restClient.put()
+                .uri("/collections/{collection}", collection)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(createBody)
+                .retrieve()
+                .toBodilessEntity();
+        log.info("[Qdrant CDC] Created collection {} (dim={})", collection, dim);
+    }
+
+    private boolean collectionExists(String collection) {
+        try {
+            restClient.get()
+                    .uri("/collections/{collection}", collection)
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return false;
+        }
+    }
+
+    private void invalidateCollectionCache() {
+        collectionEnsured = false;
+    }
+
+    private void upsertWithCollectionRetry(String collection, Map<String, Object> requestBody) {
+        try {
+            putPoints(collection, requestBody);
+        } catch (HttpClientErrorException.NotFound e) {
+            invalidateCollectionCache();
+            ensureCollection();
+            putPoints(collection, requestBody);
+        }
+    }
+
+    private void putPoints(String collection, Map<String, Object> requestBody) {
+        restClient.put()
+                .uri("/collections/{collection}/points?wait=true", collection)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .retrieve()
+                .body(String.class);
     }
 
     /**
@@ -41,14 +115,16 @@ public class QdrantCdcWriter {
      * @param table  表名
      * @param op     操作类型（c=create, u=update, d=delete, r=snapshot）
      * @param after  变更后的数据
+     * @param before 变更前的数据（删除时用于取主键）
      */
-    public void write(String table, String op, JsonNode after) {
-        if (after == null) {
-            log.warn("[Qdrant CDC] No after data for op={}, table={}", op, table);
+    public void write(String table, String op, JsonNode after, JsonNode before) {
+        JsonNode row = CdcEntityIdResolver.dataRow(after, before, op);
+        if (!CdcEntityIdResolver.hasRowData(row)) {
+            log.warn("[Qdrant CDC] No row data for op={}, table={}", op, table);
             return;
         }
 
-        String entityId = extractEntityId(table, after);
+        String entityId = extractEntityId(table, row);
         if (entityId == null || entityId.isBlank()) {
             log.warn("[Qdrant CDC] Cannot extract entity id, table={}", table);
             return;
@@ -56,30 +132,38 @@ public class QdrantCdcWriter {
 
         try {
             if ("d".equals(op)) {
-                deletePoint(entityId);
+                deletePoint(table, entityId);
+                auditLogger.storeWriteSuccess("qdrant", table, op, entityId, "delete point ok");
             } else {
-                upsertPoint(table, after, entityId);
+                String pointId = upsertPoint(table, row, entityId);
+                auditLogger.storeWriteSuccess("qdrant", table, op, entityId, "upsert pointId=" + pointId);
             }
         } catch (Exception e) {
+            auditLogger.storeWriteFailed("qdrant", table, op, entityId, e.getMessage());
             log.error("[Qdrant CDC] Failed to write table={}, entityId={}", table, entityId, e);
             throw new RuntimeException("Qdrant CDC write failed", e);
         }
     }
 
-    private void upsertPoint(String table, JsonNode row, String entityId) {
+    private String buildDocumentText(String table, JsonNode row) {
+        String docText = CdcTdcompFields.buildDocument(table, row);
+        if ("company".equalsIgnoreCase(table)) {
+            StringBuilder sb = new StringBuilder(docText);
+            roleDocumentEnricher.appendCompanyRoleSections(sb, row);
+            return sb.toString();
+        }
+        return docText;
+    }
+
+    private String upsertPoint(String table, JsonNode row, String entityId) {
+        ensureCollection();
         String collection = props.getQdrantCollection();
+        String entityType = CdcTdcompFields.qdrantEntityType(table);
 
-        // 构建文档文本
-        String docText = buildDocument(row);
-
-        // 生成向量（使用 hash 向量，复用 Python 的 hash_embed_text 逻辑）
+        String docText = buildDocumentText(table, row);
         List<Float> vector = hashEmbedText(docText, props.getVectorEmbeddingDim());
-
-        // 生成稳定的 point ID
-        String pointId = stablePointId(DEFAULT_DOMAIN, DEFAULT_ENTITY_TYPE, entityId);
-
-        // 构建 payload
-        Map<String, Object> payload = buildPayload(row, docText);
+        String pointId = stablePointId(DEFAULT_DOMAIN, entityType, entityId);
+        Map<String, Object> payload = buildPayload(table, row, entityId, entityType, docText);
 
         // 构建请求
         Map<String, Object> point = new LinkedHashMap<>();
@@ -90,20 +174,17 @@ public class QdrantCdcWriter {
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("points", Collections.singletonList(point));
 
-        // 发送到 Qdrant
-        restClient.post()
-                .uri("/collections/{collection}/points?wait=true", collection)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(requestBody)
-                .retrieve()
-                .body(String.class);
+        upsertWithCollectionRetry(collection, requestBody);
 
         log.debug("[Qdrant CDC] Upserted point id={}, table={}", pointId, table);
+        return pointId;
     }
 
-    private void deletePoint(String entityId) {
+    private void deletePoint(String table, String entityId) {
+        ensureCollection();
         String collection = props.getQdrantCollection();
-        String pointId = stablePointId(DEFAULT_DOMAIN, DEFAULT_ENTITY_TYPE, entityId);
+        String entityType = CdcTdcompFields.qdrantEntityType(table);
+        String pointId = stablePointId(DEFAULT_DOMAIN, entityType, entityId);
 
         Map<String, Object> requestBody = Map.of(
                 "points", Collections.singletonList(pointId)
@@ -119,40 +200,26 @@ public class QdrantCdcWriter {
         log.info("[Qdrant CDC] Deleted point id={}", pointId);
     }
 
-    // ==================== Document Building ====================
-
-    private String buildDocument(JsonNode row) {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append("公司ID: ").append(nullOrEmpty(row, "company_id")).append("\n");
-        sb.append("公司名: ").append(nullOrEmpty(row, "company_name")).append("\n");
-        sb.append("简称: ").append(nullOrEmpty(row, "company_short_name")).append("\n");
-        sb.append("统一社会信用代码: ").append(nullOrEmpty(row, "credit_code")).append("\n");
-        sb.append("经营状态: ").append(nullOrEmpty(row, "status")).append("\n");
-        sb.append("主体类型: ").append(nullOrEmpty(row, "entity_type")).append("\n");
-        sb.append("主体分类: ").append(nullOrEmpty(row, "entity_category")).append("\n");
-        sb.append("成立日期: ").append(nullOrEmpty(row, "established_date")).append("\n");
-        sb.append("注册地区: ").append(nullOrEmpty(row, "registered_area")).append("\n");
-        sb.append("母公司: ").append(nullOrEmpty(row, "parent_company")).append("\n");
-        sb.append("注册地址: ").append(nullOrEmpty(row, "registered_address")).append("\n");
-        sb.append("办公地址: ").append(nullOrEmpty(row, "office_address")).append("\n");
-        sb.append("经营范围: ").append(nullOrEmpty(row, "business_scope")).append("\n");
-
-        return sb.toString();
-    }
-
-    private Map<String, Object> buildPayload(JsonNode row, String docText) {
+    private Map<String, Object> buildPayload(
+            String table, JsonNode row, String entityId, String entityType, String docText) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("domain", DEFAULT_DOMAIN);
-        payload.put("entity_type_key", DEFAULT_ENTITY_TYPE);
-        payload.put("entity_id", nullOrEmpty(row, "company_id"));
-        payload.put("company_id", getText(row, "company_id"));
-        payload.put("company_name", getText(row, "company_name"));
-        payload.put("status", getText(row, "status"));
-        payload.put("entity_type", getText(row, "entity_type"));
-        payload.put("entity_category", getText(row, "entity_category"));
-        payload.put("registered_area", getText(row, "registered_area"));
+        payload.put("entity_type_key", entityType);
+        payload.put("entity_id", entityId);
+        payload.put("table", table);
         payload.put("text", docText);
+        if ("company".equals(table)) {
+            payload.put("company_id", entityId);
+            payload.put("company_name", CdcTdcompFields.firstText(row, "company_name", "name"));
+            payload.put("status", CdcTdcompFields.operatingStatus(row));
+            payload.put("entity_type", CdcTdcompFields.entityType(row));
+            payload.put("entity_category", CdcTdcompFields.entityCategory(row));
+            payload.put("registered_area", CdcTdcompFields.registeredArea(row));
+        } else if ("employee".equals(table)) {
+            payload.put("person_id", entityId);
+            payload.put("name", CdcTdcompFields.employeeName(row));
+            payload.put("company_id", CdcTdcompFields.employeeCompanyId(row));
+        }
         return payload;
     }
 
@@ -238,13 +305,7 @@ public class QdrantCdcWriter {
     // ==================== Helpers ====================
 
     private String extractEntityId(String table, JsonNode row) {
-        return switch (table) {
-            case "company" -> getText(row, "company_id");
-            case "employee" -> getText(row, "employee_id");
-            case "branch" -> getText(row, "branch_id");
-            case "partner" -> getText(row, "partner_id");
-            default -> null;
-        };
+        return CdcEntityIdResolver.resolveEntityId(table, row);
     }
 
     private String getText(JsonNode node, String field) {
@@ -252,8 +313,4 @@ public class QdrantCdcWriter {
         return n.isMissingNode() ? null : n.asText(null);
     }
 
-    private String nullOrEmpty(JsonNode node, String field) {
-        String v = getText(node, field);
-        return v != null ? v : "";
-    }
 }
