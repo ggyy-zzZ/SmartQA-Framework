@@ -35,6 +35,13 @@ build/
 ### Cursor / Claude local ###
 .claude/
 
+### Runtime / Spring work logs (do not commit) ###
+data/qa_logs/spring_run.log
+data/qa_logs/*.log
+*spring_run.log
+D*spring_run.log
+nul
+
 ### Local secrets / machine-specific overrides (do not push) ###
 application-local.properties
 .env
