@@ -56,6 +56,20 @@
         "legalName": "陈兴茂",
         "role": "CTO、创始人"
       }
+    },
+    {
+      "id": "certificate_term_clarification",
+      "scope": "enterprise",
+      "triggers": ["证照类型", "类型和证照", "证照和类型", "证照实例", "同一类型多本证照"],
+      "entityKind": "company",
+      "anchorId": "term:certificate_type_vs_instance",
+      "displayLabel": "证照术语澄清",
+      "field": "enterprise_fact",
+      "values": {
+        "factType": "术语定义",
+        "subject": "证照类型与证照关系",
+        "value": "证照类型是类别标签；证照是企业名下该类别的一条实例记录。无额外证据时按“企业+证照类型”对应一条证照实例理解。"
+      }
     }
   ],
   "retrievalAliases": [

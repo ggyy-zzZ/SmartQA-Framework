@@ -24,29 +24,26 @@ public class NeedInferenceService {
         if (!q.isBlank()) {
             InformationNeed fromRules = matchRules(q);
             if (fromRules != null) {
-                return fromRules;
+                if (!shouldPreferQueryTypeNeed(q, intent, fromRules)) {
+                    return fromRules;
+                }
             }
             if (looksLikeTypeCatalogQuestion(q)) {
-                return new InformationNeed(
+                InformationNeed heuristic = new InformationNeed(
                         "certificate",
                         InformationNeed.GRANULARITY_TYPE_CATALOG,
                         true,
                         0.88,
                         "inference_heuristic:type_catalog"
                 );
+                if (!shouldPreferQueryTypeNeed(q, intent, heuristic)) {
+                    return heuristic;
+                }
             }
         }
-        if (intent != null && intent.queryType() != null && !intent.queryType().isBlank()) {
-            RetrievalCatalogConfig.NeedTemplate mapped = catalogRegistry.mapQueryType(intent.queryType());
-            if (mapped != null && mapped.getFacet() != null && !mapped.getFacet().isBlank()) {
-                return new InformationNeed(
-                        mapped.getFacet(),
-                        mapped.getGranularity(),
-                        mapped.isListExpected(),
-                        intent.confidence(),
-                        "query_type_mapping:" + intent.queryType()
-                );
-            }
+        InformationNeed mapped = mapFromQueryType(intent);
+        if (mapped != null) {
+            return mapped;
         }
         return InformationNeed.defaultSemantic();
     }
@@ -119,5 +116,54 @@ public class NeedInferenceService {
                 || lower.contains("执照")
                 || lower.contains("备案");
         return typeIntent && certContext;
+    }
+
+    private InformationNeed mapFromQueryType(IntentDecision intent) {
+        if (intent == null || intent.queryType() == null || intent.queryType().isBlank()) {
+            return null;
+        }
+        RetrievalCatalogConfig.NeedTemplate mapped = catalogRegistry.mapQueryType(intent.queryType());
+        if (mapped == null || mapped.getFacet() == null || mapped.getFacet().isBlank()) {
+            return null;
+        }
+        return new InformationNeed(
+                mapped.getFacet(),
+                mapped.getGranularity(),
+                mapped.isListExpected(),
+                intent.confidence(),
+                "query_type_mapping:" + intent.queryType()
+        );
+    }
+
+    private boolean shouldPreferQueryTypeNeed(String question, IntentDecision intent, InformationNeed candidate) {
+        if (candidate == null || !candidate.isTypeCatalog() || intent == null) {
+            return false;
+        }
+        InformationNeed mapped = mapFromQueryType(intent);
+        if (mapped == null || mapped.granularity() == null
+                || InformationNeed.GRANULARITY_TYPE_CATALOG.equalsIgnoreCase(mapped.granularity())) {
+            return false;
+        }
+        String lower = question == null ? "" : question.toLowerCase(Locale.ROOT);
+        if (intent.hasCompanyHints() || intent.hasPersonFocus()) {
+            return true;
+        }
+        boolean hasContextReference = containsAny(lower,
+                "这些", "那些", "这批", "上一轮", "上轮", "上文", "刚才", "其中", "里面", "里", "主体", "公司", "企业");
+        boolean asksConditionFilter = containsAny(lower,
+                "吊销", "注销", "存续", "在业", "有效", "失效", "作废", "生效", "到期", "未作废");
+        return hasContextReference && asksConditionFilter;
+    }
+
+    private static boolean containsAny(String text, String... markers) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        for (String marker : markers) {
+            if (marker != null && !marker.isBlank() && text.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

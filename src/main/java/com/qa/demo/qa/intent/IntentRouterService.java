@@ -81,6 +81,17 @@ public class IntentRouterService {
     ) {
         IntentDecision ruleFirst = ruleEngine.classify(question, explicitCompanyHint, "rule");
         if (properties.isIntentRuleFirstForStructured() && isStructuredListReady(ruleFirst)) {
+            if (shouldAssistStructuredByLlm()) {
+                try {
+                    IntentDecision llmDecision = classifyWithTimeout(question, explicitCompanyHint);
+                    if (IntentSlots.VALID_INTENTS.contains(llmDecision.intent())
+                            && !"unknown".equalsIgnoreCase(llmDecision.intent())) {
+                        return enricher.enrich(llmDecision, question, explicitCompanyHint, "llm", learnedForAlias);
+                    }
+                } catch (Exception ignored) {
+                    // structured 场景下 LLM 辅助失败时，回退规则结果，不影响可用性
+                }
+            }
             return enricher.enrich(ruleFirst, question, explicitCompanyHint, "rule", learnedForAlias);
         }
         if (properties.isIntentLlmEnabled() && hasMinimaxKey()) {
@@ -190,13 +201,6 @@ public class IntentRouterService {
         if (llmDecision.companyHints() != null) {
             mergedHints.addAll(llmDecision.companyHints());
         }
-        if (followUp.priorCompanies() != null) {
-            for (EntityRef ref : followUp.priorCompanies()) {
-                if (ref.name() != null && !ref.name().isBlank() && !mergedHints.contains(ref.name())) {
-                    mergedHints.add(ref.name());
-                }
-            }
-        }
         String person = llmDecision.hasPersonFocus() ? llmDecision.personName() : fallbackPerson;
         Integer employeeId = base != null ? base.personEmployeeId() : null;
         return new IntentDecision(
@@ -267,6 +271,12 @@ public class IntentRouterService {
     private boolean hasMinimaxKey() {
         String key = properties.getApiKey();
         return key != null && !key.isBlank();
+    }
+
+    private boolean shouldAssistStructuredByLlm() {
+        return properties.isIntentLlmEnabled()
+                && properties.isIntentLlmAssistStructured()
+                && hasMinimaxKey();
     }
 
     private boolean isStructuredListReady(IntentDecision decision) {
