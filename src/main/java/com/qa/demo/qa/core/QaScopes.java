@@ -10,8 +10,11 @@ public final class QaScopes {
     private QaScopes() {
     }
 
-    /** 统一归一化为企业知识库 scope（不再区分 personal）。 */
+    /** 归一化 scope；空值默认 enterprise。 */
     public static String normalize(String scope) {
-        return ENTERPRISE;
+        if (scope == null || scope.isBlank()) {
+            return ENTERPRISE;
+        }
+        return scope.trim().toLowerCase();
     }
 }

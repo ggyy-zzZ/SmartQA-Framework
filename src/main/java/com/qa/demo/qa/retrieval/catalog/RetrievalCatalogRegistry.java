@@ -1,11 +1,8 @@
 package com.qa.demo.qa.retrieval.catalog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import org.springframework.stereotype.Component;
-
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -22,12 +19,9 @@ public class RetrievalCatalogRegistry {
 
     private final RetrievalCatalogConfig config;
 
-    public RetrievalCatalogRegistry(ObjectMapper objectMapper,
-            @Value("${qa.retrieval-catalog.path:classpath:qa/retrieval-catalog.json}") Resource catalogPath)
+    public RetrievalCatalogRegistry(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader)
             throws Exception {
-        try (InputStream in = catalogPath.getInputStream()) {
-            this.config = objectMapper.readValue(in, RetrievalCatalogConfig.class);
-        }
+        this.config = objectMapper.treeToValue(configLoader.readTree("retrieval-catalog"), RetrievalCatalogConfig.class);
     }
 
     public RetrievalCatalogConfig config() {

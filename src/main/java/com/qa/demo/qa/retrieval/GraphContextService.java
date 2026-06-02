@@ -1,5 +1,6 @@
 package com.qa.demo.qa.retrieval;
 
+import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
@@ -27,6 +28,7 @@ import java.util.Set;
 public class GraphContextService {
 
     private final Driver neo4jDriver;
+    private final QaAssistantProperties properties;
     private final QuestionEntityExtractor entityExtractor;
     private final EnterpriseLexicon lexicon;
     private final GraphCompanyFacetCatalog companyFacetCatalog;
@@ -34,12 +36,14 @@ public class GraphContextService {
 
     public GraphContextService(
             Driver neo4jDriver,
+            QaAssistantProperties properties,
             QuestionEntityExtractor entityExtractor,
             EnterpriseLexicon lexicon,
             GraphCompanyFacetCatalog companyFacetCatalog,
             CertificateSealEnumCatalog certificateSealEnumCatalog
     ) {
         this.neo4jDriver = neo4jDriver;
+        this.properties = properties;
         this.entityExtractor = entityExtractor;
         this.lexicon = lexicon;
         this.companyFacetCatalog = companyFacetCatalog;
@@ -69,8 +73,15 @@ public class GraphContextService {
             if (personHint != null && shouldQueryPersonRole(question, intent)) {
                 String roleFocus = resolveRoleFocus(question, intent);
                 String field = fieldLabel(question);
-                chunks.addAll(GraphPersonRoleQuery.execute(session, personHint, roleFocus, limitedTopK, field));
+                if (plan.personRoleList() && properties.isPersonRoleSlimGraph()) {
+                    chunks.addAll(GraphPersonRoleQuery.executeBoundary(session, personHint, roleFocus, limitedTopK, field));
+                } else {
+                    chunks.addAll(GraphPersonRoleQuery.execute(session, personHint, roleFocus, limitedTopK, field));
+                }
                 if (!chunks.isEmpty()) {
+                    return chunks;
+                }
+                if (intent != null && intent.isPersonRoleListQuery()) {
                     return chunks;
                 }
             }

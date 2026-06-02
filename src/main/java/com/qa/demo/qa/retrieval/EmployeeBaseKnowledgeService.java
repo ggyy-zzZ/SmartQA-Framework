@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.*;
@@ -64,7 +65,7 @@ public class EmployeeBaseKnowledgeService {
         anotherNameToId.clear();
         idToRecord.clear();
 
-        String sql = "SELECT id, name, another_name FROM employee";
+        String sql = buildEmployeeSelectSql();
         int limit = properties.getEmployeeBaseLimit();
         if (limit > 0) {
             sql += " LIMIT " + limit;
@@ -78,7 +79,12 @@ public class EmployeeBaseKnowledgeService {
             while (rs.next()) {
                 int id = rs.getInt("id");
                 String name = rs.getString("name");
-                String anotherName = rs.getString("another_name");
+                String anotherName = null;
+                try {
+                    anotherName = rs.getString("another_name");
+                } catch (Exception ignored) {
+                    // 业务库无花名列时仅索引姓名
+                }
 
                 // 索引 name → id
                 if (name != null && !name.isBlank()) {
@@ -185,6 +191,30 @@ public class EmployeeBaseKnowledgeService {
      */
     public int size() {
         return idToRecord.size();
+    }
+
+    private String buildEmployeeSelectSql() {
+        if (hasEmployeeColumn("another_name")) {
+            return "SELECT id, name, another_name FROM employee";
+        }
+        return "SELECT id, name FROM employee";
+    }
+
+    private boolean hasEmployeeColumn(String columnName) {
+        String sql = """
+                SELECT 1 FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee' AND COLUMN_NAME = ?
+                LIMIT 1
+                """;
+        try (Connection conn = openBusinessConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, columnName);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private Connection openBusinessConnection() throws Exception {

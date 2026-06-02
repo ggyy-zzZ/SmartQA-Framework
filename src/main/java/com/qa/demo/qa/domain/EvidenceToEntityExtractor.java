@@ -15,7 +15,8 @@ import java.util.regex.Pattern;
  */
 public final class EvidenceToEntityExtractor {
 
-    private static final Pattern PERSON_ROLE_SOURCE = Pattern.compile("neo4j-person-role|mysql-sql-person-role|sql-person-role|person_role");
+    private static final Pattern PERSON_ROLE_SOURCE = Pattern.compile(
+            "neo4j-person-role|neo4j-boundary|mysql-sql-person-role|sql-person-role|person_role");
     private static final Pattern CERTIFICATE_SOURCE = Pattern.compile("mysql-.*-certificate|certificate");
     private static final Pattern PERSON_SOURCE = Pattern.compile("employee_identity|employee_base|neo4j-person");
 
@@ -111,6 +112,22 @@ public final class EvidenceToEntityExtractor {
     private static String extractStatus(String snippet) {
         if (snippet == null || snippet.isBlank()) {
             return null;
+        }
+        String normalized = snippet.replace('；', ';');
+        String[] parts = normalized.split(";");
+        for (String raw : parts) {
+            String part = raw == null ? "" : raw.trim();
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (part.startsWith("status=")) {
+                String value = part.substring("status=".length()).trim();
+                return value.isEmpty() ? null : value;
+            }
+            if (part.startsWith("状态=")) {
+                String value = part.substring("状态=".length()).trim();
+                return value.isEmpty() ? null : value;
+            }
         }
         if (snippet.contains("存续")) {
             return "存续";

@@ -120,6 +120,10 @@ public class BusinessRulesConfig {
         private Map<String, String> defaultIntentByQueryType = new HashMap<>();
         private List<QueryTypeSlotRequirement> queryTypeSlotRequirements = new ArrayList<>();
         private List<String> followUpReferenceMarkers = new ArrayList<>();
+        /**
+         * 规则补充语句前缀（这类语句不应被判为实体纠偏）。
+         */
+        private List<String> filterRulePrefixes = new ArrayList<>();
 
         public List<String> getStructuredListQueryTypes() { return structuredListQueryTypes; }
         public void setStructuredListQueryTypes(List<String> s) { this.structuredListQueryTypes = s; }
@@ -131,6 +135,8 @@ public class BusinessRulesConfig {
         public void setQueryTypeSlotRequirements(List<QueryTypeSlotRequirement> r) { this.queryTypeSlotRequirements = r; }
         public List<String> getFollowUpReferenceMarkers() { return followUpReferenceMarkers; }
         public void setFollowUpReferenceMarkers(List<String> f) { this.followUpReferenceMarkers = f; }
+        public List<String> getFilterRulePrefixes() { return filterRulePrefixes; }
+        public void setFilterRulePrefixes(List<String> filterRulePrefixes) { this.filterRulePrefixes = filterRulePrefixes; }
     }
 
     public static class QueryTypeSlotRequirement {

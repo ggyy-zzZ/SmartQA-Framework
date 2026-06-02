@@ -407,7 +407,8 @@
         "mysql-person-certificate",
         "mysql-company-certificate",
         "catalog-enum",
-        "enterprise_mysql_compiled.txt"
+        "enterprise_mysql_compiled.txt",
+        "document-chunk-db"
       ]
     }
   ]

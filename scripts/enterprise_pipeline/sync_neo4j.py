@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--password", default="", help="Neo4j password")
     parser.add_argument("--limit", type=int, default=0, help="Limit rows for debug, 0 means all")
     parser.add_argument("--wipe", action="store_true", help="Delete existing graph labels before sync")
+    parser.add_argument(
+        "--slim",
+        action="store_true",
+        help="Slim graph: company/person nodes keep only id/name/status; skip certificate/seal/bank rich nodes",
+    )
     return parser.parse_args()
 
 
@@ -98,33 +103,65 @@ def main() -> None:
             "CREATE CONSTRAINT bank_account_key IF NOT EXISTS FOR (b:BankAccount) REQUIRE b.accountKey IS UNIQUE",
         )
 
+        slim = args.slim
         for batch in chunks(data, 200):
-            run_query(
-                session,
-                """
-                UNWIND $rows AS row
-                MERGE (c:Company {companyId: row.company_id})
-                SET c.name = row.company_name,
-                    c.shortName = row.company_short_name,
-                    c.companyCode = row.company_code,
-                    c.creditCode = row.credit_code,
-                    c.status = row.status,
-                    c.entityType = row.entity_type,
-                    c.entityCategory = row.entity_category,
-                    c.currency = row.currency,
-                    c.registeredArea = row.registered_area,
-                    c.registeredAddress = row.registered_address,
-                    c.officeAddress = row.office_address,
-                    c.establishedDate = row.established_date,
-                    c.businessScope = row.business_scope,
-                    c.taxRegistered = row.tax_registered,
-                    c.bankAccountOpened = row.bank_account_opened,
-                    c.socialSecurityOpened = row.social_security_opened,
-                    c.housingFundOpened = row.housing_fund_opened,
-                    c.sourceFile = row.source_file
-                """,
-                {"rows": batch},
-            )
+            if slim:
+                run_query(
+                    session,
+                    """
+                    UNWIND $rows AS row
+                    MERGE (c:Company {companyId: row.company_id})
+                    SET c.name = row.company_name,
+                        c.status = row.status
+                    """,
+                    {"rows": batch},
+                )
+            else:
+                run_query(
+                    session,
+                    """
+                    UNWIND $rows AS row
+                    MERGE (c:Company {companyId: row.company_id})
+                    SET c.name = row.company_name,
+                        c.shortName = row.company_short_name,
+                        c.companyCode = row.company_code,
+                        c.creditCode = row.credit_code,
+                        c.status = row.status,
+                        c.entityType = row.entity_type,
+                        c.entityCategory = row.entity_category,
+                        c.currency = row.currency,
+                        c.registeredArea = row.registered_area,
+                        c.registeredAddress = row.registered_address,
+                        c.officeAddress = row.office_address,
+                        c.establishedDate = row.established_date,
+                        c.businessScope = row.business_scope,
+                        c.taxRegistered = row.tax_registered,
+                        c.bankAccountOpened = row.bank_account_opened,
+                        c.socialSecurityOpened = row.social_security_opened,
+                        c.housingFundOpened = row.housing_fund_opened,
+                        c.sourceFile = row.source_file
+                    """,
+                    {"rows": batch},
+                )
+
+            if slim:
+                run_query(
+                    session,
+                    """
+                    UNWIND $rows AS row
+                    UNWIND coalesce(row.key_people, []) AS person
+                    WITH row, person
+                    WHERE person.name IS NOT NULL AND trim(person.name) <> ''
+                    MATCH (c:Company {companyId: row.company_id})
+                    MERGE (p:Person {
+                        personKey: coalesce(person.person_id, 'NAME::' + person.name)
+                    })
+                    SET p.name = person.name
+                    MERGE (p)-[r:HAS_ROLE_IN {role: person.role}]->(c)
+                    """,
+                    {"rows": batch},
+                )
+                continue
 
             run_query(
                 session,

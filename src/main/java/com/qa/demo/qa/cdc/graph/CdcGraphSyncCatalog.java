@@ -2,9 +2,7 @@ package com.qa.demo.qa.cdc.graph;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.core.io.ClassPathResource;
-
-import java.io.InputStream;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,31 +28,27 @@ public class CdcGraphSyncCatalog {
         this.vectorDocumentEnrichment = vectorDocumentEnrichment;
     }
 
-    public static CdcGraphSyncCatalog loadDefault(ObjectMapper objectMapper) {
-        try (InputStream in = new ClassPathResource("qa/cdc-graph-sync.json").getInputStream()) {
-            JsonNode root = objectMapper.readTree(in);
-            Map<String, NodeTypeDef> nodes = new LinkedHashMap<>();
-            root.path("nodeTypes").fields().forEachRemaining(entry -> {
-                JsonNode n = entry.getValue();
-                nodes.put(entry.getKey(), new NodeTypeDef(
-                        entry.getKey(),
-                        n.path("label").asText(entry.getKey()),
-                        n.path("idProperty").asText("id"),
-                        n.path("personIdProperty").asText(null),
-                        n.path("nameProperty").asText(null),
-                        n.path("resolveEntityTable").asText(null)
-                ));
-            });
-            List<RelationshipRuleDef> rules = new ArrayList<>();
-            for (JsonNode item : root.path("relationshipRules")) {
-                rules.add(RelationshipRuleDef.fromJson(item));
-            }
-            VectorDocumentEnrichmentDef enrich = VectorDocumentEnrichmentDef.fromJson(
-                    root.path("vectorDocumentEnrichment"));
-            return new CdcGraphSyncCatalog(nodes, rules, enrich);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to load qa/cdc-graph-sync.json", e);
+    public static CdcGraphSyncCatalog loadDefault(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) throws Exception {
+        JsonNode root = configLoader.readTree("cdc-graph-sync");
+        Map<String, NodeTypeDef> nodes = new LinkedHashMap<>();
+        root.path("nodeTypes").fields().forEachRemaining(entry -> {
+            JsonNode n = entry.getValue();
+            nodes.put(entry.getKey(), new NodeTypeDef(
+                    entry.getKey(),
+                    n.path("label").asText(entry.getKey()),
+                    n.path("idProperty").asText("id"),
+                    n.path("personIdProperty").asText(null),
+                    n.path("nameProperty").asText(null),
+                    n.path("resolveEntityTable").asText(null)
+            ));
+        });
+        List<RelationshipRuleDef> rules = new ArrayList<>();
+        for (JsonNode item : root.path("relationshipRules")) {
+            rules.add(RelationshipRuleDef.fromJson(item));
         }
+        VectorDocumentEnrichmentDef enrich = VectorDocumentEnrichmentDef.fromJson(
+                root.path("vectorDocumentEnrichment"));
+        return new CdcGraphSyncCatalog(nodes, rules, enrich);
     }
 
     public NodeTypeDef nodeType(String key) {

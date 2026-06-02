@@ -1,34 +1,14 @@
 package com.qa.demo.qa.web;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import com.qa.demo.qa.config.QaAssistantProperties;
-import com.qa.demo.qa.core.QaScopes;
-import com.qa.demo.qa.embedding.TextEmbeddingService;
-import com.qa.demo.qa.learning.ActiveLearningService;
-import com.qa.demo.qa.learning.BatchCsvAnalysisService;
-import com.qa.demo.qa.learning.BatchLearningOrchestrator;
-import com.qa.demo.qa.learning.LearningResponseBuilder;
-import com.qa.demo.qa.learning.MultiExpertLearningService;
-import com.qa.demo.qa.learning.MysqlSchemaCatalogAssessmentService;
-import com.qa.demo.qa.learning.MysqlSchemaCatalogService;
-import com.qa.demo.qa.learning.SchemaSedimentationPlanService;
-import com.qa.demo.qa.learning.StructuredIngestJobService;
-import com.qa.demo.qa.learning.StructuredCsvIngestService;
-import com.qa.demo.qa.learning.EnterpriseKnowledgeSyncService;
-import com.qa.demo.qa.learning.KnowledgeSyncChangeDetector;
-import com.qa.demo.qa.learning.ScheduledSyncService;
-import com.qa.demo.qa.learning.SyncEntityStateService;
-import com.qa.demo.qa.learning.StructuredTableRowAuditService;
-import com.qa.demo.qa.ops.LocalKnowledgeOpsService;
-import com.qa.demo.qa.retrieval.EvidenceRerankService;
-import com.qa.demo.qa.orchestration.QaAskOrchestrator;
-import com.qa.demo.qa.response.QaLogService;
-import com.qa.demo.qa.sedimentation.FeedbackPersistenceService;
-import com.qa.demo.qa.sedimentation.SedimentationQueueService;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -42,13 +22,35 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.core.QaScopes;
+import com.qa.demo.qa.embedding.TextEmbeddingService;
+import com.qa.demo.qa.learning.ActiveLearningService;
+import com.qa.demo.qa.learning.BatchCsvAnalysisService;
+import com.qa.demo.qa.learning.BatchLearningOrchestrator;
+import com.qa.demo.qa.learning.EnterpriseKnowledgeSyncService;
+import com.qa.demo.qa.learning.KnowledgeSyncChangeDetector;
+import com.qa.demo.qa.learning.LearningResponseBuilder;
+import com.qa.demo.qa.learning.MultiExpertLearningService;
+import com.qa.demo.qa.learning.MysqlSchemaCatalogAssessmentService;
+import com.qa.demo.qa.learning.MysqlSchemaCatalogService;
+import com.qa.demo.qa.learning.ScheduledSyncService;
+import com.qa.demo.qa.learning.SchemaSedimentationPlanService;
+import com.qa.demo.qa.learning.StructuredCsvIngestService;
+import com.qa.demo.qa.learning.StructuredIngestJobService;
+import com.qa.demo.qa.learning.StructuredTableRowAuditService;
+import com.qa.demo.qa.learning.SyncEntityStateService;
+import com.qa.demo.qa.ops.LocalKnowledgeOpsService;
+import com.qa.demo.qa.orchestration.QaAskOrchestrator;
+import com.qa.demo.qa.response.QaLogService;
+import com.qa.demo.qa.retrieval.EvidenceRerankService;
+import com.qa.demo.qa.sedimentation.FeedbackPersistenceService;
+import com.qa.demo.qa.sedimentation.SedimentationQueueService;
+
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 
 /**
  * QA HTTP 入口：编排委托 {@link QaAskOrchestrator}，学习上传/文本委托 {@link ActiveLearningService} 与 {@link LearningResponseBuilder}；结构化行数审计与 CSV 门禁见 {@code /qa/structured/*}；MySQL 元数据目录见 {@code /qa/mysql/schema-catalog}；结构化沉淀方案见 {@code /qa/mysql/sedimentation/pipeline}。

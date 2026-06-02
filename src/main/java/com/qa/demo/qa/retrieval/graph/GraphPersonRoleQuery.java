@@ -16,12 +16,33 @@ public final class GraphPersonRoleQuery {
     private GraphPersonRoleQuery() {
     }
 
+    public static List<ContextChunk> executeBoundary(
+            Session session,
+            String personHint,
+            String roleFocus,
+            int topK,
+            String fieldLabel
+    ) {
+        return runQuery(session, personHint, roleFocus, topK, fieldLabel, true);
+    }
+
     public static List<ContextChunk> execute(
             Session session,
             String personHint,
             String roleFocus,
             int topK,
             String fieldLabel
+    ) {
+        return runQuery(session, personHint, roleFocus, topK, fieldLabel, false);
+    }
+
+    private static List<ContextChunk> runQuery(
+            Session session,
+            String personHint,
+            String roleFocus,
+            int topK,
+            String fieldLabel,
+            boolean boundaryOnly
     ) {
         if (personHint == null || personHint.isBlank()) {
             return List.of();
@@ -53,15 +74,23 @@ public final class GraphPersonRoleQuery {
         List<ContextChunk> chunks = new ArrayList<>();
         while (result.hasNext()) {
             Record record = result.next();
-            String snippet = "状态=" + safeString(record, "status")
-                    + "; 关键人=" + safeString(record, "personName") + "(" + safeString(record, "role") + ")";
+            String companyId = safeString(record, "companyId");
+            String companyName = safeString(record, "companyName");
+            String snippet = boundaryOnly
+                    ? "companyId=" + companyId
+                    + "; status=" + safeString(record, "status")
+                    + "; person=" + safeString(record, "personName")
+                    + "; role=" + safeString(record, "role")
+                    : "状态=" + safeString(record, "status")
+                            + "; 关键人=" + safeString(record, "personName") + "(" + safeString(record, "role") + ")";
+            String source = boundaryOnly ? "neo4j-boundary" : "neo4j-person-role";
             chunks.add(ContextChunk.ofCompany(
-                    safeString(record, "companyId"),
-                    safeString(record, "companyName"),
+                    companyId,
+                    companyName,
                     fieldLabel,
                     snippet,
-                    22.0,
-                    "neo4j-person-role"
+                    boundaryOnly ? 18.0 : 22.0,
+                    source
             ));
         }
         return chunks;

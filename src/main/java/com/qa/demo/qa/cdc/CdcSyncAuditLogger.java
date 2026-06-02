@@ -2,6 +2,7 @@ package com.qa.demo.qa.cdc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.config.store.AuditEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -23,11 +24,13 @@ public class CdcSyncAuditLogger {
     private static final Logger log = LoggerFactory.getLogger(CdcSyncAuditLogger.class);
 
     private final QaAssistantProperties props;
+    private final AuditEventRepository auditEventRepository;
     private final ObjectMapper objectMapper;
     private final Object writeLock = new Object();
 
-    public CdcSyncAuditLogger(QaAssistantProperties props) {
+    public CdcSyncAuditLogger(QaAssistantProperties props, AuditEventRepository auditEventRepository) {
         this.props = props;
+        this.auditEventRepository = auditEventRepository;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -85,6 +88,7 @@ public class CdcSyncAuditLogger {
                 Files.writeString(path, line, StandardCharsets.UTF_8,
                         StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             }
+            auditEventRepository.append("cdc_" + event, null, props.getConfigScope(), row);
         } catch (Exception e) {
             log.warn("[CDC Audit] Failed to write audit log: {}", e.getMessage());
         }

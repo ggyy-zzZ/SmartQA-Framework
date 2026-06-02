@@ -2,9 +2,7 @@ package com.qa.demo.qa.domain;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.core.io.ClassPathResource;
-
-import java.io.InputStream;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,26 +22,22 @@ public class GraphCompanyFacetCatalog {
         this.facetsByQueryType = Map.copyOf(facetsByQueryType);
     }
 
-    public static GraphCompanyFacetCatalog loadDefault(ObjectMapper objectMapper) {
-        try (InputStream in = new ClassPathResource("qa/graph-company-facets.json").getInputStream()) {
-            JsonNode root = objectMapper.readTree(in);
-            Map<String, String> labels = new LinkedHashMap<>();
-            root.path("facetLabels").fields().forEachRemaining(entry ->
-                    labels.put(entry.getKey(), entry.getValue().asText(entry.getKey()))
-            );
-            Map<String, List<String>> byType = new LinkedHashMap<>();
-            JsonNode byQuery = root.path("facetsByQueryType");
-            byQuery.fieldNames().forEachRemaining(type -> {
-                List<String> facets = new ArrayList<>();
-                for (JsonNode item : byQuery.path(type)) {
-                    facets.add(item.asText());
-                }
-                byType.put(type, List.copyOf(facets));
-            });
-            return new GraphCompanyFacetCatalog(labels, byType);
-        } catch (Exception ex) {
-            throw new IllegalStateException("Failed to load qa/graph-company-facets.json", ex);
-        }
+    public static GraphCompanyFacetCatalog loadDefault(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) throws Exception {
+        JsonNode root = configLoader.readTree("graph-company-facets");
+        Map<String, String> labels = new LinkedHashMap<>();
+        root.path("facetLabels").fields().forEachRemaining(entry ->
+                labels.put(entry.getKey(), entry.getValue().asText(entry.getKey()))
+        );
+        Map<String, List<String>> byType = new LinkedHashMap<>();
+        JsonNode byQuery = root.path("facetsByQueryType");
+        byQuery.fieldNames().forEachRemaining(type -> {
+            List<String> facets = new ArrayList<>();
+            for (JsonNode item : byQuery.path(type)) {
+                facets.add(item.asText());
+            }
+            byType.put(type, List.copyOf(facets));
+        });
+        return new GraphCompanyFacetCatalog(labels, byType);
     }
 
     public List<String> facetsForQueryType(String queryType) {

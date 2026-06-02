@@ -1,6 +1,7 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.answer.MiniMaxClient;
+import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.domain.PersonAliasIdentityParser;
 import com.qa.demo.qa.domain.PersonNameParser;
@@ -41,22 +42,34 @@ public class PersonNameResolver {
 
             返回格式：只返回姓名， 不要多余解释。
             """;
+    private static final String SLOT_GUARD_SYSTEM_PROMPT = """
+            你是槽位校验器。判断“候选词”在“用户问句”中是否是人物指代。
+            只返回 JSON：{"isPerson":true|false,"reason":"短语"}
+            规则：
+            1) 条件短语、规则短语、连接词（例如“只要不”“如果”“其他”“不是”等）应判 false。
+            2) 表示人物称谓/姓名/花名/别名可判 true。
+            3) 不确定时返回 false。
+            不要输出额外文本。
+            """;
 
     private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
     private final ActiveLearningService activeLearningService;
     private final GraphContextService graphContextService;
     private final MiniMaxClient miniMaxClient;
+    private final QaAssistantProperties properties;
 
     public PersonNameResolver(
             EmployeeBaseKnowledgeService employeeBaseKnowledge,
             ActiveLearningService activeLearningService,
             GraphContextService graphContextService,
-            MiniMaxClient miniMaxClient
+            MiniMaxClient miniMaxClient,
+            QaAssistantProperties properties
     ) {
         this.employeeBaseKnowledge = employeeBaseKnowledge;
         this.activeLearningService = activeLearningService;
         this.graphContextService = graphContextService;
         this.miniMaxClient = miniMaxClient;
+        this.properties = properties;
     }
 
     public String resolve(String rawPersonName, List<ContextChunk> learned) {
@@ -154,7 +167,7 @@ public class PersonNameResolver {
                 cleaned = cleaned.replaceAll("^「|」$", "");
                 cleaned = cleaned.trim();
                 String sanitized = IntentSlots.sanitizePersonName(cleaned);
-                if (!sanitized.isBlank()) {
+                if (!sanitized.isBlank() && !isRejectedResolution(sanitized)) {
                     return sanitized;
                 }
                 if (PersonNameParser.hasHonorificSuffix(cleaned) && cleaned.length() <= 12) {
@@ -181,5 +194,59 @@ public class PersonNameResolver {
 
     public boolean stillHonorific(String personName) {
         return PersonNameParser.hasHonorificSuffix(personName);
+    }
+
+    private static boolean isRejectedResolution(String name) {
+        if (name == null || name.isBlank()) {
+            return true;
+        }
+        String n = name.trim();
+        return n.contains("无法") || n.contains("不确定") || n.contains("未知") || n.contains("查不到");
+    }
+
+    /**
+     * 对候选 personName 做通用守卫：员工索引命中优先通过；其余由 LLM 判定是否为人物指代。
+     */
+    public String guardPersonSlotCandidate(String candidate, String question) {
+        String normalized = IntentSlots.sanitizePersonName(candidate);
+        if (normalized.isBlank()) {
+            return "";
+        }
+        Integer employeeId = employeeBaseKnowledge.resolveToEmployeeId(normalized);
+        if (employeeId != null) {
+            EmployeeBaseKnowledgeService.EmployeeRecord record = employeeBaseKnowledge.getEmployeeById(employeeId);
+            if (record != null && record.name() != null && !record.name().isBlank()) {
+                return record.name().trim();
+            }
+            return normalized;
+        }
+        if (!properties.isIntentLlmEnabled() || question == null || question.isBlank()) {
+            return normalized;
+        }
+        if (llmRejectsPersonCandidate(normalized, question)) {
+            return "";
+        }
+        return normalized;
+    }
+
+    private boolean llmRejectsPersonCandidate(String candidate, String question) {
+        try {
+            String userMessage = "问句：" + question + "\n候选词：" + candidate;
+            String raw = miniMaxClient.completeChat(SLOT_GUARD_SYSTEM_PROMPT, userMessage);
+            if (raw == null || raw.isBlank()) {
+                return false;
+            }
+            String lower = raw.toLowerCase();
+            if (lower.contains("\"isperson\":true") || lower.contains("\"is_person\":true")) {
+                return false;
+            }
+            if (lower.contains("\"isperson\":false") || lower.contains("\"is_person\":false")) {
+                return true;
+            }
+            // 兜底：若模型未按 JSON 返回，按关键词保守拦截
+            return lower.contains("false") || lower.contains("否") || lower.contains("不是人物");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }

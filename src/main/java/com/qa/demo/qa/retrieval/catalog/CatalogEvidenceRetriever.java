@@ -3,6 +3,8 @@ package com.qa.demo.qa.retrieval.catalog;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.knowledge.EvidenceSchemaRegistry;
+import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.config.store.EnumCatalogRepository;
 import com.qa.demo.qa.core.ContextChunk;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
@@ -28,15 +30,21 @@ public class CatalogEvidenceRetriever {
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
     private final EvidenceSchemaRegistry evidenceSchemas;
+    private final EnumCatalogRepository enumCatalogRepository;
+    private final QaAssistantProperties properties;
 
     public CatalogEvidenceRetriever(
             ObjectMapper objectMapper,
             ResourceLoader resourceLoader,
-            EvidenceSchemaRegistry evidenceSchemas
+            EvidenceSchemaRegistry evidenceSchemas,
+            EnumCatalogRepository enumCatalogRepository,
+            QaAssistantProperties properties
     ) {
         this.objectMapper = objectMapper;
         this.resourceLoader = resourceLoader;
         this.evidenceSchemas = evidenceSchemas;
+        this.enumCatalogRepository = enumCatalogRepository;
+        this.properties = properties;
     }
 
     public List<ContextChunk> retrieve(List<RetrievalCatalogConfig.DimensionDef> dimensions) {
@@ -67,23 +75,30 @@ public class CatalogEvidenceRetriever {
             return List.of();
         }
         try {
-            Resource resource = resourceLoader.getResource(resourcePath);
-            if (!resource.exists()) {
-                resource = new ClassPathResource(resourcePath.replace("classpath:", ""));
-            }
-            try (InputStream in = resource.getInputStream()) {
-                JsonNode root = objectMapper.readTree(in);
-                JsonNode fieldNode = root.path(jsonField);
-                if (!fieldNode.isObject()) {
-                    return List.of();
+            Set<String> uniqueLabels = new LinkedHashSet<>();
+            String scope = properties.getConfigScope();
+            if (enumCatalogRepository.hasDict(scope, jsonField)) {
+                uniqueLabels.addAll(enumCatalogRepository.uniqueLabels(scope, jsonField));
+            } else {
+                Resource resource = resourceLoader.getResource(resourcePath);
+                if (!resource.exists()) {
+                    resource = new ClassPathResource(resourcePath.replace("classpath:", ""));
                 }
-                Set<String> uniqueLabels = new LinkedHashSet<>();
-                fieldNode.fields().forEachRemaining(entry -> {
-                    String label = entry.getValue().asText("").trim();
-                    if (!label.isBlank()) {
-                        uniqueLabels.add(label);
+                try (InputStream in = resource.getInputStream()) {
+                    JsonNode root = objectMapper.readTree(in);
+                    JsonNode fieldNode = root.path(jsonField);
+                    if (!fieldNode.isObject()) {
+                        return List.of();
                     }
-                });
+                    fieldNode.fields().forEachRemaining(entry -> {
+                        String label = entry.getValue().asText("").trim();
+                        if (!label.isBlank()) {
+                            uniqueLabels.add(label);
+                        }
+                    });
+                }
+            }
+            if (!uniqueLabels.isEmpty()) {
                 String schemaId = dim.getEvidenceSchema() == null ? "catalog_v1" : dim.getEvidenceSchema();
                 String source = dim.getSource() == null ? "catalog-enum" : dim.getSource();
                 String anchorId = retriever.getAnchorId() == null ? dim.getDimensionId() : retriever.getAnchorId();
@@ -109,6 +124,7 @@ public class CatalogEvidenceRetriever {
         } catch (Exception ignored) {
             return List.of();
         }
+        return List.of();
     }
 
     private String formatCatalogSnippet(String schemaId, String entryType, String entryName) {

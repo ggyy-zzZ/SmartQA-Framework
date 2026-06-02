@@ -36,6 +36,11 @@
     "employee_identity": "employee_identity_v1",
     "employee_base": "employee_identity_v1",
     "enterprise_canonical": "enterprise_fact_v1",
-    "catalog-enum": "catalog_v1"
+    "catalog-enum": "catalog_v1",
+    "neo4j-boundary": "enterprise_fact_v1",
+    "neo4j-person-role": "enterprise_fact_v1",
+    "mysql-detail": "enterprise_fact_v1",
+    "mysql-sql-person-role": "enterprise_fact_v1",
+    "document-chunk-db": "enterprise_fact_v1"
   }
 }

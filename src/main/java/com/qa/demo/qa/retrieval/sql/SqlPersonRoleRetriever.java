@@ -55,7 +55,7 @@ public class SqlPersonRoleRetriever {
     }
 
     public boolean skipForPlan(RetrievalPlan plan) {
-        return false;
+        return plan != null && plan.personRoleList() && properties.isPersonRoleGraphPrimary();
     }
 
     public List<ContextChunk> retrieve(

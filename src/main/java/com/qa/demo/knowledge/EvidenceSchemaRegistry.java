@@ -2,10 +2,8 @@ package com.qa.demo.knowledge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.core.io.ClassPathResource;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import org.springframework.stereotype.Component;
-
-import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -22,8 +20,8 @@ public class EvidenceSchemaRegistry {
     private final Map<String, Map<String, String>> schemaFields;
     private final Map<String, String> sourceToSchema;
 
-    public EvidenceSchemaRegistry(ObjectMapper objectMapper) {
-        Loaded loaded = load(objectMapper);
+    public EvidenceSchemaRegistry(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) {
+        Loaded loaded = load(objectMapper, configLoader);
         this.schemaFields = loaded.schemaFields();
         this.sourceToSchema = loaded.sourceToSchema();
     }
@@ -80,9 +78,9 @@ public class EvidenceSchemaRegistry {
         return new LinkedHashSet<>(fields.values());
     }
 
-    private static Loaded load(ObjectMapper objectMapper) {
-        try (InputStream in = new ClassPathResource("qa/evidence-schemas.json").getInputStream()) {
-            JsonNode root = objectMapper.readTree(in);
+    private static Loaded load(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) {
+        try {
+            JsonNode root = configLoader.readTree("evidence-schemas");
             Map<String, Map<String, String>> schemas = new LinkedHashMap<>();
             JsonNode schemaNode = root.path("schemas");
             schemaNode.fieldNames().forEachRemaining(schemaId -> {
@@ -99,7 +97,7 @@ public class EvidenceSchemaRegistry {
             );
             return new Loaded(Map.copyOf(schemas), Map.copyOf(bySource));
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to load qa/evidence-schemas.json", ex);
+            throw new IllegalStateException("Failed to load evidence-schemas config", ex);
         }
     }
 

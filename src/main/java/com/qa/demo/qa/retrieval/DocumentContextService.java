@@ -1,5 +1,7 @@
 package com.qa.demo.qa.retrieval;
 
+import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.config.store.DocumentChunkRepository;
 import com.qa.demo.qa.core.ContextChunk;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +21,9 @@ import java.util.stream.Stream;
 
 @Service
 public class DocumentContextService {
+
+    private final QaAssistantProperties properties;
+    private final DocumentChunkRepository documentChunkRepository;
 
     private static final int MAX_FILE_COUNT = 30;
     private static final int MAX_CHARS_PER_FILE = 8_000;
@@ -41,6 +46,11 @@ public class DocumentContextService {
             Map.entry("管理层", List.of("法定代表人", "经理", "财务负责人", "联系人")),
             Map.entry("产品线", List.of("产品线", "模块", "关系"))
     );
+
+    public DocumentContextService(QaAssistantProperties properties, DocumentChunkRepository documentChunkRepository) {
+        this.properties = properties;
+        this.documentChunkRepository = documentChunkRepository;
+    }
 
     public String buildContext(String docsPath) throws IOException {
         Path root = Path.of(docsPath);
@@ -81,6 +91,12 @@ public class DocumentContextService {
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, String docsPath, int topK) throws IOException {
+        if (properties.isDocumentFromDb()) {
+            List<ContextChunk> fromDb = retrieveTopChunksFromDb(question, topK);
+            if (!fromDb.isEmpty()) {
+                return fromDb;
+            }
+        }
         Path sourcePath = Path.of(docsPath);
         String content = readTextWithFallback(sourcePath);
         if (content == null || content.isBlank()) {
@@ -123,6 +139,42 @@ public class DocumentContextService {
                     snippet,
                     item.score(),
                     sourcePath.getFileName().toString()
+            ));
+        }
+        return result;
+    }
+
+    private List<ContextChunk> retrieveTopChunksFromDb(String question, int topK) {
+        String corpus = properties.getDocumentCorpusCode();
+        List<DocumentChunkRepository.ChunkRow> rows = documentChunkRepository.loadAll(properties.getConfigScope(), corpus);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Set<String> questionTokens = extractTokens(question);
+        int limitedTopK = Math.max(1, Math.min(topK, 10));
+        List<ScoredRecord> scored = new ArrayList<>();
+        for (DocumentChunkRepository.ChunkRow row : rows) {
+            CompanyRecord record = new CompanyRecord(row.anchorId(), row.displayLabel(), row.contentText());
+            double score = scoreRecord(question, questionTokens, record);
+            if (score > 0) {
+                scored.add(new ScoredRecord(record, score));
+            }
+        }
+        if (scored.isEmpty()) {
+            return List.of();
+        }
+        scored.sort(Comparator.comparingDouble(ScoredRecord::score).reversed());
+        List<ContextChunk> result = new ArrayList<>();
+        for (int i = 0; i < Math.min(limitedTopK, scored.size()); i++) {
+            ScoredRecord item = scored.get(i);
+            CompanyRecord record = item.record();
+            result.add(ContextChunk.ofCompany(
+                    record.anchorId(),
+                    record.displayLabel(),
+                    detectField(record.rawBlock(), question),
+                    buildSnippet(record.rawBlock(), question),
+                    item.score(),
+                    "document-chunk-db"
             ));
         }
         return result;

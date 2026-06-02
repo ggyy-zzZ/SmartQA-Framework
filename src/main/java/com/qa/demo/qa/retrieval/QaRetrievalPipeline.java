@@ -15,6 +15,9 @@ import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogConfig;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
 import com.qa.demo.qa.retrieval.personcert.PersonCertificateQueryService;
+import com.qa.demo.qa.retrieval.RetrievalGapLlmAdvisor.GapDecision;
+import com.qa.demo.qa.retrieval.sql.SqlCompanyFacetEnricher;
+import com.qa.demo.qa.retrieval.sql.SqlPersonRoleDetailEnricher;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -51,6 +54,9 @@ public class QaRetrievalPipeline {
     private final NeedInferenceService needInferenceService;
     private final RetrievalCatalogRegistry catalogRegistry;
     private final CatalogEvidenceRetriever catalogEvidenceRetriever;
+    private final SqlPersonRoleDetailEnricher personRoleDetailEnricher;
+    private final SqlCompanyFacetEnricher companyFacetEnricher;
+    private final RetrievalGapLlmAdvisor gapLlmAdvisor;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -69,7 +75,10 @@ public class QaRetrievalPipeline {
             PersonCertificateQueryService personCertificateQueryService,
             NeedInferenceService needInferenceService,
             RetrievalCatalogRegistry catalogRegistry,
-            CatalogEvidenceRetriever catalogEvidenceRetriever
+            CatalogEvidenceRetriever catalogEvidenceRetriever,
+            SqlPersonRoleDetailEnricher personRoleDetailEnricher,
+            SqlCompanyFacetEnricher companyFacetEnricher,
+            RetrievalGapLlmAdvisor gapLlmAdvisor
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -88,6 +97,9 @@ public class QaRetrievalPipeline {
         this.needInferenceService = needInferenceService;
         this.catalogRegistry = catalogRegistry;
         this.catalogEvidenceRetriever = catalogEvidenceRetriever;
+        this.personRoleDetailEnricher = personRoleDetailEnricher;
+        this.companyFacetEnricher = companyFacetEnricher;
+        this.gapLlmAdvisor = gapLlmAdvisor;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -112,7 +124,7 @@ public class QaRetrievalPipeline {
             InformationNeed need
     ) throws IOException {
         RetrievalPlan plan = retrievalPlanFactory.from(intent);
-        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan);
+        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan, need);
         merged = mergeLearnedUnconditionally(learned, merged);
         RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
         base = appendSupplementalTables(base, question, plan);
@@ -682,15 +694,27 @@ public class QaRetrievalPipeline {
         return c.source() + "|" + c.anchorId() + "|" + c.displayLabel() + "|" + c.field();
     }
 
-    private List<ContextChunk> collectHybridCandidatesExpanded(String question, RetrievalPlan plan) throws IOException {
+    private List<ContextChunk> collectHybridCandidatesExpanded(
+            String question,
+            RetrievalPlan plan,
+            InformationNeed need
+    ) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
         appendPersonCertificateEvidence(merged, plan, question);
         if (plan.personRoleList()) {
-            appendUnique(merged, safeSqlRetrieve(question, plan));
-            appendUnique(merged, safeGraphRetrieve(question, plan));
-            if (merged.isEmpty()) {
-                appendUnique(merged, vectorContextService.retrieveTopChunks(question, properties.getRecallVectorTopK()));
+            List<ContextChunk> boundaries = safeGraphRetrieve(question, plan);
+            appendUnique(merged, boundaries);
+            if (properties.isPersonRoleGraphPrimary()) {
+                if (!boundaries.isEmpty()) {
+                    appendUnique(merged, personRoleDetailEnricher.enrichFromBoundaries(
+                            question, plan, boundaries, plan.finalEvidenceTopK()));
+                } else {
+                    appendUnique(merged, safeSqlRetrieve(question, plan));
+                }
+            } else {
+                appendUnique(merged, safeSqlRetrieve(question, plan));
             }
+            appendCompanyFacetEvidenceIfNeeded(merged, question, need, boundaries, plan.finalEvidenceTopK());
             return merged;
         }
         List<ContextChunk> graph = safeGraphRetrieve(question, plan);
@@ -707,6 +731,112 @@ public class QaRetrievalPipeline {
             return safeDocumentRetrieve(question);
         }
         return merged;
+    }
+
+    /**
+     * 通用缺口补检索：当任职边界证据缺少用户问题需要的公司维度时，按 companyId 回补业务库字段。
+     */
+    private void appendCompanyFacetEvidenceIfNeeded(
+            List<ContextChunk> merged,
+            String question,
+            InformationNeed need,
+            List<ContextChunk> boundaries,
+            int topK
+    ) {
+        if (!requiresCompanyFacetSupplement(question, need, merged, boundaries)) {
+            return;
+        }
+        appendUnique(merged, companyFacetEnricher.enrichFromBoundaries(question, boundaries, topK));
+    }
+
+    private boolean requiresCompanyFacetSupplement(
+            String question,
+            InformationNeed need,
+            List<ContextChunk> evidence,
+            List<ContextChunk> boundaries
+    ) {
+        String q = question == null ? "" : question.toLowerCase(Locale.ROOT);
+        boolean asksStatus = containsAny(q, "状态", "经营状态", "存续", "在业", "注销", "吊销", "撤销", "非存续");
+        boolean asksValidity = containsAny(q, "有效期", "有效时间", "到期", "截止", "失效", "起止", "开始", "结束");
+        boolean facetNotRole = need != null && need.hasFacet() && !"role".equalsIgnoreCase(need.facet());
+
+        boolean hasStatus = hasSnippetKeyword(evidence, "状态=", "status=");
+        boolean hasValidity = hasSnippetKeyword(
+                evidence, "有效期", "expiry", "expire", "deadline", "valid_from", "valid_to", "start", "end");
+
+        if (asksStatus && !hasStatus) {
+            return true;
+        }
+        if (asksValidity && !hasValidity) {
+            return true;
+        }
+        if (facetNotRole && !(hasStatus || hasValidity)) {
+            return true;
+        }
+        if (shouldAskLlmGapJudge(evidence, boundaries, hasStatus, hasValidity)) {
+            GapDecision llmDecision = gapLlmAdvisor.decideCompanyFacetGap(question, evidence);
+            if (llmDecision.confidence() >= 0.6) {
+                if (llmDecision.needStatus() && !hasStatus) {
+                    return true;
+                }
+                if (llmDecision.needValidity() && !hasValidity) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasSnippetKeyword(List<ContextChunk> evidence, String... keywords) {
+        if (evidence == null || evidence.isEmpty()) {
+            return false;
+        }
+        for (ContextChunk chunk : evidence) {
+            if (chunk == null || chunk.snippet() == null) {
+                continue;
+            }
+            String snippet = chunk.snippet().toLowerCase(Locale.ROOT);
+            for (String keyword : keywords) {
+                if (snippet.contains(keyword.toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean shouldAskLlmGapJudge(
+            List<ContextChunk> evidence,
+            List<ContextChunk> boundaries,
+            boolean hasStatus,
+            boolean hasValidity
+    ) {
+        if ((hasStatus && hasValidity) || evidence == null || evidence.isEmpty()) {
+            return false;
+        }
+        int boundaryCount = 0;
+        for (ContextChunk chunk : boundaries == null ? List.<ContextChunk>of() : boundaries) {
+            if (chunk == null || chunk.source() == null) {
+                continue;
+            }
+            if (chunk.source().toLowerCase(Locale.ROOT).contains("neo4j-boundary")) {
+                boundaryCount++;
+            }
+        }
+        int total = boundaries == null ? 0 : boundaries.size();
+        return total > 0 && boundaryCount >= Math.max(1, total / 2);
+    }
+
+    private static boolean containsAny(String text, String... markers) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        for (String marker : markers) {
+            if (marker != null && text.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan, String question) {

@@ -4,7 +4,6 @@ import com.qa.demo.qa.config.BusinessRulesConfig;
 import com.qa.demo.qa.config.BusinessRulesConfig.QueryTypeCondition;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 
@@ -23,6 +22,9 @@ import java.util.regex.Matcher;
  */
 @Component
 public class ScenarioRuleEngine {
+    private static final List<String> DEFAULT_FILTER_RULE_PREFIXES = List.of(
+            "只要", "凡是", "如果", "对于", "关于", "按照", "按", "不是存续", "不是在业"
+    );
 
     private final BusinessRulesConfig config;
 
@@ -118,6 +120,9 @@ public class ScenarioRuleEngine {
         if (question == null || question.isBlank()) {
             return "";
         }
+        if (looksLikeFilterRuleStatement(question)) {
+            return "";
+        }
         String t = question.strip().toLowerCase();
         String resolvedPerson = personName == null ? extractPersonName(question) : personName;
         boolean hasPerson = resolvedPerson != null && !resolvedPerson.isBlank();
@@ -182,6 +187,9 @@ public class ScenarioRuleEngine {
             return false;
         }
         String t = question.trim();
+        if (looksLikeFilterRuleStatement(t)) {
+            return false;
+        }
         for (BusinessRulesConfig.CorrectionRule rule : config.getCorrectionRules()) {
             for (java.util.regex.Pattern p : rule.getCompiledPrefixPatterns()) {
                 if (p.matcher(t).find()) {
@@ -190,6 +198,32 @@ public class ScenarioRuleEngine {
             }
         }
         return false;
+    }
+
+    /**
+     * 过滤「只要不是存续/在业都算失效」这类规则补充语句，避免被误判为纠偏。
+     */
+    private boolean looksLikeFilterRuleStatement(String question) {
+        String text = question == null ? "" : question.strip();
+        if (text.isBlank()) {
+            return false;
+        }
+        for (String prefix : filterRulePrefixes()) {
+            if (text.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return (text.contains("算作") || text.contains("都算") || text.contains("均算"))
+                && (text.contains("失效") || text.contains("无效"))
+                && (text.contains("存续") || text.contains("在业"));
+    }
+
+    private List<String> filterRulePrefixes() {
+        List<String> configured = config.getIntentRouting().getFilterRulePrefixes();
+        if (configured == null || configured.isEmpty()) {
+            return DEFAULT_FILTER_RULE_PREFIXES;
+        }
+        return configured;
     }
 
     /**

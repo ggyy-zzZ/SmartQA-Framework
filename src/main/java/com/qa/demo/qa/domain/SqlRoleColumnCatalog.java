@@ -2,8 +2,7 @@ package com.qa.demo.qa.domain;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.core.io.ClassPathResource;
-import java.io.InputStream;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,10 +28,9 @@ public class SqlRoleColumnCatalog {
         this.defaultPriority = defaultPriority;
     }
 
-    public static SqlRoleColumnCatalog loadDefault(ObjectMapper objectMapper) {
-        try (InputStream in = new ClassPathResource("qa/sql-role-columns.json").getInputStream()) {
-            JsonNode root = objectMapper.readTree(in);
-            Map<String, String> columns = new LinkedHashMap<>();
+    public static SqlRoleColumnCatalog loadDefault(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) throws Exception {
+        JsonNode root = configLoader.readTree("sql-role-columns");
+        Map<String, String> columns = new LinkedHashMap<>();
             root.path("columns").fields().forEachRemaining(e ->
                     columns.put(e.getKey().toLowerCase(Locale.ROOT), e.getValue().asText()));
             List<PriorityPattern> patterns = new ArrayList<>();
@@ -42,14 +40,11 @@ public class SqlRoleColumnCatalog {
                         item.path("priority").asInt(99)
                 ));
             }
-            return new SqlRoleColumnCatalog(
-                    columns,
-                    patterns,
-                    root.path("defaultPriority").asInt(4)
-            );
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to load qa/sql-role-columns.json", e);
-        }
+        return new SqlRoleColumnCatalog(
+                columns,
+                patterns,
+                root.path("defaultPriority").asInt(4)
+        );
     }
 
     public Map<String, String> columnLabels() {

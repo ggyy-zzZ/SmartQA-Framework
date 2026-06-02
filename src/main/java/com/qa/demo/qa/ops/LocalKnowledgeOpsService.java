@@ -2,6 +2,7 @@ package com.qa.demo.qa.ops;
 
 import com.qa.demo.qa.cdc.CdcWriteGate;
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.config.store.EntitySnapshotRepository;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -34,6 +35,7 @@ public class LocalKnowledgeOpsService {
 
     private final QaAssistantProperties properties;
     private final CdcWriteGate cdcWriteGate;
+    private final EntitySnapshotRepository entitySnapshotRepository;
     private final Path projectRoot;
     private final String pythonCommand;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
@@ -44,21 +46,27 @@ public class LocalKnowledgeOpsService {
 
     private final AtomicReference<OpsJob> currentJob = new AtomicReference<>(OpsJob.idle());
 
-    public LocalKnowledgeOpsService(QaAssistantProperties properties, CdcWriteGate cdcWriteGate) {
+    public LocalKnowledgeOpsService(
+            QaAssistantProperties properties,
+            CdcWriteGate cdcWriteGate,
+            EntitySnapshotRepository entitySnapshotRepository
+    ) {
         this.properties = properties;
         this.cdcWriteGate = cdcWriteGate;
+        this.entitySnapshotRepository = entitySnapshotRepository;
         this.projectRoot = resolveProjectRoot();
         this.pythonCommand = detectPythonCommand();
     }
 
     public Map<String, Object> statusSnapshot() {
-        Path jsonl = projectRoot.resolve(DEFAULT_JSONL);
+        Path jsonl = resolveJsonlPath();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("projectRoot", projectRoot.toString());
         body.put("pythonCommand", pythonCommand);
         body.put("jsonlPath", jsonl.toString());
         body.put("jsonlExists", Files.exists(jsonl));
         body.put("jsonlLineCount", Files.exists(jsonl) ? countLines(jsonl) : 0);
+        body.put("entitySnapshotInMysql", entitySnapshotRepository.hasAny(properties.getConfigScope()));
         body.put("qdrantCollection", properties.getQdrantCollection());
         body.put("embeddingProvider", properties.getEmbeddingProvider());
         body.put("timestamp", OffsetDateTime.now().toString());
@@ -92,11 +100,12 @@ public class LocalKnowledgeOpsService {
     }
 
     public Map<String, Object> startRebuild(boolean clearLogs, boolean skipReset, int limit) {
-        if (!Files.exists(projectRoot.resolve(DEFAULT_JSONL))) {
+        Path jsonlPath = resolveJsonlPath();
+        if (!Files.exists(jsonlPath)) {
             return Map.of(
                     "ok", false,
                     "message", "缺少 " + DEFAULT_JSONL + "，请先执行 build_knowledge_from_mysql.py 生成清洗数据。",
-                    "jsonlPath", projectRoot.resolve(DEFAULT_JSONL).toString()
+                    "jsonlPath", jsonlPath.toString()
             );
         }
         List<String> args = new ArrayList<>();
@@ -168,7 +177,7 @@ public class LocalKnowledgeOpsService {
             }
             runPythonScriptUnchecked(buildArgs);
 
-            Path jsonl = projectRoot.resolve(DEFAULT_JSONL);
+            Path jsonl = resolveJsonlPath();
             if (!Files.exists(jsonl)) {
                 throw new IllegalStateException("导出后未找到 " + DEFAULT_JSONL);
             }
@@ -178,6 +187,7 @@ public class LocalKnowledgeOpsService {
             neo4jArgs.add("--input");
             neo4jArgs.add(DEFAULT_JSONL);
             neo4jArgs.add("--wipe");
+            appendSlimNeo4jFlags(neo4jArgs);
             if (effectiveLimit > 0) {
                 neo4jArgs.add("--limit");
                 neo4jArgs.add(String.valueOf(effectiveLimit));
@@ -375,6 +385,26 @@ public class LocalKnowledgeOpsService {
     private record ParsedJdbc(String host, int port, String database) {
     }
 
+    private Path resolveJsonlPath() {
+        Path file = projectRoot.resolve(DEFAULT_JSONL);
+        String mode = properties.getEntitySnapshotSource() == null ? "mysql_fallback" : properties.getEntitySnapshotSource();
+        if (!"jsonl".equalsIgnoreCase(mode)
+                && entitySnapshotRepository.hasAny(properties.getConfigScope())) {
+            try {
+                entitySnapshotRepository.exportToJsonl(file, properties.getConfigScope(), properties.getKnowledgeSyncDomain());
+            } catch (Exception ignored) {
+                // fall back to on-disk jsonl
+            }
+        }
+        return file;
+    }
+
+    private void appendSlimNeo4jFlags(List<String> neo4jArgs) {
+        if (properties.isPersonRoleSlimGraph()) {
+            neo4jArgs.add("--slim");
+        }
+    }
+
     private static long countLines(Path path) {
         try (Stream<String> lines = Files.lines(path, StandardCharsets.UTF_8)) {
             return lines.filter(l -> !l.isBlank()).count();
@@ -390,7 +420,7 @@ public class LocalKnowledgeOpsService {
     public List<String> runIncrementalSyncScript(IncrementalSyncParams params) throws Exception {
         List<String> logs = new ArrayList<>();
         runPythonScriptWithLogSink(buildIncrementalBuildArgs(params), logs);
-        Path jsonl = projectRoot.resolve(DEFAULT_JSONL);
+        Path jsonl = resolveJsonlPath();
         if (!Files.exists(jsonl)) {
             logs.add("无增量数据，跳过 Neo4j/Qdrant upsert");
             return logs;
@@ -459,6 +489,7 @@ public class LocalKnowledgeOpsService {
         args.add(scriptPath("scripts/enterprise_pipeline/sync_neo4j.py"));
         args.add("--input");
         args.add(DEFAULT_JSONL);
+        appendSlimNeo4jFlags(args);
         return args;
     }
 

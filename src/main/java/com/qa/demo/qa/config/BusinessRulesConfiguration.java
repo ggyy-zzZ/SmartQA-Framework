@@ -2,14 +2,12 @@ package com.qa.demo.qa.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import com.qa.demo.qa.domain.PersonNameParser;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.Resource;
 
 import java.io.IOException;
-import java.io.InputStream;
 
 /**
  * 业务规则配置加载器。
@@ -20,15 +18,10 @@ import java.io.InputStream;
 @Configuration
 public class BusinessRulesConfiguration {
 
-    @Value("${qa.business-rules.path:classpath:qa/business-rules.json}")
-    private Resource businessRulesPath;
-
     @Bean
-    public BusinessRulesConfig businessRulesConfig(ObjectMapper objectMapper) throws IOException {
+    public BusinessRulesConfig businessRulesConfig(AssistantConfigJsonLoader configLoader) throws IOException {
         BusinessRulesConfig config = new BusinessRulesConfig();
-
-        try (InputStream is = businessRulesPath.getInputStream()) {
-            JsonNode root = objectMapper.readTree(is);
+        JsonNode root = configLoader.readTree("business-rules");
 
             // 加载 intentRules
             JsonNode intentRulesNode = root.get("intentRules");
@@ -94,7 +87,6 @@ public class BusinessRulesConfiguration {
                         config.getOutputContracts().put(entry.getKey(), entry.getValue().asText())
                 );
             }
-        }
 
         // 初始化敬称后缀模式
         PersonNameParser.setHonorificSuffixPattern(config.getIntentRules().getPersonNamePatterns().getHonorificSuffixPattern());

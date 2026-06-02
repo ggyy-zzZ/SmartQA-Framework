@@ -4,11 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
-
-import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -24,8 +22,8 @@ public class AnswerOutputContractRegistry {
     private final Map<String, String> contractsByKey;
     private final ScenarioRuleEngine ruleEngine;
 
-    public AnswerOutputContractRegistry(ObjectMapper objectMapper, ScenarioRuleEngine ruleEngine) {
-        this.contractsByKey = load(objectMapper);
+    public AnswerOutputContractRegistry(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader, ScenarioRuleEngine ruleEngine) {
+        this.contractsByKey = load(objectMapper, configLoader);
         this.ruleEngine = ruleEngine;
     }
 
@@ -99,9 +97,9 @@ public class AnswerOutputContractRegistry {
                 && !chunk.snippet().isBlank();
     }
 
-    private static Map<String, String> load(ObjectMapper objectMapper) {
-        try (InputStream in = new ClassPathResource("qa/answer-output-contracts.json").getInputStream()) {
-            JsonNode root = objectMapper.readTree(in);
+    private static Map<String, String> load(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) {
+        try {
+            JsonNode root = configLoader.readTree("answer-output-contracts");
             Map<String, String> map = new LinkedHashMap<>();
             root.fields().forEachRemaining(entry ->
                     map.put(entry.getKey(), entry.getValue().asText("").trim())

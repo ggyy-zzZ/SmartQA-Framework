@@ -105,6 +105,9 @@ public class IntentDecisionEnricher {
             String rulePerson = ruleEngine.extractPersonName(question);
             personName = rulePerson == null ? "" : rulePerson;
         }
+        if (personName != null && !personName.isBlank()) {
+            personName = personNameResolver.guardPersonSlotCandidate(personName, question);
+        }
         if (companyHints.isEmpty()) {
             companyHints.addAll(entityExtractor.extractCompanyHints(question));
         }
@@ -208,6 +211,9 @@ public class IntentDecisionEnricher {
                 question
         );
         String resolved = resolution.canonicalName();
+        if (!IntentSlots.sanitizePersonName(resolved).equals(resolved)) {
+            resolved = "";
+        }
         String displayName = resolved.isBlank() ? decision.personName() : resolved;
         if (resolved.isBlank() || resolved.equals(decision.personName())) {
             if (resolution.needsClarification()) {

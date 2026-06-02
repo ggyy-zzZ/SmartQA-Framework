@@ -15,7 +15,9 @@ public final class IntentSlots {
     private static final Pattern PERSON_NOISE_SUFFIX = Pattern.compile("(是|的|在)$");
     private static final Set<String> PERSON_NAME_BLOCKLIST = Set.of(
             "现在", "刚才", "这些", "那些", "上面", "下面", "它们", "他们", "她们", "我们", "你们",
-            "这里", "那里", "这个", "那个", "哪些", "什么", "怎么", "为何", "为什么"
+            "这里", "那里", "这个", "那个", "哪些", "什么", "怎么", "为何", "为什么",
+            "只要", "只要不", "不是", "并非", "如果", "凡是", "其他",
+            "无法确定", "不确定", "未知", "不详", "无", "没有", "未找到", "查不到"
     );
 
     static final Set<String> VALID_INTENTS = Set.of(
@@ -109,7 +111,23 @@ public final class IntentSlots {
         if (PERSON_NAME_BLOCKLIST.contains(n)) {
             return "";
         }
+        if (looksLikeRuleClause(n)) {
+            return "";
+        }
         return PERSON_NAME.matcher(n).matches() ? n : "";
+    }
+
+    private static boolean looksLikeRuleClause(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+        return token.startsWith("只要")
+                || token.startsWith("不是")
+                || token.startsWith("并非")
+                || token.startsWith("如果")
+                || token.contains("失效")
+                || token.contains("存续")
+                || token.contains("在业");
     }
 
     private static boolean hasRoleFocus(IntentDecision d) {

@@ -135,6 +135,11 @@ public class QuestionEntityExtractor {
 
     private String extractLeadingPersonName(String question) {
         String stripped = question.trim();
+        for (String prefix : lexicon.nonPersonLeadingPrefixes()) {
+            if (stripped.startsWith(prefix)) {
+                return null;
+            }
+        }
         for (String noise : lexicon.namePrefixNoise()) {
             if (stripped.startsWith(noise)) {
                 stripped = stripped.substring(noise.length()).trim();

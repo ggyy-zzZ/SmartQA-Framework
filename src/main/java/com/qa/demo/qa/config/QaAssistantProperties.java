@@ -84,6 +84,12 @@ public class QaAssistantProperties {
     private boolean intentRuleFirstForStructured = true;
 
     /**
+     * 当 structured query 已被规则命中时，是否仍尝试一次 LLM 辅助校验与补槽。
+     * true: 规则先行但仍会尝试 LLM，失败/超时自动回退规则结果。
+     */
+    private boolean intentLlmAssistStructured = true;
+
+    /**
      * LLM 意图置信度不低于该值且槽位已齐备时，跳过规则 enrich（仅补 reason 前缀）。
      */
     private double intentLlmEnrichMinConfidence = 0.72;
@@ -265,6 +271,33 @@ public class QaAssistantProperties {
      * CDC 审计日志路径（JSONL）；相对路径基于进程工作目录。
      */
     private String cdcAuditLogPath = "data/qa_logs/cdc_sync.jsonl";
+
+    /** 配置域 scope（enterprise / crm 等） */
+    private String configScope = "enterprise";
+
+    /** 配置来源：classpath | mysql | mysql_fallback */
+    private String configSource = "mysql_fallback";
+
+    /** 启动时若 MySQL 无配置则种子导入 classpath */
+    private boolean configSeedOnStartup = true;
+
+    /** 文档语料库编码（qa_document_corpus.corpus_code） */
+    private String documentCorpusCode = "enterprise_mysql_compiled";
+
+    /** 文档召回优先读 qa_document_chunk */
+    private boolean documentFromDb = true;
+
+    /** 实体快照来源：jsonl | mysql | mysql_fallback */
+    private String entitySnapshotSource = "mysql_fallback";
+
+    /** 审计事件双写 qa_audit_event */
+    private boolean auditMysqlEnabled = true;
+
+    /** person_role_list：图谱定界 + MySQL 明细（为 false 时恢复 SQL+图并行） */
+    private boolean personRoleGraphPrimary = true;
+
+    /** 图谱任职召回仅返回边界（companyId/role），明细由 enricher 拉取 */
+    private boolean personRoleSlimGraph = true;
 
     /**
      * 清单 JSON 文件路径（仅运维配置本地路径）；含 {@code tables} 数组与可选 {@code jobName}。
@@ -629,6 +662,14 @@ public class QaAssistantProperties {
 
     public void setIntentRuleFirstForStructured(boolean intentRuleFirstForStructured) {
         this.intentRuleFirstForStructured = intentRuleFirstForStructured;
+    }
+
+    public boolean isIntentLlmAssistStructured() {
+        return intentLlmAssistStructured;
+    }
+
+    public void setIntentLlmAssistStructured(boolean intentLlmAssistStructured) {
+        this.intentLlmAssistStructured = intentLlmAssistStructured;
     }
 
     public double getIntentLlmEnrichMinConfidence() {
@@ -1005,5 +1046,77 @@ public class QaAssistantProperties {
 
     public void setCdcAuditLogPath(String cdcAuditLogPath) {
         this.cdcAuditLogPath = cdcAuditLogPath;
+    }
+
+    public String getConfigScope() {
+        return configScope;
+    }
+
+    public void setConfigScope(String configScope) {
+        this.configScope = configScope;
+    }
+
+    public String getConfigSource() {
+        return configSource;
+    }
+
+    public void setConfigSource(String configSource) {
+        this.configSource = configSource;
+    }
+
+    public boolean isConfigSeedOnStartup() {
+        return configSeedOnStartup;
+    }
+
+    public void setConfigSeedOnStartup(boolean configSeedOnStartup) {
+        this.configSeedOnStartup = configSeedOnStartup;
+    }
+
+    public String getDocumentCorpusCode() {
+        return documentCorpusCode;
+    }
+
+    public void setDocumentCorpusCode(String documentCorpusCode) {
+        this.documentCorpusCode = documentCorpusCode;
+    }
+
+    public boolean isDocumentFromDb() {
+        return documentFromDb;
+    }
+
+    public void setDocumentFromDb(boolean documentFromDb) {
+        this.documentFromDb = documentFromDb;
+    }
+
+    public String getEntitySnapshotSource() {
+        return entitySnapshotSource;
+    }
+
+    public void setEntitySnapshotSource(String entitySnapshotSource) {
+        this.entitySnapshotSource = entitySnapshotSource;
+    }
+
+    public boolean isAuditMysqlEnabled() {
+        return auditMysqlEnabled;
+    }
+
+    public void setAuditMysqlEnabled(boolean auditMysqlEnabled) {
+        this.auditMysqlEnabled = auditMysqlEnabled;
+    }
+
+    public boolean isPersonRoleGraphPrimary() {
+        return personRoleGraphPrimary;
+    }
+
+    public void setPersonRoleGraphPrimary(boolean personRoleGraphPrimary) {
+        this.personRoleGraphPrimary = personRoleGraphPrimary;
+    }
+
+    public boolean isPersonRoleSlimGraph() {
+        return personRoleSlimGraph;
+    }
+
+    public void setPersonRoleSlimGraph(boolean personRoleSlimGraph) {
+        this.personRoleSlimGraph = personRoleSlimGraph;
     }
 }

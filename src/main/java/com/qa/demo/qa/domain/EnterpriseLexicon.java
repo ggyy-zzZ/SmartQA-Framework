@@ -2,8 +2,7 @@ package com.qa.demo.qa.domain;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.core.io.ClassPathResource;
-import java.io.InputStream;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,7 +29,9 @@ public class EnterpriseLexicon {
     private final List<String> sqlListStyleKeywords;
     private final List<String> sqlCountStyleKeywords;
     private final List<String> nameStopwords;
+    private final List<String> aliasStopwords;
     private final List<String> namePrefixNoise;
+    private final List<String> nonPersonLeadingPrefixes;
     private final List<String> roleKeywordMarkers;
 
     public EnterpriseLexicon(
@@ -49,7 +50,9 @@ public class EnterpriseLexicon {
             List<String> sqlListStyleKeywords,
             List<String> sqlCountStyleKeywords,
             List<String> nameStopwords,
+            List<String> aliasStopwords,
             List<String> namePrefixNoise,
+            List<String> nonPersonLeadingPrefixes,
             List<String> roleKeywordMarkers
     ) {
         this.personMarkers = List.copyOf(personMarkers);
@@ -67,13 +70,15 @@ public class EnterpriseLexicon {
         this.sqlListStyleKeywords = List.copyOf(sqlListStyleKeywords);
         this.sqlCountStyleKeywords = List.copyOf(sqlCountStyleKeywords);
         this.nameStopwords = List.copyOf(nameStopwords);
+        this.aliasStopwords = List.copyOf(aliasStopwords);
         this.namePrefixNoise = List.copyOf(namePrefixNoise);
+        this.nonPersonLeadingPrefixes = List.copyOf(nonPersonLeadingPrefixes);
         this.roleKeywordMarkers = List.copyOf(roleKeywordMarkers);
     }
 
-    public static EnterpriseLexicon loadDefault(ObjectMapper objectMapper) {
-        try (InputStream in = new ClassPathResource("qa/enterprise-lexicon.json").getInputStream()) {
-            JsonNode root = objectMapper.readTree(in);
+    public static EnterpriseLexicon loadDefault(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) {
+        try {
+            JsonNode root = configLoader.readTree("enterprise-lexicon");
             Map<String, QueryTypeRule> queryRules = new LinkedHashMap<>();
             JsonNode qtr = root.path("queryTypeRules");
             qtr.fieldNames().forEachRemaining(name -> {
@@ -113,7 +118,9 @@ public class EnterpriseLexicon {
                     readStringList(root.path("sqlListStyleKeywords")),
                     readStringList(root.path("sqlCountStyleKeywords")),
                     readStringList(root.path("nameStopwords")),
+                    readStringList(root.path("aliasStopwords")),
                     readStringList(root.path("namePrefixNoise")),
+                    readStringList(root.path("nonPersonLeadingPrefixes")),
                     readStringList(root.path("roleKeywordMarkers"))
             );
         } catch (Exception e) {
@@ -223,8 +230,16 @@ public class EnterpriseLexicon {
         return nameStopwords;
     }
 
+    public List<String> aliasStopwords() {
+        return aliasStopwords;
+    }
+
     public List<String> namePrefixNoise() {
         return namePrefixNoise;
+    }
+
+    public List<String> nonPersonLeadingPrefixes() {
+        return nonPersonLeadingPrefixes;
     }
 
     public List<String> roleKeywordMarkers() {

@@ -164,7 +164,6 @@ public class QaConversationService {
         for (int i = start; i < prior.size(); i++) {
             ConversationTurn turn = prior.get(i);
             sb.append("[上文] 用户：").append(truncateOneLine(turn.question(), 220)).append('\n');
-            sb.append("助手：").append(truncateOneLine(turn.answer(), 400)).append('\n');
         }
         sb.append("[追问] ").append(followUpQuestion);
         appendSessionAnchorsIfPresent(sb, prior.get(prior.size() - 1));
@@ -421,6 +420,9 @@ public class QaConversationService {
                 && !ConversationSessionSupport.shouldTreatAsFollowUpDespiteCompanyHint(t, true, ruleEngine.isCorrectionQuestion(t))) {
             return false;
         }
+        if (looksLikeStandaloneStructuredQuestion(t)) {
+            return false;
+        }
         if (ConversationSessionSupport.isContinuationUtterance(t)) {
             return true;
         }
@@ -433,6 +435,25 @@ public class QaConversationService {
         }
         boolean shortWithoutEntity = t.length() <= 22 && !graphContextService.hasExplicitCompanyHint(t);
         return shortWithoutEntity && priorHasCompanyNames(prior);
+    }
+
+    /**
+     * 若当前句已包含可独立检索的结构化槽位（如人名+queryType），则优先视为新问句而非追问。
+     */
+    private boolean looksLikeStandaloneStructuredQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String q = question.strip();
+        String person = ruleEngine.extractPersonName(q);
+        String queryType = ruleEngine.inferQueryType(q, person);
+        boolean hasPerson = person != null && !person.isBlank();
+        boolean hasCompany = graphContextService.hasExplicitCompanyHint(q);
+        boolean hasStandaloneEntity = hasPerson || hasCompany;
+        if (!hasStandaloneEntity || queryType == null || queryType.isBlank()) {
+            return false;
+        }
+        return !containsAny(q, "上面", "刚才", "之前", "这些", "那些", "这家", "那家", "继续", "再问", "同样");
     }
 
     private static String resolveFocusPerson(ConversationTurn turn) {

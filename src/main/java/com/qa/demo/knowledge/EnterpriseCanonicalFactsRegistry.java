@@ -3,11 +3,9 @@ package com.qa.demo.knowledge;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import com.qa.demo.qa.core.QaScopes;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
-
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,8 +27,8 @@ public class EnterpriseCanonicalFactsRegistry {
     private final List<RetrievalAlias> retrievalAliases;
     private final EvidenceSchemaRegistry evidenceSchemas;
 
-    public EnterpriseCanonicalFactsRegistry(ObjectMapper objectMapper, EvidenceSchemaRegistry evidenceSchemas) {
-        Loaded loaded = load(objectMapper);
+    public EnterpriseCanonicalFactsRegistry(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader, EvidenceSchemaRegistry evidenceSchemas) {
+        Loaded loaded = load(objectMapper, configLoader);
         this.facts = loaded.facts();
         this.retrievalAliases = loaded.retrievalAliases();
         this.evidenceSchemas = evidenceSchemas;
@@ -135,9 +133,9 @@ public class EnterpriseCanonicalFactsRegistry {
         return text.replaceAll("(?i)" + java.util.regex.Pattern.quote(from), java.util.regex.Matcher.quoteReplacement(to));
     }
 
-    private static Loaded load(ObjectMapper objectMapper) {
-        try (InputStream in = new ClassPathResource("qa/enterprise-canonical-facts.json").getInputStream()) {
-            JsonNode root = objectMapper.readTree(in);
+    private static Loaded load(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) {
+        try {
+            JsonNode root = configLoader.readTree("enterprise-canonical-facts");
             List<CanonicalFact> factList = new ArrayList<>();
             for (JsonNode node : root.path("facts")) {
                 Map<String, String> values = new LinkedHashMap<>();

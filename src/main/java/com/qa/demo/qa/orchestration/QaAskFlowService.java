@@ -12,12 +12,12 @@ import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.QaScopes;
-import com.qa.demo.qa.core.RetrievalPlan;
 import com.qa.demo.qa.domain.EntityRef;
 import com.qa.demo.qa.domain.EvidenceToEntityExtractor;
 import com.qa.demo.qa.embedding.TextEmbeddingService;
 import com.qa.demo.qa.intent.CompanyClarificationAdvisor;
 import com.qa.demo.qa.intent.FollowUpIntentContext;
+import com.qa.demo.qa.intent.IntentSlots;
 import com.qa.demo.qa.intent.IntentRouterService;
 import com.qa.demo.qa.intent.IntentRoutingOutcome;
 import com.qa.demo.qa.intent.PersonClarificationAdvisor;
@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -51,6 +52,9 @@ import java.util.regex.Pattern;
 public class QaAskFlowService {
 
     private static final Pattern DIGIT_ONLY = Pattern.compile("^\\d{1,2}$");
+    private static final Pattern ALIAS_IDENTITY = Pattern.compile(
+            "([\\u4e00-\\u9fa5]{2,6})\\s*(?:是|就是|即|叫|叫做)\\s*([\\u4e00-\\u9fa5]{2,6})"
+    );
 
     private final IntentRouterService intentRouterService;
     private final ActiveLearningService activeLearningService;
@@ -154,6 +158,19 @@ public class QaAskFlowService {
             learningResponse.put("conversationId", convId);
             learningResponse.put("followUpApplied", false);
             qaLogService.appendAskEvent(learningResponse);
+            String learnedPerson = inferLearningFocusPerson(learningCommand.content());
+            conversationService.appendTurn(
+                    convId,
+                    learningCommand.scope(),
+                    turnId,
+                    question,
+                    String.valueOf(learningResponse.get("answer")),
+                    List.of(),
+                    List.of(),
+                    learnedPerson,
+                    "learning",
+                    ""
+            );
             return learningResponse;
         }
 
@@ -235,7 +252,8 @@ public class QaAskFlowService {
             );
         }
 
-        QaAnswerGateService.GateDecision gate = answerGateService.evaluate(intentDecision, informationNeed, evidence);
+        QaAnswerGateService.GateDecision gate = answerGateService.evaluate(
+                question, intentDecision, informationNeed, evidence);
         boolean canAnswer = gate.canAnswer();
         boolean allowGenerate = gate.allowGenerate();
         boolean unknownIntent = "unknown".equalsIgnoreCase(intentDecision.intent());
@@ -658,5 +676,23 @@ public class QaAskFlowService {
                 target.add(chunk);
             }
         }
+    }
+
+    /**
+     * 识别学习语句中的实名（如「老布是李晓峰」），写入会话锚点方便下一轮“重新回答”承接。
+     */
+    private static String inferLearningFocusPerson(String content) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+        Matcher matcher = ALIAS_IDENTITY.matcher(content.trim());
+        if (!matcher.find()) {
+            return "";
+        }
+        String right = IntentSlots.sanitizePersonName(matcher.group(2));
+        if (!right.isBlank()) {
+            return right;
+        }
+        return IntentSlots.sanitizePersonName(matcher.group(1));
     }
 }

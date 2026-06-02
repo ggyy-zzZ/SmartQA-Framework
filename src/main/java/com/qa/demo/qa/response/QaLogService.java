@@ -2,6 +2,8 @@ package com.qa.demo.qa.response;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.config.store.AuditEventRepository;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -25,9 +27,13 @@ public class QaLogService {
     private static final Path CANDIDATE_LOG = LOG_DIR.resolve("knowledge_candidates.jsonl");
 
     private final ObjectMapper objectMapper;
+    private final QaAssistantProperties properties;
+    private final AuditEventRepository auditEventRepository;
 
-    public QaLogService(ObjectMapper objectMapper) {
+    public QaLogService(ObjectMapper objectMapper, QaAssistantProperties properties, AuditEventRepository auditEventRepository) {
         this.objectMapper = objectMapper;
+        this.properties = properties;
+        this.auditEventRepository = auditEventRepository;
     }
 
     public String nextTurnId() {
@@ -117,9 +123,26 @@ public class QaLogService {
                     StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND
             );
+            String eventType = eventTypeForPath(path);
+            String turnId = payload.get("turnId") == null ? null : String.valueOf(payload.get("turnId"));
+            auditEventRepository.append(eventType, turnId, properties.getConfigScope(), payload);
+            if ("ask".equals(eventType)) {
+                auditEventRepository.appendAskTrace(payload);
+            }
         } catch (IOException ignored) {
             // Do not fail main QA flow because of logging.
         }
+    }
+
+    private static String eventTypeForPath(Path path) {
+        String name = path.getFileName().toString();
+        if (name.contains("feedback")) {
+            return "feedback";
+        }
+        if (name.contains("candidate")) {
+            return "knowledge_candidate";
+        }
+        return "ask";
     }
 
     private void ensureDir() throws IOException {
