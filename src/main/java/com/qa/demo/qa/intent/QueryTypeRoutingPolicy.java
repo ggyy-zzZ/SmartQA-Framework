@@ -2,6 +2,7 @@ package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.config.BusinessRulesConfig;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.ConversationScopeSupport;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -16,9 +17,11 @@ import java.util.Set;
 public class QueryTypeRoutingPolicy {
 
     private final BusinessRulesConfig config;
+    private final ConversationScopeSupport scopeSupport;
 
-    public QueryTypeRoutingPolicy(BusinessRulesConfig config) {
+    public QueryTypeRoutingPolicy(BusinessRulesConfig config, ConversationScopeSupport scopeSupport) {
         this.config = config;
+        this.scopeSupport = scopeSupport;
     }
 
     public boolean isCertificateQueryType(String queryType) {
@@ -50,10 +53,15 @@ public class QueryTypeRoutingPolicy {
     }
 
     public boolean isRetrievalReady(IntentDecision decision) {
+        return isRetrievalReady(decision, "");
+    }
+
+    public boolean isRetrievalReady(IntentDecision decision, String question) {
         if (decision == null || "unknown".equalsIgnoreCase(decision.intent())) {
             return false;
         }
         String queryType = decision.queryType() == null ? "" : decision.queryType().trim();
+        boolean unscopedList = scopeSupport.isUnscopedListQuestion(question);
         if (queryType.isBlank()) {
             return decision.confidence() >= 0.8;
         }
@@ -62,7 +70,7 @@ public class QueryTypeRoutingPolicy {
             if (req.isRequiresPerson() && !decision.hasPersonFocus() && !decision.hasPersonEmployeeId()) {
                 return false;
             }
-            if (req.isRequiresCompany() && !decision.hasCompanyHints()) {
+            if (req.isRequiresCompany() && !decision.hasCompanyHints() && !unscopedList) {
                 return false;
             }
             if (req.isRequiresRoleFocus()) {

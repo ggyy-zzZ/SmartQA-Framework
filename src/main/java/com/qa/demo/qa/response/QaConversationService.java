@@ -2,17 +2,18 @@ package com.qa.demo.qa.response;
 
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.ConversationScopeSupport;
+import com.qa.demo.qa.domain.ConversationSessionSupport;
 import com.qa.demo.qa.domain.EntityRef;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
-import com.qa.demo.qa.domain.ConversationSessionSupport;
 import com.qa.demo.qa.intent.FollowUpIntentContext;
 import com.qa.demo.qa.intent.IntentSlots;
-import com.qa.demo.qa.retrieval.GraphContextService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -31,12 +32,12 @@ public class QaConversationService {
     private static final int MAX_CONVERSATIONS = 2_000;
 
     private final ConcurrentHashMap<String, Conversation> store = new ConcurrentHashMap<>();
-    private final GraphContextService graphContextService;
     private final ScenarioRuleEngine ruleEngine;
+    private final ConversationScopeSupport scopeSupport;
 
-    public QaConversationService(GraphContextService graphContextService, ScenarioRuleEngine ruleEngine) {
-        this.graphContextService = graphContextService;
+    public QaConversationService(ScenarioRuleEngine ruleEngine, ConversationScopeSupport scopeSupport) {
         this.ruleEngine = ruleEngine;
+        this.scopeSupport = scopeSupport;
     }
 
     private static final Pattern DIGIT_ONLY = Pattern.compile("^\\d{1,2}$");
@@ -413,47 +414,14 @@ public class QaConversationService {
         if (t.isEmpty()) {
             return false;
         }
+        if (scopeSupport.explicitlyBreaksContext(t) || scopeSupport.isUnscopedListQuestion(t)) {
+            return false;
+        }
         if (ruleEngine.isCorrectionQuestion(t) && !prior.isEmpty()) {
             return true;
         }
-        if (graphContextService.hasExplicitCompanyHint(t)
-                && !ConversationSessionSupport.shouldTreatAsFollowUpDespiteCompanyHint(t, true, ruleEngine.isCorrectionQuestion(t))) {
-            return false;
-        }
-        if (looksLikeStandaloneStructuredQuestion(t)) {
-            return false;
-        }
-        if (ConversationSessionSupport.isContinuationUtterance(t)) {
-            return true;
-        }
-        boolean pronounLike = containsAny(t,
-                "它", "其", "该", "这家", "那家", "上面", "刚才", "之前", "接着", "继续", "再", "还有", "同样",
-                "同一家", "同一个", "这家公司", "那个人", "这个人", "我司", "咱们", "这个", "那个", "哪位",
-                "啥", "呢", "吗", "嘛", "多少", "几个", "哪边", "那边", "这边");
-        if (pronounLike) {
-            return true;
-        }
-        boolean shortWithoutEntity = t.length() <= 22 && !graphContextService.hasExplicitCompanyHint(t);
-        return shortWithoutEntity && priorHasCompanyNames(prior);
-    }
-
-    /**
-     * 若当前句已包含可独立检索的结构化槽位（如人名+queryType），则优先视为新问句而非追问。
-     */
-    private boolean looksLikeStandaloneStructuredQuestion(String question) {
-        if (question == null || question.isBlank()) {
-            return false;
-        }
-        String q = question.strip();
-        String person = ruleEngine.extractPersonName(q);
-        String queryType = ruleEngine.inferQueryType(q, person);
-        boolean hasPerson = person != null && !person.isBlank();
-        boolean hasCompany = graphContextService.hasExplicitCompanyHint(q);
-        boolean hasStandaloneEntity = hasPerson || hasCompany;
-        if (!hasStandaloneEntity || queryType == null || queryType.isBlank()) {
-            return false;
-        }
-        return !containsAny(q, "上面", "刚才", "之前", "这些", "那些", "这家", "那家", "继续", "再问", "同样");
+        // 默认策略：同一会话优先继承上下文；仅显式声明“无关/新话题”时断开。
+        return true;
     }
 
     private static String resolveFocusPerson(ConversationTurn turn) {
@@ -480,16 +448,6 @@ public class QaConversationService {
         return "";
     }
 
-    private static boolean priorHasCompanyNames(List<ConversationTurn> prior) {
-        for (int i = prior.size() - 1; i >= 0; i--) {
-            List<String> n = prior.get(i).focusCompanyNames();
-            if (n != null && !n.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * 构建多轮追问上下文，供 {@link com.qa.demo.qa.intent.IntentRouterService} 做 LLM 追问解析。
      */
@@ -502,14 +460,39 @@ public class QaConversationService {
                 ? current.personName()
                 : (resolveFocusPerson(last) != null ? resolveFocusPerson(last) : "");
         List<String> focusNames = last.focusCompanyNames() != null ? last.focusCompanyNames() : List.of();
+        List<EntityRef> scopedPriorCompanies = scopePriorCompaniesByQuestion(last.getCompanies(), last.question());
         return FollowUpIntentContext.of(
                 last.question(),
                 last.lastQueryType(),
                 last.answer(),
                 personName,
-                last.getCompanies(),
+                scopedPriorCompanies,
                 focusNames
         );
+    }
+
+    private List<EntityRef> scopePriorCompaniesByQuestion(List<EntityRef> companies, String priorQuestion) {
+        if (companies == null || companies.isEmpty() || priorQuestion == null || priorQuestion.isBlank()) {
+            return companies == null ? List.of() : companies;
+        }
+        ConversationScopeSupport.OperatingStatusScope scope = scopeSupport.inferOperatingStatusScope(priorQuestion);
+        if (scope == ConversationScopeSupport.OperatingStatusScope.ALL) {
+            return companies;
+        }
+        List<EntityRef> filtered = new ArrayList<>();
+        for (EntityRef ref : companies) {
+            if (ref == null || ref.status() == null || ref.status().isBlank()) {
+                continue;
+            }
+            String status = ref.status().trim().toLowerCase(Locale.ROOT);
+            boolean match = scope == ConversationScopeSupport.OperatingStatusScope.ACTIVE
+                    ? containsAny(status, "存续", "在业", "开业", "有效", "正常")
+                    : containsAny(status, "吊销", "注销", "失效", "停业", "撤销", "清算", "迁出", "异常");
+            if (match) {
+                filtered.add(ref);
+            }
+        }
+        return filtered.isEmpty() ? companies : List.copyOf(filtered);
     }
 
     private static List<String> extractFocusCompanyNames(List<ContextChunk> evidence) {

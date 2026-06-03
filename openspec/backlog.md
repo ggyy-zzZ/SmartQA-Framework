@@ -20,7 +20,9 @@
 |------|------|------|
 | 进行中 | 本地验证 MVP | **Track A 知识落库 Sprint 1**：`sync_entity_state`、`sync_manifest.yaml`、稳定 Qdrant point id、`--since`、`run_incremental_sync.py`（见 [`docs/local-validation-mvp-roadmap.md`](../docs/local-validation-mvp-roadmap.md)） |
 | 进行中 | 本地验证 MVP | **Track B 意图 Sprint 1**：多轮实体继承泛化、响应 `routing` 可观测；Sprint 3 路由场景矩阵 |
+| 进行中 | 意图与路由 / 多轮 | **conversationScope + IntentScopeNormalizer**（断链/全局列表/经营状态推断已配置化，见 `docs/platform-retrieval-architecture.md`）；题型切换与结构化会话列表仍待办 |
 | 待办 | 意图与路由 / 多轮 | **通用 queryType 路由稳定化 + 会话结构化槽位**（不以单一业务案例定义边界；见 MVP 线路 §4） |
+| 待办 | 检索 / Connector | **StructuredDataProvider 替代 PersonCertificateQueryService**；CRM、云文档 facet 注册 |
 | 已完成 | 学习与接入 | **结构化接入流水线（本应用范围）**：`POST /qa/structured/row-audit`、`POST /qa/structured/csv-ingest`；**`POST /qa/structured/ingest-gate`**、**`POST /qa/structured/job/run`**、**`POST /qa/structured/job/run-from-config`**；可选 **`qa.assistant.structured-ingest-schedule-*`** 定时清单门禁 + 作业日志（见 `openspec/design/structured-ingest-gate.md`）。**对业务表的 DML/LOAD 自动入库**不在本应用 SHALL 内，由外部 ETL 在 `allowedToProceed=true` 后执行；若需本进程内写业务表，另起变更与规格 |
 | 已完成 | 沉淀与反馈 | **待沉淀队列** MySQL 表 `qa_pending_knowledge`、写入与 `GET /qa/sedimentation/pending`；与 jsonl 并行。**消费/审核/再学习状态机**可后续迭代 |
 | 已完成 | 意图与路由 / 检索编排 / 回答与追问 | 主流程已迁至 `orchestration.QaAskOrchestrator`；检索管道 `retrieval.QaRetrievalPipeline`；学习指令 `learning.ChatLearningCommandParser`；澄清 `intent.CompanyClarificationAdvisor`；兜底 `answer.QaAnswerFallbackService`；`web.QaController` 仅 HTTP。SSE 事件封装在 `orchestration.QaSseStreamSupport` |

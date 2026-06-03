@@ -5,6 +5,7 @@ import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
+import com.qa.demo.qa.domain.ConversationScopeSupport;
 import com.qa.demo.qa.domain.PersonNameParser;
 import com.qa.demo.qa.domain.EnterpriseLexicon;
 import com.qa.demo.qa.domain.CertificateSealEnumCatalog;
@@ -33,6 +34,7 @@ public class GraphContextService {
     private final EnterpriseLexicon lexicon;
     private final GraphCompanyFacetCatalog companyFacetCatalog;
     private final CertificateSealEnumCatalog certificateSealEnumCatalog;
+    private final ConversationScopeSupport scopeSupport;
 
     public GraphContextService(
             Driver neo4jDriver,
@@ -40,7 +42,8 @@ public class GraphContextService {
             QuestionEntityExtractor entityExtractor,
             EnterpriseLexicon lexicon,
             GraphCompanyFacetCatalog companyFacetCatalog,
-            CertificateSealEnumCatalog certificateSealEnumCatalog
+            CertificateSealEnumCatalog certificateSealEnumCatalog,
+            ConversationScopeSupport scopeSupport
     ) {
         this.neo4jDriver = neo4jDriver;
         this.properties = properties;
@@ -48,6 +51,7 @@ public class GraphContextService {
         this.lexicon = lexicon;
         this.companyFacetCatalog = companyFacetCatalog;
         this.certificateSealEnumCatalog = certificateSealEnumCatalog;
+        this.scopeSupport = scopeSupport;
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, int topK) {
@@ -121,10 +125,19 @@ public class GraphContextService {
     ) {
         List<String> certLabels = certificateSealEnumCatalog.certificateLabelsMentionedIn(question);
         String certLabel = certLabels.isEmpty() ? "" : certLabels.getFirst();
+        String companyStatusMode = resolveCompanyStatusMode(question);
+        boolean certValidOnly = question != null && question.contains("有效")
+                && (question.contains("证照") || question.contains("证"));
         Result result = session.run(
                 """
                 MATCH (c:Company)-[:HAS_CERTIFICATE]->(ct:Certificate)
                 WHERE ($certLabel = '' OR toLower(ct.certType) CONTAINS toLower($certLabel))
+                  AND ($certValidOnly = false OR ct.status = '有效')
+                  AND (
+                    $companyStatusMode = 'all'
+                    OR ($companyStatusMode = 'active' AND coalesce(c.status, '') IN ['存续', '在业'])
+                    OR ($companyStatusMode = 'inactive' AND NOT coalesce(c.status, '') IN ['存续', '在业'])
+                  )
                 OPTIONAL MATCH (c)<-[roleRel:HAS_ROLE_IN]-(p:Person)
                 OPTIONAL MATCH (s:Shareholder)-[shareRel:HOLDS_SHARES_IN]->(c)
                 OPTIONAL MATCH (c)-[prodRel:BELONGS_TO_PRODUCT]->(pl:ProductLine)
@@ -151,7 +164,12 @@ public class GraphContextService {
                 ORDER BY size(certificates) DESC
                 LIMIT $topK
                 """,
-                org.neo4j.driver.Values.parameters("certLabel", certLabel, "topK", topK)
+                org.neo4j.driver.Values.parameters(
+                        "certLabel", certLabel,
+                        "topK", topK,
+                        "companyStatusMode", companyStatusMode,
+                        "certValidOnly", certValidOnly
+                )
         );
         List<ContextChunk> chunks = new ArrayList<>();
         String field = "资质与许可";
@@ -172,6 +190,14 @@ public class GraphContextService {
             ));
         }
         return chunks;
+    }
+
+    private String resolveCompanyStatusMode(String question) {
+        return switch (scopeSupport.inferOperatingStatusScope(question)) {
+            case ACTIVE -> "active";
+            case INACTIVE -> "inactive";
+            case ALL -> "all";
+        };
     }
 
     public boolean hasExplicitCompanyHint(String question) {

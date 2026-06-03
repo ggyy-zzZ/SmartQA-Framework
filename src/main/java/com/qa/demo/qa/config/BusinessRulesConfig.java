@@ -19,6 +19,7 @@ public class BusinessRulesConfig {
 
     private IntentRules intentRules = new IntentRules();
     private IntentRouting intentRouting = new IntentRouting();
+    private ConversationScope conversationScope = new ConversationScope();
     private AnswerGate answerGate = new AnswerGate();
     private DataSources dataSources = new DataSources();
     private List<CorrectionRule> correctionRules = new ArrayList<>();
@@ -27,6 +28,11 @@ public class BusinessRulesConfig {
 
     public IntentRouting getIntentRouting() { return intentRouting; }
     public void setIntentRouting(IntentRouting intentRouting) { this.intentRouting = intentRouting; }
+
+    public ConversationScope getConversationScope() { return conversationScope; }
+    public void setConversationScope(ConversationScope conversationScope) {
+        this.conversationScope = conversationScope;
+    }
 
     public AnswerGate getAnswerGate() { return answerGate; }
     public void setAnswerGate(AnswerGate answerGate) { this.answerGate = answerGate; }
@@ -110,6 +116,68 @@ public class BusinessRulesConfig {
         public void setRequiresPerson(boolean r) { this.requiresPerson = r; }
         public List<String> getWeakQueryTypes() { return weakQueryTypes; }
         public void setWeakQueryTypes(List<String> w) { this.weakQueryTypes = w; }
+    }
+
+    // ============= Conversation scope (断链 / 全局列表 / 经营状态推断) =============
+
+    public static class ConversationScope {
+        private List<String> breakContextPhrases = new ArrayList<>();
+        private List<String> globalListMarkers = new ArrayList<>();
+        private List<String> globalListContextKeywords = new ArrayList<>();
+        private List<String> continuationMarkers = new ArrayList<>();
+        private List<String> continuationExcludePatterns = new ArrayList<>();
+        private int continuationMaxLength = 36;
+        private OperatingStatusScopeRules operatingStatus = new OperatingStatusScopeRules();
+
+        public List<String> getBreakContextPhrases() { return breakContextPhrases; }
+        public void setBreakContextPhrases(List<String> breakContextPhrases) {
+            this.breakContextPhrases = breakContextPhrases;
+        }
+        public List<String> getGlobalListMarkers() { return globalListMarkers; }
+        public void setGlobalListMarkers(List<String> globalListMarkers) {
+            this.globalListMarkers = globalListMarkers;
+        }
+        public List<String> getGlobalListContextKeywords() { return globalListContextKeywords; }
+        public void setGlobalListContextKeywords(List<String> globalListContextKeywords) {
+            this.globalListContextKeywords = globalListContextKeywords;
+        }
+        public List<String> getContinuationMarkers() { return continuationMarkers; }
+        public void setContinuationMarkers(List<String> continuationMarkers) {
+            this.continuationMarkers = continuationMarkers;
+        }
+        public List<String> getContinuationExcludePatterns() { return continuationExcludePatterns; }
+        public void setContinuationExcludePatterns(List<String> continuationExcludePatterns) {
+            this.continuationExcludePatterns = continuationExcludePatterns;
+        }
+        public int getContinuationMaxLength() { return continuationMaxLength; }
+        public void setContinuationMaxLength(int continuationMaxLength) {
+            this.continuationMaxLength = continuationMaxLength;
+        }
+        public OperatingStatusScopeRules getOperatingStatus() { return operatingStatus; }
+        public void setOperatingStatus(OperatingStatusScopeRules operatingStatus) {
+            this.operatingStatus = operatingStatus;
+        }
+    }
+
+    public static class OperatingStatusScopeRules {
+        private List<String> activeMarkers = new ArrayList<>();
+        private List<String> inactiveMarkers = new ArrayList<>();
+        private List<String> negationPrefixes = new ArrayList<>();
+        private List<String> inactivePhrases = new ArrayList<>();
+        private List<String> certificateContextKeywords = new ArrayList<>();
+
+        public List<String> getActiveMarkers() { return activeMarkers; }
+        public void setActiveMarkers(List<String> activeMarkers) { this.activeMarkers = activeMarkers; }
+        public List<String> getInactiveMarkers() { return inactiveMarkers; }
+        public void setInactiveMarkers(List<String> inactiveMarkers) { this.inactiveMarkers = inactiveMarkers; }
+        public List<String> getNegationPrefixes() { return negationPrefixes; }
+        public void setNegationPrefixes(List<String> negationPrefixes) { this.negationPrefixes = negationPrefixes; }
+        public List<String> getInactivePhrases() { return inactivePhrases; }
+        public void setInactivePhrases(List<String> inactivePhrases) { this.inactivePhrases = inactivePhrases; }
+        public List<String> getCertificateContextKeywords() { return certificateContextKeywords; }
+        public void setCertificateContextKeywords(List<String> certificateContextKeywords) {
+            this.certificateContextKeywords = certificateContextKeywords;
+        }
     }
 
     // ============= Intent routing (queryType 槽位 / 追问 / 结构化列表) =============

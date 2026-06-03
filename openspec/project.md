@@ -12,6 +12,7 @@
 | [`changes/<change-id>/`](./changes/) | 单次变更的 proposal / tasks，归档后能力描述合并回 `spec.md` |
 | [`design/structured-ingest-gate.md`](./design/structured-ingest-gate.md) | 结构化入库门禁、清单 JSON、定时任务与「不写业务表 DML」边界 |
 | [`design/schema-sedimentation-plan-pipeline.md`](./design/schema-sedimentation-plan-pipeline.md) | 元数据目录 → 结构化沉淀方案 JSON → 可选 digest → 按路写入三库（`POST /qa/mysql/sedimentation/pipeline`） |
+| [`../docs/platform-retrieval-architecture.md`](../docs/platform-retrieval-architecture.md) | **平台化检索与会话**：conversationScope、Need/Connector 分层，避免与单一业务域（证照等）耦合 |
 
 - **不与**某一固定商业产品（例如历史上对接过的「同道查」类系统）在提示词或产品话术上强绑定；业务 schema 名（如 `tdcomp`）仅作为**可配置的部署参数**，不得写进面向用户的系统提示或假设用户意图的硬编码文案中。
 

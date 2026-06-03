@@ -1,6 +1,17 @@
 {
   "needInferenceRules": [
     {
+      "id": "global_compliance_list",
+      "allKeywords": ["所有", "证照"],
+      "anyKeywords": ["列出", "清单", "列举", "全部"],
+      "contextKeywords": ["主体", "状态", "有效", "存续", "吊销", "注销"],
+      "need": {
+        "facet": "compliance",
+        "granularity": "instance",
+        "listExpected": true
+      }
+    },
+    {
       "id": "type_catalog",
       "anyKeywords": ["类型", "种类", "有哪些证", "什么证", "哪些证", "什么类型", "有哪些类型", "资质证照"],
       "contextKeywords": ["证照", "许可证", "资质", "执照", "备案", "证书", "证"],

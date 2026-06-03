@@ -81,7 +81,11 @@ public class QaAnswerGateService {
         boolean catalogGateSatisfied = false;
         if (need != null) {
             if (!catalogRegistry.satisfiesGate(need, evidence)) {
-                if (!allowByLlmAssist(question, intent, need, evidence, "need_evidence_mismatch")) {
+                boolean certificateNeedFallback = need.hasFacet()
+                        && "certificate".equalsIgnoreCase(need.facet())
+                        && hasFlexibleCertificateEvidence(intent == null ? "" : intent.queryType(), evidence);
+                if (!certificateNeedFallback
+                        && !allowByLlmAssist(question, intent, need, evidence, "need_evidence_mismatch")) {
                     return new GateDecision(false, false, "need_evidence_mismatch");
                 }
             }

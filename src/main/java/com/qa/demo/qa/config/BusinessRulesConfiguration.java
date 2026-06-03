@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * 业务规则配置加载器。
@@ -62,6 +63,11 @@ public class BusinessRulesConfiguration {
                     }
                     config.getCorrectionRules().add(rule);
                 }
+            }
+
+            JsonNode conversationScopeNode = root.get("conversationScope");
+            if (conversationScopeNode != null) {
+                loadConversationScope(config, conversationScopeNode);
             }
 
             JsonNode intentRoutingNode = root.get("intentRouting");
@@ -177,8 +183,40 @@ public class BusinessRulesConfiguration {
         }
     }
 
+    private void loadConversationScope(BusinessRulesConfig config, JsonNode node) {
+        BusinessRulesConfig.ConversationScope scope = config.getConversationScope();
+        copyStringArray(node, "breakContextPhrases", scope.getBreakContextPhrases());
+        copyStringArray(node, "globalListMarkers", scope.getGlobalListMarkers());
+        copyStringArray(node, "globalListContextKeywords", scope.getGlobalListContextKeywords());
+        copyStringArray(node, "continuationMarkers", scope.getContinuationMarkers());
+        copyStringArray(node, "continuationExcludePatterns", scope.getContinuationExcludePatterns());
+        if (node.has("continuationMaxLength")) {
+            scope.setContinuationMaxLength(node.get("continuationMaxLength").asInt(36));
+        }
+        JsonNode statusNode = node.get("operatingStatus");
+        if (statusNode != null) {
+            BusinessRulesConfig.OperatingStatusScopeRules rules = scope.getOperatingStatus();
+            copyStringArray(statusNode, "activeMarkers", rules.getActiveMarkers());
+            copyStringArray(statusNode, "inactiveMarkers", rules.getInactiveMarkers());
+            copyStringArray(statusNode, "negationPrefixes", rules.getNegationPrefixes());
+            copyStringArray(statusNode, "inactivePhrases", rules.getInactivePhrases());
+            copyStringArray(statusNode, "certificateContextKeywords", rules.getCertificateContextKeywords());
+        }
+    }
+
+    private static void copyStringArray(JsonNode parent, String field, List<String> target) {
+        JsonNode arr = parent.get(field);
+        if (arr == null || !arr.isArray()) {
+            return;
+        }
+        arr.forEach(item -> target.add(item.asText()));
+    }
+
     private void loadIntentRouting(BusinessRulesConfig config, JsonNode node) {
         BusinessRulesConfig.IntentRouting routing = config.getIntentRouting();
+        if (node.get("filterRulePrefixes") != null && node.get("filterRulePrefixes").isArray()) {
+            node.get("filterRulePrefixes").forEach(p -> routing.getFilterRulePrefixes().add(p.asText()));
+        }
         if (node.get("structuredListQueryTypes") != null && node.get("structuredListQueryTypes").isArray()) {
             node.get("structuredListQueryTypes").forEach(t -> routing.getStructuredListQueryTypes().add(t.asText()));
         }

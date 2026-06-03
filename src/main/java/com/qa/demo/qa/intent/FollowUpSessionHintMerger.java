@@ -1,7 +1,8 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.core.IntentDecision;
-import com.qa.demo.qa.domain.ConversationSessionSupport;
+import com.qa.demo.qa.domain.ConversationScopeSupport;
+import com.qa.demo.qa.domain.ConversationScopeSupport.OperatingStatusScope;
 import com.qa.demo.qa.domain.EntityRef;
 import org.springframework.stereotype.Component;
 
@@ -11,7 +12,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * 多轮追问时合并会话中的实体 hint（通用指代/接续检测，关键词来自配置）。
+ * 多轮追问时合并会话中的实体 hint（通用指代/接续检测，规则来自配置）。
  */
 @Component
 public class FollowUpSessionHintMerger {
@@ -20,10 +21,10 @@ public class FollowUpSessionHintMerger {
             "", "unknown", "semantic", "mixed"
     );
 
-    private final QueryTypeRoutingPolicy routingPolicy;
+    private final ConversationScopeSupport scopeSupport;
 
-    public FollowUpSessionHintMerger(QueryTypeRoutingPolicy routingPolicy) {
-        this.routingPolicy = routingPolicy;
+    public FollowUpSessionHintMerger(ConversationScopeSupport scopeSupport) {
+        this.scopeSupport = scopeSupport;
     }
 
     public IntentDecision merge(IntentDecision decision, String question, FollowUpIntentContext context) {
@@ -31,7 +32,10 @@ public class FollowUpSessionHintMerger {
             return decision;
         }
         String q = question.strip();
-        boolean continuation = ConversationSessionSupport.isContinuationUtterance(q) || referencesPriorSubjects(q);
+        if (scopeSupport.explicitlyBreaksContext(q) || scopeSupport.isUnscopedListQuestion(q)) {
+            return decision;
+        }
+        boolean continuation = scopeSupport.isContinuationUtterance(q) || scopeSupport.referencesPriorSubjects(q);
         IntentDecision normalized = normalizeContinuationQueryType(decision, q, context, continuation);
         if (!continuation) {
             return normalized;
@@ -84,10 +88,6 @@ public class FollowUpSessionHintMerger {
         );
     }
 
-    /**
-     * 多轮追问下仅在当前 queryType 为占位类型时继承上一轮 queryType；
-     * 不对具体 queryType 进行强锁，避免跨维度追问（如由任职转证照）被误覆盖。
-     */
     private static IntentDecision normalizeContinuationQueryType(
             IntentDecision decision,
             String question,
@@ -121,19 +121,18 @@ public class FollowUpSessionHintMerger {
         );
     }
 
-    private static InheritedCompanyScope resolveInheritedCompanies(List<EntityRef> priorCompanies, String question) {
+    private InheritedCompanyScope resolveInheritedCompanies(List<EntityRef> priorCompanies, String question) {
         if (priorCompanies == null || priorCompanies.isEmpty()) {
             return InheritedCompanyScope.empty();
         }
-        String q = question == null ? "" : question.toLowerCase(Locale.ROOT);
-        StatusScope scope = inferStatusScope(q);
+        OperatingStatusScope scope = scopeSupport.inferOperatingStatusScope(question);
         List<String> names = new ArrayList<>();
         boolean scoped = false;
         for (EntityRef ref : priorCompanies) {
             if (ref == null || ref.name() == null || ref.name().isBlank()) {
                 continue;
             }
-            if (scope == StatusScope.ALL) {
+            if (scope == OperatingStatusScope.ALL) {
                 if (!names.contains(ref.name().trim())) {
                     names.add(ref.name().trim());
                 }
@@ -143,7 +142,7 @@ public class FollowUpSessionHintMerger {
             if (status.isBlank()) {
                 continue;
             }
-            boolean match = scope == StatusScope.ACTIVE
+            boolean match = scope == OperatingStatusScope.ACTIVE
                     ? containsAny(status, "存续", "在业", "开业", "有效", "正常")
                     : containsAny(status, "吊销", "注销", "失效", "停业", "撤销", "清算", "迁出", "异常");
             if (match) {
@@ -162,20 +161,6 @@ public class FollowUpSessionHintMerger {
             return new InheritedCompanyScope(List.copyOf(names), false);
         }
         return new InheritedCompanyScope(List.copyOf(names), scoped);
-    }
-
-    private static StatusScope inferStatusScope(String questionLower) {
-        boolean askActive = containsAny(questionLower, "存续", "在业", "开业", "有效", "正常");
-        boolean askInvalid = containsAny(questionLower, "吊销", "注销", "失效", "停业", "撤销", "清算", "迁出", "异常");
-        if (askActive == askInvalid) {
-            return StatusScope.ALL;
-        }
-        return askActive ? StatusScope.ACTIVE : StatusScope.INVALID;
-    }
-
-    private boolean referencesPriorSubjects(String question) {
-        return routingPolicy.followUpReferenceMarkers().stream()
-                .anyMatch(m -> m != null && !m.isBlank() && question.contains(m));
     }
 
     private static boolean isPlaceholderQueryType(String queryType) {
@@ -206,12 +191,6 @@ public class FollowUpSessionHintMerger {
             }
         }
         return false;
-    }
-
-    private enum StatusScope {
-        ALL,
-        ACTIVE,
-        INVALID
     }
 
     private record InheritedCompanyScope(List<String> names, boolean statusScoped) {

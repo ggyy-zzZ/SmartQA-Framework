@@ -74,7 +74,7 @@ public class IntentDecisionEnricher {
             return false;
         }
         if (decision.confidence() < properties.getIntentLlmEnrichMinConfidence()
-                || !routingPolicy.isRetrievalReady(decision)) {
+                || !routingPolicy.isRetrievalReady(decision, question)) {
             return false;
         }
         String rulePerson = ruleEngine.extractPersonName(question);

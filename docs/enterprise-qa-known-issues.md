@@ -13,7 +13,8 @@
 | ID | 主题 | 严重程度 | 修复状态 |
 |----|------|----------|----------|
 | Q-01 | 法人主体列表召回不全（应为 26 家，仅 2 条图谱证据进模型） | P0 | 已修复（见 §2.1） |
-| Q-02 | 多轮「存续主体的证照」无法作答（检索仍走任职、证据无证照） | P0 | 未修复 |
+| Q-02 | 多轮「存续主体的证照」无法作答（检索仍走任职、证据无证照） | P0 | 部分修复（见 §2.2、§2.6） |
+| Q-07 | 全局证照筛选被锁死在会话主体；「不是存续」误判为存续过滤 | P0 | 部分修复（见 §2.6） |
 | Q-03 | SSE 流式卡在「已接收问题，开始分析」 | P0 | 已修复（见 §2.3） |
 | Q-04 | 首轮法人答案条数/存续分组与库不一致（如 25 vs 26、14 vs 18） | P1 | 部分缓解 |
 | Q-05 | 业务规则大量落在配置文件，与学习沉淀双轨未打通 | P1 | 架构债，见 §4 |
@@ -79,7 +80,7 @@
 | companyHints 未驱动 SQL | 虽从长上下文抽出约 17 家公司名，因 `queryType` 错误，未调用 `retrieveByCompanyNames(..., activeCompaniesOnly)`。 |
 | 闸门不校验证据类型 | `person_certificate_list` 要求证照 source；`person_role_list` 只检查条数/分数，任职证据即可放行生成。 |
 
-**修复状态**：**未修复**（仅分析，待 P0 实施）。
+**修复状态**：**部分修复**（2026-06）：`conversationScope` 配置化断链/全局列表；`IntentScopeNormalizer` 断链时清空人物/公司 hints；经营状态与证照「有效」歧义由 `ConversationScopeSupport` 处理。题型切换（任职→证照）与闸门按证据拒答仍待加强。
 
 **建议方向（摘要）**
 
@@ -88,6 +89,34 @@
 - 证照类闸门：无 `mysql-*-certificate` 则拒答或触发二次检索。
 
 详见 §5 P0 条目。
+
+---
+
+### 2.6 Q-07：全局合规清单被会话锁死 + 「不是存续」过滤反了
+
+**典型问句**：忽略之前的问题，列出现在主体不是存续、但证照状态有效的所有证照
+
+**现象（修前）**
+
+- 仍锚定上一轮人物/12 家公司；MySQL 显示 `主体状态范围=存续`；仅答 2 家 5 条（复述对话片段）。
+
+**根因**
+
+- `explicitlyBreaksContext` 未含「忽略之前的问题」；`isContinuationUtterance` 将「不是」误判为短追问。
+- `question.contains("存续")` 对「不是存续」为真 → `activeCompaniesOnly=true`。
+- `inferStatusScope` 将证照「有效」与主体「存续」混为一谈。
+- 有 `companyHints` 时图谱不走全库 `queryByCertificateIntent`。
+
+**已做修复（2026-06）**
+
+- 新增 [`docs/platform-retrieval-architecture.md`](./platform-retrieval-architecture.md)；`business-rules.json` → `conversationScope`。
+- `ConversationScopeSupport` + `IntentScopeNormalizer` + 全局 `retrieveGlobalFiltered`。
+- 检索不再使用 `contains("存续")` 启发式。
+
+**残留**
+
+- `PersonCertificateQueryService` 仍为过渡实现；CRM/文档需新 Connector。
+- MySQL `company_id` 列与部署库不一致时仍会降级。
 
 ---
 
@@ -216,6 +245,7 @@ flowchart TB
 
 | 模块 | 路径 |
 |------|------|
+| 会话范围 / 平台化说明 | `qa/domain/ConversationScopeSupport.java`、`docs/platform-retrieval-architecture.md` |
 | 问答主流程 | `qa/orchestration/QaAskFlowService.java` |
 | SSE | `qa/orchestration/QaAskOrchestrator.java`、`QaSseStreamSupport.java` |
 | 多轮会话 | `qa/response/QaConversationService.java`、`qa/domain/ConversationSessionSupport.java` |
@@ -244,3 +274,4 @@ flowchart TB
 | 日期 | 说明 |
 |------|------|
 | 2026-05-27 | 初版：汇总法人召回、多轮证照、SSE、配置/学习分层及 P0–P2 建议 |
+| 2026-06-02 | Q-07：conversationScope、全局证照检索、平台化架构文档 |

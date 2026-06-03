@@ -66,9 +66,44 @@ public class PersonCertificateQueryService {
     /**
      * 按公司名批量查询登记证照（用于多轮追问「这些主体有哪些证照」）。
      */
+    /**
+     * 无主体 hints 时的全局结构化列表（经营状态 + 证照状态过滤，由检索层传入）。
+     */
+    public List<ContextChunk> retrieveGlobalFiltered(
+            java.util.Optional<Boolean> activeCompaniesOnly,
+            boolean validCertificatesOnly,
+            int maxRows
+    ) {
+        int limit = Math.max(1, Math.min(maxRows, 256));
+        try (Connection connection = openBusinessConnection()) {
+            Map<String, String> allCompanyNames = loadCompanyNames(connection);
+            List<PersonCertificateStewardship> rows = loadGlobalCertificates(
+                    connection,
+                    allCompanyNames,
+                    activeCompaniesOnly,
+                    validCertificatesOnly,
+                    limit
+            );
+            if (rows.isEmpty()) {
+                return List.of(buildEmptyGlobalCertificateEvidence(activeCompaniesOnly, validCertificatesOnly));
+            }
+            return toContextChunks(rows, COMPANY_SOURCE);
+        } catch (Exception ex) {
+            return List.of(buildErrorGlobalCertificateEvidence(activeCompaniesOnly, validCertificatesOnly, ex.getMessage()));
+        }
+    }
+
     public List<ContextChunk> retrieveByCompanyNames(
             List<String> companyNames,
             boolean activeCompaniesOnly,
+            int maxRows
+    ) {
+        return retrieveByCompanyNames(companyNames, java.util.Optional.of(activeCompaniesOnly), maxRows);
+    }
+
+    public List<ContextChunk> retrieveByCompanyNames(
+            List<String> companyNames,
+            java.util.Optional<Boolean> activeCompaniesOnly,
             int maxRows
     ) {
         if (companyNames == null || companyNames.isEmpty()) {
@@ -79,13 +114,16 @@ public class PersonCertificateQueryService {
             Map<String, String> allCompanyNames = loadCompanyNames(connection);
             Set<String> companyIds = resolveCompanyIds(connection, companyNames, activeCompaniesOnly);
             if (companyIds.isEmpty()) {
-                return List.of();
+                return List.of(buildEmptyCompanyCertificateEvidence(companyNames, 0, activeCompaniesOnly));
             }
             List<PersonCertificateStewardship> rows = loadCertificatesForCompanies(
                     connection, companyIds, allCompanyNames, limit);
+            if (rows.isEmpty()) {
+                return List.of(buildEmptyCompanyCertificateEvidence(companyNames, companyIds.size(), activeCompaniesOnly));
+            }
             return toContextChunks(rows, COMPANY_SOURCE);
-        } catch (Exception ignored) {
-            return List.of();
+        } catch (Exception ex) {
+            return List.of(buildErrorCompanyCertificateEvidence(companyNames, activeCompaniesOnly, ex.getMessage()));
         }
     }
 
@@ -224,10 +262,13 @@ public class PersonCertificateQueryService {
     private Set<String> resolveCompanyIds(
             Connection connection,
             List<String> companyNames,
-            boolean activeOnly
+            java.util.Optional<Boolean> activeOnly
     ) throws SQLException {
         Set<String> ids = new java.util.LinkedHashSet<>();
-        String statusClause = activeOnly ? " AND operating_status = 0" : "";
+        String statusClause = "";
+        if (activeOnly.isPresent()) {
+            statusClause = activeOnly.get() ? " AND operating_status = 0" : " AND operating_status <> 0";
+        }
         String exactSql = """
                 SELECT company_id FROM company
                 WHERE deleteflag = 0%s AND company_name = ?
@@ -267,6 +308,54 @@ public class PersonCertificateQueryService {
             }
         }
         return ids;
+    }
+
+    private List<PersonCertificateStewardship> loadGlobalCertificates(
+            Connection connection,
+            Map<String, String> companyNames,
+            java.util.Optional<Boolean> activeCompaniesOnly,
+            boolean validCertificatesOnly,
+            int limit
+    ) throws SQLException {
+        StringBuilder sql = new StringBuilder("""
+                SELECT cm.id, cm.company_id, cm.certificate_type, cm.status
+                FROM certificate_management cm
+                INNER JOIN company c ON c.company_id = cm.company_id AND c.deleteflag = 0
+                WHERE cm.deleteflag = 0
+                """);
+        if (activeCompaniesOnly.isPresent()) {
+            sql.append(activeCompaniesOnly.get()
+                    ? " AND c.operating_status = 0"
+                    : " AND c.operating_status <> 0");
+        }
+        if (validCertificatesOnly) {
+            sql.append(" AND (cm.status = 0 OR cm.status = '0' OR cm.status = '有效')");
+        }
+        sql.append(" ORDER BY c.company_name, cm.id LIMIT ?");
+        List<PersonCertificateStewardship> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next() && result.size() < limit) {
+                    String certRecordId = String.valueOf(rs.getObject("id"));
+                    String companyId = String.valueOf(rs.getObject("company_id"));
+                    String typeCode = rs.getString("certificate_type");
+                    String certTypeLabel = enumCatalog.resolveCertificateLabel(typeCode == null ? "" : typeCode);
+                    String statusLabel = normalizeStatus(rs.getObject("status"));
+                    String companyName = companyNames.getOrDefault(companyId, "");
+                    result.add(new PersonCertificateStewardship(
+                            certTypeLabel,
+                            companyName.isBlank() ? "（公司名称未加载）" : companyName,
+                            "登记证照",
+                            statusLabel,
+                            certRecordId,
+                            companyId,
+                            ""
+                    ));
+                }
+            }
+        }
+        return result;
     }
 
     private List<PersonCertificateStewardship> loadCertificatesForCompanies(
@@ -340,5 +429,124 @@ public class PersonCertificateQueryService {
             ));
         }
         return chunks;
+    }
+
+    private ContextChunk buildEmptyGlobalCertificateEvidence(
+            java.util.Optional<Boolean> activeCompaniesOnly,
+            boolean validCertificatesOnly
+    ) {
+        String snippet = "证照信息：全局检索未命中记录（0条）"
+                + formatOperatingScope(activeCompaniesOnly)
+                + (validCertificatesOnly ? "（证照状态=有效）" : "");
+        return ContextChunk.ofCompany(
+                "company-cert-global-empty",
+                "证照检索结果",
+                "人物证照",
+                snippet,
+                ROW_SCORE,
+                COMPANY_SOURCE,
+                PersonCertificateStewardship.SCHEMA_ID
+        );
+    }
+
+    private ContextChunk buildErrorGlobalCertificateEvidence(
+            java.util.Optional<Boolean> activeCompaniesOnly,
+            boolean validCertificatesOnly,
+            String error
+    ) {
+        String snippet = "证照信息：全局检索异常已降级"
+                + formatOperatingScope(activeCompaniesOnly)
+                + (validCertificatesOnly ? "（证照状态=有效）" : "")
+                + "; 异常=" + abbreviate(error);
+        return ContextChunk.ofCompany(
+                "company-cert-global-error",
+                "证照检索结果",
+                "人物证照",
+                snippet,
+                ROW_SCORE,
+                COMPANY_SOURCE,
+                PersonCertificateStewardship.SCHEMA_ID
+        );
+    }
+
+    private static String formatOperatingScope(java.util.Optional<Boolean> activeCompaniesOnly) {
+        if (activeCompaniesOnly.isEmpty()) {
+            return "";
+        }
+        return activeCompaniesOnly.get() ? "（主体状态范围=存续）" : "（主体状态范围=非存续）";
+    }
+
+    private ContextChunk buildEmptyCompanyCertificateEvidence(
+            List<String> companyNames,
+            int resolvedCompanyCount,
+            java.util.Optional<Boolean> activeCompaniesOnly
+    ) {
+        String scope = formatOperatingScope(activeCompaniesOnly);
+        String targets = summarizeCompanyTargets(companyNames);
+        String snippet = "证照信息：在指定主体范围内未检索到证照记录（0条）"
+                + scope
+                + "; 主体数=" + resolvedCompanyCount
+                + "; 查询对象=" + targets;
+        return ContextChunk.ofCompany(
+                "company-cert-empty",
+                "证照检索结果",
+                "人物证照",
+                snippet,
+                ROW_SCORE,
+                COMPANY_SOURCE,
+                PersonCertificateStewardship.SCHEMA_ID
+        );
+    }
+
+    private static String summarizeCompanyTargets(List<String> companyNames) {
+        if (companyNames == null || companyNames.isEmpty()) {
+            return "未提供主体";
+        }
+        List<String> cleaned = new ArrayList<>();
+        for (String name : companyNames) {
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            String item = name.trim();
+            if (!cleaned.contains(item)) {
+                cleaned.add(item);
+            }
+            if (cleaned.size() >= 5) {
+                break;
+            }
+        }
+        if (cleaned.isEmpty()) {
+            return "未提供主体";
+        }
+        return String.join("、", cleaned) + (companyNames.size() > cleaned.size() ? " 等" : "");
+    }
+
+    private ContextChunk buildErrorCompanyCertificateEvidence(
+            List<String> companyNames,
+            java.util.Optional<Boolean> activeCompaniesOnly,
+            String error
+    ) {
+        String scope = formatOperatingScope(activeCompaniesOnly);
+        String snippet = "证照信息：在指定主体范围内未检索到证照记录（查询异常已降级）"
+                + scope
+                + "; 查询对象=" + summarizeCompanyTargets(companyNames)
+                + "; 异常=" + abbreviate(error);
+        return ContextChunk.ofCompany(
+                "company-cert-error",
+                "证照检索结果",
+                "人物证照",
+                snippet,
+                ROW_SCORE,
+                COMPANY_SOURCE,
+                PersonCertificateStewardship.SCHEMA_ID
+        );
+    }
+
+    private static String abbreviate(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "unknown";
+        }
+        String oneLine = raw.replace('\n', ' ').replace('\r', ' ').trim();
+        return oneLine.length() <= 120 ? oneLine : oneLine.substring(0, 120) + "...";
     }
 }

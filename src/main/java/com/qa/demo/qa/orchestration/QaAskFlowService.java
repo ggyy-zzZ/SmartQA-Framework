@@ -19,6 +19,7 @@ import com.qa.demo.qa.intent.CompanyClarificationAdvisor;
 import com.qa.demo.qa.intent.FollowUpIntentContext;
 import com.qa.demo.qa.intent.IntentSlots;
 import com.qa.demo.qa.intent.IntentRouterService;
+import com.qa.demo.qa.intent.IntentScopeNormalizer;
 import com.qa.demo.qa.intent.IntentRoutingOutcome;
 import com.qa.demo.qa.intent.PersonClarificationAdvisor;
 import com.qa.demo.qa.intent.PersonNameResolution;
@@ -76,6 +77,7 @@ public class QaAskFlowService {
     private final TextEmbeddingService textEmbeddingService;
     private final EnterpriseCanonicalFactsRegistry canonicalFactsRegistry;
     private final NeedInferenceService needInferenceService;
+    private final IntentScopeNormalizer intentScopeNormalizer;
 
     public QaAskFlowService(
             IntentRouterService intentRouterService,
@@ -97,7 +99,8 @@ public class QaAskFlowService {
             QaAnswerGateService answerGateService,
             TextEmbeddingService textEmbeddingService,
             EnterpriseCanonicalFactsRegistry canonicalFactsRegistry,
-            NeedInferenceService needInferenceService
+            NeedInferenceService needInferenceService,
+            IntentScopeNormalizer intentScopeNormalizer
     ) {
         this.intentRouterService = intentRouterService;
         this.activeLearningService = activeLearningService;
@@ -119,6 +122,7 @@ public class QaAskFlowService {
         this.textEmbeddingService = textEmbeddingService;
         this.canonicalFactsRegistry = canonicalFactsRegistry;
         this.needInferenceService = needInferenceService;
+        this.intentScopeNormalizer = intentScopeNormalizer;
     }
 
     public Map<String, Object> run(
@@ -215,7 +219,7 @@ public class QaAskFlowService {
                 : FollowUpIntentContext.inactive();
         IntentRoutingOutcome routing = intentRouterService.decide(
                 intentQuestion, explicitCompanyHint, learnedFirst, followUpContext);
-        IntentDecision intentDecision = routing.decision();
+        IntentDecision intentDecision = intentScopeNormalizer.normalize(routing.decision(), question);
         InformationNeed informationNeed = needInferenceService.infer(question, intentDecision);
         progress.onThinking("intent_done", "意图识别完成。", null);
         progress.onThinking(

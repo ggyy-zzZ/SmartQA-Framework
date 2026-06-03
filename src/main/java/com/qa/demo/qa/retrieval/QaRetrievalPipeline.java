@@ -5,6 +5,7 @@ import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
+import com.qa.demo.qa.domain.ConversationScopeSupport;
 import com.qa.demo.qa.domain.EntityRef;
 import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
@@ -57,6 +58,7 @@ public class QaRetrievalPipeline {
     private final SqlPersonRoleDetailEnricher personRoleDetailEnricher;
     private final SqlCompanyFacetEnricher companyFacetEnricher;
     private final RetrievalGapLlmAdvisor gapLlmAdvisor;
+    private final ConversationScopeSupport scopeSupport;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -78,7 +80,8 @@ public class QaRetrievalPipeline {
             CatalogEvidenceRetriever catalogEvidenceRetriever,
             SqlPersonRoleDetailEnricher personRoleDetailEnricher,
             SqlCompanyFacetEnricher companyFacetEnricher,
-            RetrievalGapLlmAdvisor gapLlmAdvisor
+            RetrievalGapLlmAdvisor gapLlmAdvisor,
+            ConversationScopeSupport scopeSupport
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -100,6 +103,7 @@ public class QaRetrievalPipeline {
         this.personRoleDetailEnricher = personRoleDetailEnricher;
         this.companyFacetEnricher = companyFacetEnricher;
         this.gapLlmAdvisor = gapLlmAdvisor;
+        this.scopeSupport = scopeSupport;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -845,11 +849,19 @@ public class QaRetrievalPipeline {
             return;
         }
         int maxRows = resolvePersonCertificateMaxRows(intent);
-        boolean activeCompaniesOnly = question != null && question.contains("存续");
-        if (intent.hasCompanyHints()) {
+        java.util.Optional<Boolean> operatingStatusFilter = scopeSupport.resolveActiveCompaniesOnly(question);
+        boolean validCertificatesOnly = requiresValidCertificateFilter(question);
+        boolean unscopedList = scopeSupport.isUnscopedListQuestion(question);
+        if (unscopedList && !intent.hasCompanyHints()) {
+            appendUnique(merged, personCertificateQueryService.retrieveGlobalFiltered(
+                    operatingStatusFilter,
+                    validCertificatesOnly,
+                    maxRows
+            ));
+        } else if (intent.hasCompanyHints()) {
             appendUnique(merged, personCertificateQueryService.retrieveByCompanyNames(
                     intent.companyHints(),
-                    activeCompaniesOnly,
+                    operatingStatusFilter,
                     maxRows
             ));
         }
@@ -890,6 +902,16 @@ public class QaRetrievalPipeline {
             return base;
         }
         return new RetrievalResult("person_certificate_partial_" + base.retrievalSource(), merged);
+    }
+
+    private static boolean requiresValidCertificateFilter(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        return question.contains("有效")
+                && (question.contains("证照") || question.contains("许可证")
+                || question.contains("执照") || question.contains("备案")
+                || question.contains("证书") || question.contains("证"));
     }
 
     private static boolean isStructuredCertificateSource(String source) {
