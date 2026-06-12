@@ -1,7 +1,18 @@
-# 仅 Qdrant（向量库）。Neo4j、MySQL 由本机自行启动，勿与本 compose 重复占端口。
-# Neo4j 示例：D:\Tools\neo\neo4j-chs-community-2026.03.1-windows\bin\neo4j.bat console
-# MySQL：本机 3306，库 assistant，首次可执行 data/sql/mysql/assistant_bootstrap.sql
+# Qdrant + Neo4j 5.x（本地 Browser：http://localhost:7474/browser/）。
+# MySQL 由本机自行启动（3306，库 assistant，首次可执行 data/sql/mysql/assistant_bootstrap.sql）。
+# 若仍使用 Neo4j 2026 本机版，请先停止以免占用 7474/7687。
 services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: demo-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: none
+    volumes:
+      - demo-neo4j-data:/data
+
   qdrant:
     image: qdrant/qdrant:latest
     container_name: demo-qdrant
@@ -52,5 +63,6 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
 volumes:
+  demo-neo4j-data:
   demo-qdrant-data:
   demo-kafka-data:

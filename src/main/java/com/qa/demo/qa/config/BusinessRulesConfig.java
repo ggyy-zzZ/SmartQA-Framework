@@ -254,16 +254,49 @@ public class BusinessRulesConfig {
         public void setStructuredQueries(List<StructuredQueryConfig> s) { this.structuredQueries = s; }
     }
 
+    public static class CertificateRetrievalConfig {
+        private String personQueryConfigId = "person_stewardship";
+        private String companyQueryConfigId = "certificate_by_company";
+        private String graphInstanceSource = "neo4j-certificate-instance";
+        private boolean forbidUnscopedGlobalScan = true;
+        private List<String> activeCompanyOperatingStatusCodes = new ArrayList<>();
+        private List<String> activeCertificateStatusValues = new ArrayList<>();
+
+        public String getPersonQueryConfigId() { return personQueryConfigId; }
+        public void setPersonQueryConfigId(String id) { this.personQueryConfigId = id; }
+        public String getCompanyQueryConfigId() { return companyQueryConfigId; }
+        public void setCompanyQueryConfigId(String id) { this.companyQueryConfigId = id; }
+        public String getGraphInstanceSource() { return graphInstanceSource; }
+        public void setGraphInstanceSource(String s) { this.graphInstanceSource = s; }
+        public boolean isForbidUnscopedGlobalScan() { return forbidUnscopedGlobalScan; }
+        public void setForbidUnscopedGlobalScan(boolean f) { this.forbidUnscopedGlobalScan = f; }
+        public List<String> getActiveCompanyOperatingStatusCodes() { return activeCompanyOperatingStatusCodes; }
+        public void setActiveCompanyOperatingStatusCodes(List<String> c) { this.activeCompanyOperatingStatusCodes = c; }
+        public List<String> getActiveCertificateStatusValues() { return activeCertificateStatusValues; }
+        public void setActiveCertificateStatusValues(List<String> v) { this.activeCertificateStatusValues = v; }
+    }
+
+    private CertificateRetrievalConfig certificateRetrieval = new CertificateRetrievalConfig();
+
+    public CertificateRetrievalConfig getCertificateRetrieval() { return certificateRetrieval; }
+    public void setCertificateRetrieval(CertificateRetrievalConfig c) { this.certificateRetrieval = c; }
+
     public static class StructuredQueryConfig {
         private String id;
         private String description;
         private String table;
         private String deleteflagColumn = "deleteflag";
         private String entityIdColumn = "id";
+        /** employee_ids（角色列匹配）| company_ids（scopeColumn IN 过滤） */
+        private String scopeKind = "employee_ids";
+        private String scopeColumn = "company_id";
+        private List<String> boundQueryTypes = new ArrayList<>();
+        private List<ProjectionColumnConfig> projections = new ArrayList<>();
         private List<String> displayNameColumns = new ArrayList<>();
         private List<RoleColumnConfig> roleColumns = new ArrayList<>();
         private Map<String, String> enumMappings = new HashMap<>();
         private Map<String, String> statusNormalization = new HashMap<>();
+        private List<String> statusActiveValues = new ArrayList<>();
         private List<String> supplementalTables = new ArrayList<>();
 
         public String getId() { return id; }
@@ -286,6 +319,48 @@ public class BusinessRulesConfig {
         public void setStatusNormalization(Map<String, String> s) { this.statusNormalization = s; }
         public List<String> getSupplementalTables() { return supplementalTables; }
         public void setSupplementalTables(List<String> s) { this.supplementalTables = s; }
+        public String getScopeKind() { return scopeKind; }
+        public void setScopeKind(String s) { this.scopeKind = s; }
+        public String getScopeColumn() { return scopeColumn; }
+        public void setScopeColumn(String c) { this.scopeColumn = c; }
+        public List<String> getBoundQueryTypes() { return boundQueryTypes; }
+        public void setBoundQueryTypes(List<String> t) { this.boundQueryTypes = t; }
+        public List<ProjectionColumnConfig> getProjections() { return projections; }
+        public void setProjections(List<ProjectionColumnConfig> p) { this.projections = p; }
+        public List<String> getStatusActiveValues() { return statusActiveValues; }
+        public void setStatusActiveValues(List<String> v) { this.statusActiveValues = v; }
+
+        public boolean appliesToQueryType(String queryType) {
+            if (queryType == null || queryType.isBlank()) {
+                return false;
+            }
+            if (id != null && queryType.equalsIgnoreCase(id)) {
+                return true;
+            }
+            for (String bound : boundQueryTypes) {
+                if (bound != null && queryType.equalsIgnoreCase(bound)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public boolean isCompanyScope() {
+            return "company_ids".equalsIgnoreCase(scopeKind);
+        }
+    }
+
+    public static class ProjectionColumnConfig {
+        private String column;
+        private String label;
+        private String enumField;
+
+        public String getColumn() { return column; }
+        public void setColumn(String c) { this.column = c; }
+        public String getLabel() { return label; }
+        public void setLabel(String l) { this.label = l; }
+        public String getEnumField() { return enumField; }
+        public void setEnumField(String e) { this.enumField = e; }
     }
 
     public static class RoleColumnConfig {

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kmodule xmlns="http://www.drools.org/xsd/kmodule">
+    <kbase name="qa-kbase" packages="rules.qa">
+        <ksession name="qa-intent-routing" type="stateless"/>
+        <ksession name="qa-evidence-merge" type="stateful"/>
+        <ksession name="qa-answer-gate"    type="stateless"/>
+        <ksession name="qa-clarification"  type="stateless"/>
+    </kbase>
+</kmodule>

@@ -1,6 +1,7 @@
 package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.constraint.ConstraintSet;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.embedding.TextEmbeddingService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -47,18 +50,33 @@ public class VectorContextService {
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, int topK) {
+        return retrieveTopChunks(question, topK, null);
+    }
+
+    /**
+     * 约束感知召回：传入 {@link ConstraintSet} 时，构造 Qdrant {@code Filter must}，
+     * 强制只返回满足 region/office 约束的点（D3："在北京" = 注册地 OR 办公地）。
+     * <p>
+     * Qdrant payload 字段：{@code registeredAreaCode} / {@code officeAreaCode}（string 数组）。
+     * 老 collection 若字段缺失，Qdrant 端 matchAny 会过滤掉所有点（保守行为，符合 R1 缓解）。
+     */
+    public List<ContextChunk> retrieveTopChunks(String question, int topK, ConstraintSet constraint) {
         if (!properties.isVectorEnabled()) {
             return List.of();
         }
         int limit = Math.max(1, Math.min(topK, 30));
         try {
             List<Double> vector = textEmbeddingService.embed(question);
-            Map<String, Object> body = Map.of(
-                    "vector", vector,
-                    "limit", limit,
-                    "with_payload", true,
-                    "with_vector", false
-            );
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("vector", vector);
+            body.put("limit", limit);
+            body.put("with_payload", true);
+            body.put("with_vector", false);
+
+            Map<String, Object> filter = buildRegionFilter(constraint);
+            if (filter != null) {
+                body.put("filter", filter);
+            }
 
             String response = restClient.post()
                     .uri(properties.getQdrantUrl()
@@ -94,6 +112,51 @@ public class VectorContextService {
             log.warn("vector retrieve failed (provider={}): {}", textEmbeddingService.activeProvider(), e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 构造 Qdrant payload 过滤：must=[MatchAny("registeredAreaCode", codes),
+     * MatchAny("officeAreaCode", codes)]。两个条件取并集（满足任一即命中）。
+     */
+    private Map<String, Object> buildRegionFilter(ConstraintSet c) {
+        if (c == null || !c.hasRegion()) {
+            return null;
+        }
+        List<String> allCodes = new ArrayList<>();
+        if (c.hasRegion()) {
+            allCodes.addAll(c.regionCodes());
+            allCodes.addAll(c.officeRegionCodes());
+        }
+        if (allCodes.isEmpty()) {
+            return null;
+        }
+        List<Map<String, Object>> must = new ArrayList<>();
+        if (!c.regionCodes().isEmpty()) {
+            must.add(matchAnyField("registeredAreaCode", c.regionCodes()));
+        }
+        if (!c.officeRegionCodes().isEmpty()) {
+            must.add(matchAnyField("officeAreaCode", c.officeRegionCodes()));
+        }
+        if (must.isEmpty()) {
+            return null;
+        }
+        // 多个 must 子句之间是 AND；每个 must 内"field matchAny"取并集；
+        // 用户语义"在北京"= 注册地 OR 办公地 → 我们用 should(OR) 包裹两个 must。
+        if (must.size() == 1) {
+            Map<String, Object> f = new HashMap<>();
+            f.put("must", must);
+            return f;
+        }
+        Map<String, Object> f = new HashMap<>();
+        f.put("should", must);
+        return f;
+    }
+
+    private Map<String, Object> matchAnyField(String field, List<String> codes) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("key", field);
+        m.put("match", Map.of("any", codes));
+        return m;
     }
 
     private String truncate(String value, int max) {

@@ -2,6 +2,9 @@ package com.qa.demo.qa.cdc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.qa.demo.qa.cdc.graph.CdcGraphRelationshipSync;
+import com.qa.demo.qa.config.GraphNodeDefinition;
+import com.qa.demo.qa.config.GraphNodeDefinitionsProperties;
+import com.qa.demo.qa.config.GraphNodeFieldSpec;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Value;
@@ -10,11 +13,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * CDC 事件写入 Neo4j 图谱。
- * 节点属性仍按表写入；人-企等关系由 {@link CdcGraphRelationshipSync} 按 qa/cdc-graph-sync.json 驱动。
+ *
+ * <p>节点属性来源：
+ * <ul>
+ *   <li>company / employee 走 {@link com.qa.demo.qa.config.GraphNodeDefinitionsProperties} 白名单通用遍历，
+ *       由 {@link CdcFieldTruncator} 截断长文本，按白名单声明的 enumDictKey 解析中文标签。</li>
+ *   <li>branch / partner 仍使用字段硬编码（不进入富图 P0 范围）。</li>
+ * </ul>
+ * 人-企等关系由 {@link CdcGraphRelationshipSync} 按 qa/cdc-graph-sync.json 驱动。
  */
 @Component
 public class Neo4jCdcWriter {
@@ -24,15 +37,27 @@ public class Neo4jCdcWriter {
     private final Driver driver;
     private final CdcSyncAuditLogger auditLogger;
     private final CdcGraphRelationshipSync relationshipSync;
+    private final CdcFieldEnricher fieldEnricher;
+    private final CdcPersonDisplayResolver personDisplayResolver;
+    private final CdcFieldTruncator truncator;
+    private final GraphNodeDefinitionsProperties definitions;
 
     public Neo4jCdcWriter(
             Driver driver,
             CdcSyncAuditLogger auditLogger,
-            CdcGraphRelationshipSync relationshipSync
+            CdcGraphRelationshipSync relationshipSync,
+            CdcFieldEnricher fieldEnricher,
+            CdcPersonDisplayResolver personDisplayResolver,
+            CdcFieldTruncator truncator,
+            GraphNodeDefinitionsProperties definitions
     ) {
         this.driver = driver;
         this.auditLogger = auditLogger;
         this.relationshipSync = relationshipSync;
+        this.fieldEnricher = fieldEnricher;
+        this.personDisplayResolver = personDisplayResolver;
+        this.truncator = truncator;
+        this.definitions = definitions;
     }
 
     public void write(String table, String op, JsonNode after, JsonNode before) {
@@ -104,47 +129,65 @@ public class Neo4jCdcWriter {
             return;
         }
 
+        Map<String, Object> params = new HashMap<>();
+        params.put("companyId", v(companyId));
+
+        GraphNodeDefinition def = definitions.companyDef();
+        if (def != null) {
+            for (GraphNodeFieldSpec spec : def.properties()) {
+                String raw = CdcTdcompFields.firstText(row, spec.columns().toArray(new String[0]));
+                if (raw == null) {
+                    continue;
+                }
+                String label = fieldEnricher.enumLabel(spec.enumDictKey(), raw);
+                CdcFieldTruncator.Truncation codeTrunc = truncator.truncateBySpec(raw, spec);
+                params.put(spec.name(), v(label));
+                params.put(spec.name() + "Code", v(codeTrunc.value()));
+            }
+        }
+
         session.run("""
             MERGE (c:Company {companyId: $companyId})
-            SET c.name = $name,
-                c.shortName = $shortName,
-                c.creditCode = $creditCode,
-                c.status = $status,
-                c.entityType = $entityType,
-                c.entityCategory = $entityCategory,
-                c.modifytime = $modifytime
+            SET c += $props
             """,
-                Map.of(
-                        "companyId", v(companyId),
-                        "name", v(CdcTdcompFields.firstText(row, "company_name", "name")),
-                        "shortName", v(CdcTdcompFields.firstText(row, "company_short_name", "short_name")),
-                        "creditCode", v(CdcTdcompFields.creditCode(row)),
-                        "status", v(CdcTdcompFields.operatingStatus(row)),
-                        "entityType", v(CdcTdcompFields.entityType(row)),
-                        "entityCategory", v(CdcTdcompFields.entityCategory(row)),
-                        "modifytime", v(CdcTdcompFields.firstText(row, "modifytime", "updated_at"))
-                ));
+                Map.of("companyId", v(companyId), "props", params));
 
         log.debug("[Neo4j CDC] Upserted Company: {}", companyId);
     }
 
     private void upsertPerson(Session session, JsonNode row) {
-        String personId = CdcEntityIdResolver.resolveEntityId("employee", row);
-        String name = CdcTdcompFields.employeeName(row);
-        String personKey = (personId != null && !personId.isBlank())
-                ? personId
-                : "NAME::" + (name != null ? name : "UNKNOWN");
+        CdcPersonDisplay person = personDisplayResolver.fromEmployeeRow(row);
+        String personKey = (person.personId() != null && !person.personId().isBlank())
+                ? person.personId()
+                : "NAME::" + (person.name() != null ? person.name() : "UNKNOWN");
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("personKey", v(personKey));
+
+        GraphNodeDefinition def = definitions.personDef();
+        if (def != null) {
+            for (GraphNodeFieldSpec spec : def.properties()) {
+                String raw = CdcTdcompFields.firstText(row, spec.columns().toArray(new String[0]));
+                if (raw == null) {
+                    continue;
+                }
+                String label = fieldEnricher.enumLabel(spec.enumDictKey(), raw);
+                CdcFieldTruncator.Truncation codeTrunc = truncator.truncateBySpec(raw, spec);
+                params.put(spec.name(), v(label));
+                params.put(spec.name() + "Code", v(codeTrunc.value()));
+            }
+        } else {
+            params.put("name", v(person.name()));
+            params.put("anotherName", v(person.anotherName()));
+            params.put("displayName", v(person.displayName()));
+        }
+        params.put("personId", v(person.personId()));
 
         session.run("""
             MERGE (p:Person {personKey: $personKey})
-            SET p.name = $name,
-                p.personId = $personId
+            SET p += $props
             """,
-                Map.of(
-                        "personKey", v(personKey),
-                        "name", v(name),
-                        "personId", v(personId)
-                ));
+                Map.of("personKey", v(personKey), "props", params));
 
         log.debug("[Neo4j CDC] Upserted Person: {}", personKey);
     }
@@ -156,15 +199,18 @@ public class Neo4jCdcWriter {
             return;
         }
 
+        String statusRaw = CdcTdcompFields.operatingStatus(row);
         session.run("""
             MERGE (b:Branch {branchId: $branchId})
             SET b.name = $name,
-                b.status = $status
+                b.status = $status,
+                b.statusCode = $statusCode
             """,
                 Map.of(
                         "branchId", v(branchId),
                         "name", v(CdcTdcompFields.firstText(row, "branch_name", "name")),
-                        "status", v(CdcTdcompFields.operatingStatus(row))
+                        "status", v(fieldEnricher.branchStatusLabel(row)),
+                        "statusCode", v(statusRaw)
                 ));
 
         log.debug("[Neo4j CDC] Upserted Branch: {}", branchId);

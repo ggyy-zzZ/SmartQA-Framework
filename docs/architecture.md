@@ -389,7 +389,7 @@ server.port=8080
 # MiniMax LLM
 qa.assistant.api-url=https://api.minimaxi.com/v1/text/chatcompletion_v2
 qa.assistant.api-key=${MINIMAX_API_KEY:}
-qa.assistant.model=MiniMax-M2.7
+qa.assistant.model=MiniMax-M3
 
 # 向量检索
 qa.assistant.vector-enabled=true

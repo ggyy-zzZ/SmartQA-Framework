@@ -3,6 +3,9 @@ package com.qa.demo.qa.core;
 /**
  * 信息需求：描述用户要什么形态的信息（与具体业务场景解耦）。
  * 由配置化规则或 LLM 推断，驱动检索目录匹配与闸门。
+ * <p>
+ * P0-S2 起：facet 字段保留 String，driving facet 在 DRL/规则中按字符串相等比较即可；
+ * 不引入 facetEnum，避免无谓的扩展（facet 是窄枚举空间，1-2 个 step 内即可统一）。
  */
 public record InformationNeed(
         String facet,

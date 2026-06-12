@@ -32,6 +32,8 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- 3.0.8+ 修复 MySQL 8.4 移除 SHOW MASTER STATUS（DBZ-7838） -->
         <debezium.version>3.0.8.Final</debezium.version>
+        <!-- Drools 9.44.x：兼容 Spring Boot 3.5 / Java 21 / jakarta -->
+        <drools.version>9.44.0.Final</drools.version>
     </properties>
     <dependencies>
         <dependency>
@@ -98,6 +100,34 @@
             <groupId>io.debezium</groupId>
             <artifactId>debezium-storage-kafka</artifactId>
             <version>${debezium.version}</version>
+        </dependency>
+
+        <!-- Drools 规则引擎（P0 引入，启动期 KieClasspathContainer 加载） -->
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-core</artifactId>
+            <version>${drools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-compiler</artifactId>
+            <version>${drools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-mvel</artifactId>
+            <version>${drools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.kie</groupId>
+            <artifactId>kie-api</artifactId>
+            <version>${drools.version}</version>
+        </dependency>
+        <!-- P0-S1 修复：kmodule.xml 解析依赖（启动期 ClasspathKieProject 必需） -->
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-xml-support</artifactId>
+            <version>${drools.version}</version>
         </dependency>
     </dependencies>
 

@@ -131,7 +131,7 @@ src/main/java/com/qa/demo/
 
 ```properties
 # LLM 配置
-qa.assistant.model=MiniMax-M2.7
+qa.assistant.model=MiniMax-M3
 qa.assistant.api-url=https://api.minimaxi.com/v1/text/chatcompletion_v2
 qa.assistant.api-key=${MINIMAX_API_KEY:}
 

@@ -1,0 +1,19 @@
+// P0-S3：替换 QaAnswerGateService.hasEvidenceForSchemas 的 schema 命中逻辑。
+// 注意：DRL 仅写出"已命中哪些 schema"，是否所有 required 都命中由 Java 端汇总。
+package rules.qa.answer_gate
+
+import com.qa.demo.qa.rules.fact.EvidenceFact
+import com.qa.demo.qa.rules.fact.GateFact
+import com.qa.demo.qa.rules.fact.QaContextFact
+import com.qa.demo.qa.rules.QaQueryType
+
+// 把 evidence schema 写入 GateFact.schemaIds（DRL 端不重复判断，保留在 Java）。
+rule "qa.gate.schema-match.collect"
+    salience 50
+    when
+        $gate: GateFact()
+        $e:    EvidenceFact(evidenceSchema != null, evidenceSchema != "")
+    then
+        $gate.getSchemaIds().add($e.getEvidenceSchema());
+        update($gate);
+end

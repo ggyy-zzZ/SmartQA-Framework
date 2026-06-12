@@ -1,4 +1,6 @@
 {
+  "version": 3,
+  "schemaVersion": "1.0",
   "intentRules": {
     "personNamePatterns": {
       "beforeAction": [
@@ -11,10 +13,28 @@
         "^([\\u4e00-\\u9fa5]{2,3})(?=[，,。；;：:？?！!、\\s]|离职|负责|管|是|在|的|有)"
       ],
       "pronounBlocklist": [
-        "她", "他", "它", "其", "这", "那", "谁", "哪", "啥", "什"
+        "她",
+        "他",
+        "它",
+        "其",
+        "这",
+        "那",
+        "谁",
+        "哪",
+        "啥",
+        "什"
       ],
       "honorificSuffixes": [
-        "先生", "女士", "小姐", "老师", "经理", "总监", "总裁", "董事", "总", "工"
+        "先生",
+        "女士",
+        "小姐",
+        "老师",
+        "经理",
+        "总监",
+        "总裁",
+        "董事",
+        "总",
+        "工"
       ]
     },
     "queryTypeConditions": [
@@ -22,8 +42,20 @@
         "id": "person_role_list",
         "description": "人物角色列表查询",
         "keywords": [
-          "任职", "担任", "职位", "角色", "负责", "管", "监管",
-          "法人", "法定代表人", "董事", "监事", "股东", "哪些主体", "主体"
+          "任职",
+          "担任",
+          "职位",
+          "角色",
+          "负责",
+          "管",
+          "监管",
+          "法人",
+          "法定代表人",
+          "董事",
+          "监事",
+          "股东",
+          "哪些主体",
+          "主体"
         ],
         "queryType": "person_role_list",
         "requiresPerson": true,
@@ -37,8 +69,20 @@
         "id": "person_certificate_list",
         "description": "人物证照列表查询",
         "keywords": [
-          "证照", "许可证", "执照", "资质", "备案", "证书", "证",
-          "负责", "管", "列出", "多少", "什么", "啥", "涉及"
+          "证照",
+          "许可证",
+          "执照",
+          "资质",
+          "备案",
+          "证书",
+          "证",
+          "负责",
+          "管",
+          "列出",
+          "多少",
+          "什么",
+          "啥",
+          "涉及"
         ],
         "queryType": "person_certificate_list",
         "requiresPerson": true,
@@ -54,7 +98,13 @@
         "id": "company_certificate",
         "description": "企业证照查询",
         "keywords": [
-          "证照", "许可证", "执照", "资质", "备案", "证书", "证", "印章", "公章"
+          "证照",
+          "许可证",
+          "执照",
+          "资质",
+          "备案",
+          "证书",
+          "证"
         ],
         "queryType": "company_certificate",
         "requiresPerson": false,
@@ -68,7 +118,12 @@
         "id": "company_profile",
         "description": "企业概况查询",
         "keywords": [
-          "总部", "母公司", "总公司", "简介", "概况", "基本情况"
+          "总部",
+          "母公司",
+          "总公司",
+          "简介",
+          "概况",
+          "基本情况"
         ],
         "queryType": "company_profile",
         "requiresPerson": false,
@@ -82,13 +137,38 @@
         "id": "entity_correction",
         "description": "实体纠偏查询",
         "keywords": [
-          "不对", "不是", "错了", "错啦", "说错了",
-          "你搞错了", "搞错了", "纠正一下", "更正",
-          "应该是", "其实是", "正确是", "应当是"
+          "不对",
+          "不是",
+          "错了",
+          "错啦",
+          "说错了",
+          "你搞错了",
+          "搞错了",
+          "纠正一下",
+          "更正",
+          "应该是",
+          "其实是",
+          "正确是",
+          "应当是"
         ],
         "queryType": "entity_correction",
         "requiresPerson": false
       }
+    ]
+  },
+  "certificateRetrieval": {
+    "personQueryConfigId": "person_stewardship",
+    "companyQueryConfigId": "certificate_by_company",
+    "graphInstanceSource": "neo4j-certificate-instance",
+    "forbidUnscopedGlobalScan": true,
+    "activeCompanyOperatingStatusCodes": [
+      "1",
+      "2"
+    ],
+    "activeCertificateStatusValues": [
+      "0",
+      "有效",
+      "生效中"
     ]
   },
   "dataSources": {
@@ -96,10 +176,16 @@
       {
         "id": "person_stewardship",
         "description": "人物职责查询 - 从业务库查询人员的监管/保管/执行角色",
+        "scopeKind": "employee_ids",
+        "boundQueryTypes": [
+          "person_certificate_list"
+        ],
         "table": "certificate_management",
         "deleteflagColumn": "deleteflag",
         "entityIdColumn": "id",
-        "displayNameColumns": ["company_name"],
+        "displayNameColumns": [
+          "company_name"
+        ],
         "roleColumns": [
           {
             "column": "supervisors",
@@ -127,7 +213,53 @@
           "无效": "失效",
           "失效": "失效"
         },
-        "supplementalTables": ["company", "employee"]
+        "supplementalTables": [
+          "company",
+          "employee"
+        ]
+      },
+      {
+        "id": "certificate_by_company",
+        "description": "企业证照实例 - 按公司主体查询",
+        "scopeKind": "company_ids",
+        "scopeColumn": "company_id",
+        "boundQueryTypes": [
+          "company_certificate"
+        ],
+        "table": "certificate_management",
+        "deleteflagColumn": "deleteflag",
+        "entityIdColumn": "id",
+        "projections": [
+          {
+            "column": "certificate_type",
+            "label": "证照类型",
+            "enumField": "certificateTypes"
+          },
+          {
+            "column": "status",
+            "label": "状态",
+            "enumField": "licenseStatus"
+          },
+          {
+            "column": "valid_to",
+            "label": "有效期止"
+          }
+        ],
+        "statusNormalization": {
+          "0": "有效",
+          "1": "失效",
+          "有效": "有效",
+          "无效": "失效",
+          "失效": "失效"
+        },
+        "statusActiveValues": [
+          "0",
+          "有效",
+          "生效中"
+        ],
+        "supplementalTables": [
+          "company"
+        ]
       },
       {
         "id": "company_info",
@@ -135,7 +267,9 @@
         "table": "company",
         "deleteflagColumn": "deleteflag",
         "entityIdColumn": "company_id",
-        "displayNameColumns": ["company_name"],
+        "displayNameColumns": [
+          "company_name"
+        ],
         "roleColumns": [],
         "enumMappings": {},
         "statusNormalization": {},
@@ -147,11 +281,15 @@
         "table": "employee",
         "deleteflagColumn": "deleteflag",
         "entityIdColumn": "id",
-        "displayNameColumns": ["name"],
+        "displayNameColumns": [
+          "name"
+        ],
         "roleColumns": [],
         "enumMappings": {},
         "statusNormalization": {},
-        "supplementalTables": ["company"]
+        "supplementalTables": [
+          "company"
+        ]
       }
     ]
   },
@@ -160,9 +298,19 @@
       "id": "company_correction",
       "description": "公司纠偏 - 用户纠正公司名称时过滤到精确匹配",
       "prefixPatterns": [
-        "^不对", "^不是", "^错了", "^错啦", "^说错了",
-        "^你搞错了", "^搞错了", "^纠正一下", "^更正",
-        "^应该是", "^其实是", "^正确是", "^应当是"
+        "^不对",
+        "^不是",
+        "^错了",
+        "^错啦",
+        "^说错了",
+        "^你搞错了",
+        "^搞错了",
+        "^纠正一下",
+        "^更正",
+        "^应该是",
+        "^其实是",
+        "^正确是",
+        "^应当是"
       ],
       "entityPattern": "(?:总部|母公司|总公司|主体)(?:是|为|：|:)?\\s*([^，,。；;？?！!\\n]+(?:有限公司|有限责任公司|股份有限公司|分公司|公司))",
       "entityType": "company",
@@ -174,35 +322,141 @@
         "公司"
       ],
       "relatedKeywords": [
-        "分公司", "子公司", "下属",
-        "有哪些公司", "哪些主体", "分支机构"
+        "分公司",
+        "子公司",
+        "下属",
+        "有哪些公司",
+        "哪些主体",
+        "分支机构"
       ]
     }
   ],
   "conversationScope": {
     "breakContextPhrases": [
-      "无关上文", "与上文无关", "和上文无关", "不关联上文", "不参考上文",
-      "忽略上文", "忽略之前", "忽略刚才", "忽略之前的问题", "不要结合上文",
-      "不看上文", "脱离上文", "独立问题", "独立提问", "新问题", "新话题",
-      "重新开始", "换个话题", "另起一题"
+      "无关上文",
+      "与上文无关",
+      "和上文无关",
+      "不关联上文",
+      "不参考上文",
+      "忽略上文",
+      "忽略之前",
+      "忽略刚才",
+      "忽略之前的问题",
+      "不要结合上文",
+      "不看上文",
+      "脱离上文",
+      "独立问题",
+      "独立提问",
+      "新问题",
+      "新话题",
+      "重新开始",
+      "换个话题",
+      "另起一题"
     ],
-    "globalListMarkers": ["所有", "全部", "凡", "列举", "列出", "清单"],
-    "globalListContextKeywords": ["证照", "许可证", "执照", "备案", "证书", "证", "主体"],
+    "globalListMarkers": [
+      "所有",
+      "全部",
+      "凡",
+      "列举",
+      "列出",
+      "清单"
+    ],
+    "globalListContextKeywords": [
+      "证照",
+      "许可证",
+      "执照",
+      "备案",
+      "证书",
+      "证",
+      "主体"
+    ],
     "continuationMarkers": [
-      "它", "其", "该", "这家", "那家", "上面", "刚才", "之前", "接着", "继续", "再", "还有", "同样",
-      "那", "然后", "另外", "顺便", "对吧", "是不是", "对吗", "呢", "吗", "嘛", "啥", "多少", "几个",
-      "具体", "详细", "分别", "哪些", "什么", "谁", "不对", "错了"
+      "它",
+      "其",
+      "该",
+      "这家",
+      "那家",
+      "上面",
+      "刚才",
+      "之前",
+      "接着",
+      "继续",
+      "再",
+      "还有",
+      "同样",
+      "那",
+      "然后",
+      "另外",
+      "顺便",
+      "对吧",
+      "是不是",
+      "对吗",
+      "呢",
+      "吗",
+      "嘛",
+      "啥",
+      "多少",
+      "几个",
+      "具体",
+      "详细",
+      "分别",
+      "哪些",
+      "什么",
+      "谁",
+      "不对",
+      "错了"
     ],
     "continuationExcludePatterns": [
-      "不是存续", "不是在业", "非存续", "非在业", "忽略之前", "忽略刚才", "所有", "全部"
+      "不是存续",
+      "不是在业",
+      "非存续",
+      "非在业",
+      "忽略之前",
+      "忽略刚才",
+      "所有",
+      "全部"
     ],
     "continuationMaxLength": 80,
     "operatingStatus": {
-      "activeMarkers": ["存续", "在业", "开业", "正常"],
-      "inactiveMarkers": ["吊销", "注销", "失效", "停业", "撤销", "清算", "迁出", "异常"],
-      "negationPrefixes": ["非", "不是", "并非", "不属于"],
-      "inactivePhrases": ["不是存续", "不是在业", "非存续", "非在业", "主体不是存续", "主体不是在业"],
-      "certificateContextKeywords": ["证照", "许可证", "执照", "备案", "证书", "证", "资质"]
+      "activeMarkers": [
+        "存续",
+        "在业",
+        "开业",
+        "正常"
+      ],
+      "inactiveMarkers": [
+        "吊销",
+        "注销",
+        "失效",
+        "停业",
+        "撤销",
+        "清算",
+        "迁出",
+        "异常"
+      ],
+      "negationPrefixes": [
+        "非",
+        "不是",
+        "并非",
+        "不属于"
+      ],
+      "inactivePhrases": [
+        "不是存续",
+        "不是在业",
+        "非存续",
+        "非在业",
+        "主体不是存续",
+        "主体不是在业"
+      ],
+      "certificateContextKeywords": [
+        "证照",
+        "许可证",
+        "执照",
+        "备案",
+        "证书",
+        "证",
+        "资质"
+      ]
     }
   },
   "intentRouting": {
@@ -218,10 +472,26 @@
       "person_certificate_list": "hybrid"
     },
     "followUpReferenceMarkers": [
-      "这些", "上面", "刚才", "存续", "主体", "它们", "那些", "这几", "那几"
+      "这些",
+      "上面",
+      "刚才",
+      "存续",
+      "主体",
+      "它们",
+      "那些",
+      "这几",
+      "那几"
     ],
     "filterRulePrefixes": [
-      "只要", "凡是", "如果", "对于", "关于", "按照", "按", "不是存续", "不是在业"
+      "只要",
+      "凡是",
+      "如果",
+      "对于",
+      "关于",
+      "按照",
+      "按",
+      "不是存续",
+      "不是在业"
     ],
     "queryTypeSlotRequirements": [
       {
@@ -272,29 +542,72 @@
     "requiredEvidenceByQueryType": [
       {
         "queryType": "person_certificate_list",
-        "schemaIds": ["person_certificate_v1"]
+        "schemaIds": [
+          "person_certificate_v1"
+        ]
       },
       {
         "queryType": "company_certificate",
-        "schemaIds": ["person_certificate_v1"]
+        "schemaIds": [
+          "person_certificate_v1"
+        ]
       }
     ]
   },
   "retrievalThresholds": {
     "sourceThresholds": [
       {
-        "source": "mysql-person-certificate",
-        "queryType": "person_certificate_list",
-        "minCount": 1,
-        "description": "MySQL证照记录>=1时截断"
-      },
-      {
         "source": "mysql-structured-person_stewardship",
         "queryType": "person_certificate_list",
         "minCount": 1,
         "description": "配置化结构化查询返回>=1时截断"
+      },
+      {
+        "source": "mysql-structured-certificate_by_company",
+        "queryType": "company_certificate",
+        "minCount": 1,
+        "description": "配置化企业证照实例>=1时截断"
+      },
+      {
+        "source": "neo4j-certificate-instance",
+        "queryType": "company_certificate",
+        "minCount": 1,
+        "description": "图谱证照实例>=1时截断"
       }
-    ]
+    ],
+    "preferActiveLearning": {
+      "maxLengthShort": 14,
+      "minScoreStrongLearned": 2.5,
+      "memoryLikeKeywords": [
+        "总部",
+        "总公司",
+        "是啥",
+        "是什么",
+        "还记得",
+        "记得"
+      ]
+    },
+    "activeLearningMerge": {
+      "explicitCompanyHintThreshold": 2.0,
+      "implicitThreshold": 1.0,
+      "prefixLimit": 4
+    },
+    "answerGate": {
+      "minTopScore": 3.0,
+      "minEvidenceCount": 1,
+      "llmAssistConfidence": 0.7
+    },
+    "trim": {
+      "default": 20,
+      "bySource": {
+        "neo4j-certificate-instance": 50,
+        "mysql-structured-certificate": 50
+      },
+      "byQueryType": {
+        "person_role_list": 30,
+        "person_certificate_list": 50
+      }
+    }
   },
   "outputContracts": {
     "default": "当证据为多条并列记录时，须列全证据中的条目，结论中的条数须与证据条数一致；仅使用证据片段里已出现的属性名与取值作答。",
@@ -307,5 +620,11 @@
     "person_role_list": "【输出契约 person_role_list】证据为多条任职/角色记录时：须列全全部主体或角色归属，可先给总数再列清单；结论条数与证据条数一致。",
     "company_certificate": "【输出契约 company_certificate】证据为公司证照记录时：须列全全部证照类型及状态；结论条数与证据条数一致。术语约束：默认按“企业+证照类型”对应一条证照实例汇总，除非证据明确显示同类型存在多条不同记录（如编号/有效期/状态不同）。",
     "company_profile": "【输出契约 company_profile】证据为公司概况时：按问句关心的维度回答；不得罗列无关属性。"
+  },
+  "evidenceMergeRules": {
+    "activeLearningRetention": "lexicon_above_threshold",
+    "foreignCertificateDrop": true,
+    "aliasRewriteDropsPrecheck": true,
+    "queryTypeOffScopeDemote": true
   }
 }

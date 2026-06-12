@@ -1,6 +1,10 @@
 package com.qa.demo.qa.retrieval;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.constraint.ConstraintResolver;
+import com.qa.demo.qa.constraint.ConstraintSet;
+import com.qa.demo.qa.constraint.HardConstraintGate;
+import com.qa.demo.qa.constraint.RegionMatcher;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
@@ -15,7 +19,7 @@ import com.qa.demo.qa.retrieval.catalog.CatalogEvidenceRetriever;
 import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogConfig;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
-import com.qa.demo.qa.retrieval.personcert.PersonCertificateQueryService;
+import com.qa.demo.qa.retrieval.certificate.CertificateRetrievalService;
 import com.qa.demo.qa.retrieval.RetrievalGapLlmAdvisor.GapDecision;
 import com.qa.demo.qa.retrieval.sql.SqlCompanyFacetEnricher;
 import com.qa.demo.qa.retrieval.sql.SqlPersonRoleDetailEnricher;
@@ -51,14 +55,17 @@ public class QaRetrievalPipeline {
     private final RetrievalPlanFactory retrievalPlanFactory;
     private final SqlTopKResolver sqlTopKResolver;
     private final ScenarioRuleEngine ruleEngine;
-    private final PersonCertificateQueryService personCertificateQueryService;
+    private final CertificateRetrievalService certificateRetrievalService;
     private final NeedInferenceService needInferenceService;
     private final RetrievalCatalogRegistry catalogRegistry;
     private final CatalogEvidenceRetriever catalogEvidenceRetriever;
     private final SqlPersonRoleDetailEnricher personRoleDetailEnricher;
     private final SqlCompanyFacetEnricher companyFacetEnricher;
+    private final GraphCompanyFullProfileQuery graphCompanyFullProfileQuery;
     private final RetrievalGapLlmAdvisor gapLlmAdvisor;
     private final ConversationScopeSupport scopeSupport;
+    private final ConstraintResolver constraintResolver;
+    private final HardConstraintGate hardConstraintGate;
 
     public QaRetrievalPipeline(
             GraphContextService graphContextService,
@@ -74,14 +81,17 @@ public class QaRetrievalPipeline {
             RetrievalPlanFactory retrievalPlanFactory,
             SqlTopKResolver sqlTopKResolver,
             ScenarioRuleEngine ruleEngine,
-            PersonCertificateQueryService personCertificateQueryService,
+            CertificateRetrievalService certificateRetrievalService,
             NeedInferenceService needInferenceService,
             RetrievalCatalogRegistry catalogRegistry,
             CatalogEvidenceRetriever catalogEvidenceRetriever,
             SqlPersonRoleDetailEnricher personRoleDetailEnricher,
             SqlCompanyFacetEnricher companyFacetEnricher,
+            GraphCompanyFullProfileQuery graphCompanyFullProfileQuery,
             RetrievalGapLlmAdvisor gapLlmAdvisor,
-            ConversationScopeSupport scopeSupport
+            ConversationScopeSupport scopeSupport,
+            ConstraintResolver constraintResolver,
+            HardConstraintGate hardConstraintGate
     ) {
         this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
@@ -96,14 +106,17 @@ public class QaRetrievalPipeline {
         this.retrievalPlanFactory = retrievalPlanFactory;
         this.sqlTopKResolver = sqlTopKResolver;
         this.ruleEngine = ruleEngine;
-        this.personCertificateQueryService = personCertificateQueryService;
+        this.certificateRetrievalService = certificateRetrievalService;
         this.needInferenceService = needInferenceService;
         this.catalogRegistry = catalogRegistry;
         this.catalogEvidenceRetriever = catalogEvidenceRetriever;
         this.personRoleDetailEnricher = personRoleDetailEnricher;
         this.companyFacetEnricher = companyFacetEnricher;
+        this.graphCompanyFullProfileQuery = graphCompanyFullProfileQuery;
         this.gapLlmAdvisor = gapLlmAdvisor;
         this.scopeSupport = scopeSupport;
+        this.constraintResolver = constraintResolver;
+        this.hardConstraintGate = hardConstraintGate;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
@@ -127,8 +140,29 @@ public class QaRetrievalPipeline {
             IntentDecision intent,
             InformationNeed need
     ) throws IOException {
+        return retrieveUnifiedEnterprise(question, learned, intent, need, ConstraintSet.empty());
+    }
+
+    /**
+     * P0：企业问答统一召回（图 + 向量 + MySQL + SQL + 主动学习）后两道硬约束闸门 + 重排截断。
+     * <p>
+     * 闸门策略（D2/D4）：
+     * <ul>
+     *   <li>recall 阶段：每个召回源已带 region/office 过滤（Vector/Graph/...）</li>
+     *   <li>Pre-gate (rerank 前)：先过滤 evidence 池；避免 rerank 排错边</li>
+     *   <li>Rerank：在已过滤池里排序</li>
+     *   <li>Post-gate (rerank 后)：rerank 可能因"语义命中"误塞违例，再丢一道</li>
+     * </ul>
+     */
+    public RetrievalResult retrieveUnifiedEnterprise(
+            String question,
+            List<ContextChunk> learned,
+            IntentDecision intent,
+            InformationNeed need,
+            ConstraintSet constraint
+    ) throws IOException {
         RetrievalPlan plan = retrievalPlanFactory.from(intent);
-        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan, need);
+        List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan, need, constraint);
         merged = mergeLearnedUnconditionally(learned, merged);
         RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
         base = appendSupplementalTables(base, question, plan);
@@ -152,11 +186,15 @@ public class QaRetrievalPipeline {
             return trimEvidence(base.evidence(), plan.finalEvidenceTopK(), "unified_person_role");
         }
 
-        List<ContextChunk> forRerank = applyCorrectionNarrow(question, base.evidence(), "company");
+        // Pre-rerank 闸门：rerank 前再过一道硬约束（防"召回源过滤 + 主动学习合并"引入违例）
+        List<ContextChunk> preGateKept = hardConstraintGate.apply(base.evidence(), constraint).kept();
+        List<ContextChunk> forRerank = applyCorrectionNarrow(question, preGateKept, "company");
         List<ContextChunk> reranked = evidenceRerankService.rerank(
                 question, forRerank, plan.finalEvidenceTopK());
-        String source = "unified_rerank_" + evidenceRerankService.activeProvider();
-        return new RetrievalResult(source, reranked);
+        // Post-rerank 闸门：rerank 后兜底，避免 rerank 把上海分公司塞进"北京"问句
+        List<ContextChunk> postGateKept = hardConstraintGate.apply(reranked, constraint).kept();
+        String source = "unified_constrained_rerank_" + evidenceRerankService.activeProvider();
+        return new RetrievalResult(source, postGateKept);
     }
 
     private RetrievalResult appendCatalogEvidence(RetrievalResult base, InformationNeed need) {
@@ -703,8 +741,21 @@ public class QaRetrievalPipeline {
             RetrievalPlan plan,
             InformationNeed need
     ) throws IOException {
+        return collectHybridCandidatesExpanded(question, plan, need, ConstraintSet.empty());
+    }
+
+    /**
+     * 约束感知混合召回：把 {@link ConstraintSet} 透传给向量/图召回源；其他源（MySQL/SQL/证书）
+     * 由硬约束闸门在 rerank 前后两道闸门兜底（D2/D4 设计）。
+     */
+    private List<ContextChunk> collectHybridCandidatesExpanded(
+            String question,
+            RetrievalPlan plan,
+            InformationNeed need,
+            ConstraintSet constraint
+    ) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
-        appendPersonCertificateEvidence(merged, plan, question);
+        appendUnique(merged, certificateRetrievalService.retrieve(plan, question, merged));
         if (plan.personRoleList()) {
             List<ContextChunk> boundaries = safeGraphRetrieve(question, plan);
             appendUnique(merged, boundaries);
@@ -726,7 +777,9 @@ public class QaRetrievalPipeline {
         if (plan.preferGraphOnly() && !graph.isEmpty()) {
             return merged;
         }
-        appendUnique(merged, vectorContextService.retrieveTopChunks(question, properties.getRecallVectorTopK()));
+        // 向量召回带 region/office 过滤（D3："在北京" = registered OR office）
+        appendUnique(merged, vectorContextService.retrieveTopChunks(
+                question, properties.getRecallVectorTopK(), constraint));
         appendUnique(merged, safeMysqlRetrieve(question));
         appendUnique(merged, safeSqlRetrieve(question, plan));
         if (shouldIncludeCompiledDocs(plan, question)) {
@@ -750,7 +803,33 @@ public class QaRetrievalPipeline {
         if (!requiresCompanyFacetSupplement(question, need, merged, boundaries)) {
             return;
         }
+        // 1) 图谱自身回补（富图 P0）：从 Neo4j 拉全 facet 字段
+        List<ContextChunk> graphChosen = graphCompanyFullProfileQuery.executeByCompanyIds(
+                extractCompanyIds(boundaries), null);
+        if (!graphChosen.isEmpty()) {
+            appendUnique(merged, graphChosen);
+            // 图谱自补命中则不再问 LLM / SQL 兜底
+            return;
+        }
+        // 2) SQL 兜底（MySQL 业务库）
         appendUnique(merged, companyFacetEnricher.enrichFromBoundaries(question, boundaries, topK));
+    }
+
+    private static List<String> extractCompanyIds(List<ContextChunk> boundaries) {
+        if (boundaries == null || boundaries.isEmpty()) {
+            return List.of();
+        }
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        for (ContextChunk chunk : boundaries) {
+            if (chunk == null) {
+                continue;
+            }
+            String id = chunk.anchorId() == null ? "" : chunk.anchorId().trim();
+            if (!id.isBlank()) {
+                ids.add(id);
+            }
+        }
+        return new java.util.ArrayList<>(ids);
     }
 
     private boolean requiresCompanyFacetSupplement(
@@ -843,45 +922,6 @@ public class QaRetrievalPipeline {
         return false;
     }
 
-    private void appendPersonCertificateEvidence(List<ContextChunk> merged, RetrievalPlan plan, String question) {
-        IntentDecision intent = plan.intent();
-        if (intent == null || !plan.personCertificateList()) {
-            return;
-        }
-        int maxRows = resolvePersonCertificateMaxRows(intent);
-        java.util.Optional<Boolean> operatingStatusFilter = scopeSupport.resolveActiveCompaniesOnly(question);
-        boolean validCertificatesOnly = requiresValidCertificateFilter(question);
-        boolean unscopedList = scopeSupport.isUnscopedListQuestion(question);
-        if (unscopedList && !intent.hasCompanyHints()) {
-            appendUnique(merged, personCertificateQueryService.retrieveGlobalFiltered(
-                    operatingStatusFilter,
-                    validCertificatesOnly,
-                    maxRows
-            ));
-        } else if (intent.hasCompanyHints()) {
-            appendUnique(merged, personCertificateQueryService.retrieveByCompanyNames(
-                    intent.companyHints(),
-                    operatingStatusFilter,
-                    maxRows
-            ));
-        }
-        if (intent.hasPersonFocus()) {
-            appendUnique(merged, personCertificateQueryService.retrieve(
-                    intent.personEmployeeId(),
-                    intent.personName(),
-                    maxRows
-            ));
-        }
-    }
-
-    private int resolvePersonCertificateMaxRows(IntentDecision intent) {
-        int base = Math.max(properties.getRecallGraphTopK() * 8, 64);
-        if (intent != null && intent.hasCompanyHints()) {
-            return Math.min(Math.max(base, intent.companyHints().size() * 12), 256);
-        }
-        return base;
-    }
-
     private RetrievalResult appendPersonCertificateIfNeeded(
             RetrievalResult base,
             RetrievalPlan plan,
@@ -891,9 +931,9 @@ public class QaRetrievalPipeline {
             return base;
         }
         List<ContextChunk> merged = new ArrayList<>(base.evidence());
-        appendPersonCertificateEvidence(merged, plan, question);
+        appendUnique(merged, certificateRetrievalService.retrieve(plan, question, merged));
         long personCertRows = merged.stream()
-                .filter(c -> c != null && isStructuredCertificateSource(c.source()))
+                .filter(c -> c != null && isCertificateEvidenceSource(c.source()))
                 .count();
         if (personCertRows >= 1) {
             return trimEvidence(merged, plan.finalEvidenceTopK(), "person_certificate_" + base.retrievalSource());
@@ -904,18 +944,12 @@ public class QaRetrievalPipeline {
         return new RetrievalResult("person_certificate_partial_" + base.retrievalSource(), merged);
     }
 
-    private static boolean requiresValidCertificateFilter(String question) {
-        if (question == null || question.isBlank()) {
+    private static boolean isCertificateEvidenceSource(String source) {
+        if (source == null || source.isBlank()) {
             return false;
         }
-        return question.contains("有效")
-                && (question.contains("证照") || question.contains("许可证")
-                || question.contains("执照") || question.contains("备案")
-                || question.contains("证书") || question.contains("证"));
-    }
-
-    private static boolean isStructuredCertificateSource(String source) {
-        return "mysql-person-certificate".equals(source) || "mysql-company-certificate".equals(source);
+        return source.startsWith("mysql-structured-")
+                || "neo4j-certificate-instance".equals(source);
     }
 
     private static void appendUnique(List<ContextChunk> merged, List<ContextChunk> items) {

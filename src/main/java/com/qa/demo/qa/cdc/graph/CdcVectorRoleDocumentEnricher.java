@@ -1,6 +1,7 @@
 package com.qa.demo.qa.cdc.graph;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qa.demo.qa.cdc.CdcFieldEnricher;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -14,13 +15,16 @@ public class CdcVectorRoleDocumentEnricher {
 
     private final CdcGraphSyncCatalog catalog;
     private final CdcPersonRoleBindingExtractor bindingExtractor;
+    private final CdcFieldEnricher fieldEnricher;
 
     public CdcVectorRoleDocumentEnricher(
             CdcGraphSyncCatalog catalog,
-            CdcPersonRoleBindingExtractor bindingExtractor
+            CdcPersonRoleBindingExtractor bindingExtractor,
+            CdcFieldEnricher fieldEnricher
     ) {
         this.catalog = catalog;
         this.bindingExtractor = bindingExtractor;
+        this.fieldEnricher = fieldEnricher;
     }
 
     public void appendCompanyRoleSections(StringBuilder sb, JsonNode row) {
@@ -36,7 +40,7 @@ public class CdcVectorRoleDocumentEnricher {
                 if (!bindingExtractor.matchesRoleLabel(binding, section.roleLabels())) {
                     continue;
                 }
-                parts.add(bindingExtractor.formatBinding(binding, section.format()));
+                parts.add(fieldEnricher.formatRoleBinding(binding, section.format()));
             }
             if (parts.isEmpty()) {
                 continue;

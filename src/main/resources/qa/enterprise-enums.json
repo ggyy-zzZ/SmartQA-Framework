@@ -1,4 +1,6 @@
 {
+  "version": 2,
+  "schemaVersion": "1.0",
   "certificateTypes": {
     "1": "营业执照-独立法人",
     "2": "营业执照-独立法人分公司",
@@ -200,8 +202,46 @@
   "taxpayerQualification": {
     "1": "增值税一般纳税人",
     "2": "小规模纳税人",
+    "0": "增值税一般纳税人",
+    "oa_0": "增值税一般纳税人",
+    "oa_1": "小规模纳税人",
     "code_0": "增值税一般纳税人",
-    "code_1": "小规模纳税人"
+    "code_1": "小规模纳税人",
+    "general_vat_taxpayer": "增值税一般纳税人",
+    "small_scale_taxpayer": "小规模纳税人"
+  },
+  "sealCategory": {
+    "1": "鲜章",
+    "2": "电子章",
+    "0": "电子章",
+    "oa_0": "电子章",
+    "oa_1": "鲜章",
+    "code_0": "电子章",
+    "code_1": "鲜章",
+    "physical": "鲜章",
+    "electronic": "电子章"
+  },
+  "sealStatus": {
+    "0": "生效中",
+    "1": "已失效",
+    "enabled": "生效中",
+    "disabled": "已失效"
+  },
+  "bankAccountType": {
+    "0": "基本户",
+    "1": "一般户",
+    "code_0": "基本户",
+    "code_1": "一般户",
+    "basic": "基本户",
+    "general": "一般户"
+  },
+  "bankAccountStatus": {
+    "0": "有效",
+    "1": "无效",
+    "code_0": "有效",
+    "code_1": "无效",
+    "valid": "有效",
+    "invalid": "无效"
   },
   "enterpriseRoleDict": {
     "1": "会计主管",
@@ -209,5 +249,44 @@
     "3": "所属出纳",
     "4": "所属SSC薪酬负责人",
     "5": "所属IT"
-  }
+  },
+  "operatingStatuses": {
+    "active": [
+      "存续",
+      "在业"
+    ],
+    "inactive": [
+      "注销",
+      "吊销",
+      "撤销",
+      "迁出",
+      "停业",
+      "清算"
+    ],
+    "transit": [
+      "注册中",
+      "迁入"
+    ]
+  },
+  "certificateActiveStatuses": [
+    "有效",
+    "生效中"
+  ],
+  "certificateInactiveStatuses": [
+    "失效",
+    "过期",
+    "吊销",
+    "注销",
+    "撤销"
+  ],
+  "compiledDocsTriggers": [
+    "证照",
+    "许可证",
+    "备案",
+    "印章",
+    "公章",
+    "资质",
+    "执照",
+    "证书"
+  ]
 }

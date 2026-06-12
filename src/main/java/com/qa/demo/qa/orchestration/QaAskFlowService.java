@@ -7,6 +7,8 @@ import com.qa.demo.qa.answer.QaAnswerFallbackService;
 import com.qa.demo.qa.answer.QaAnswerGateService;
 import com.qa.demo.qa.alignment.EvidenceAlignmentService;
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.constraint.ConstraintResolver;
+import com.qa.demo.qa.constraint.ConstraintSet;
 import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
@@ -78,6 +80,7 @@ public class QaAskFlowService {
     private final EnterpriseCanonicalFactsRegistry canonicalFactsRegistry;
     private final NeedInferenceService needInferenceService;
     private final IntentScopeNormalizer intentScopeNormalizer;
+    private final ConstraintResolver constraintResolver;
 
     public QaAskFlowService(
             IntentRouterService intentRouterService,
@@ -100,7 +103,8 @@ public class QaAskFlowService {
             TextEmbeddingService textEmbeddingService,
             EnterpriseCanonicalFactsRegistry canonicalFactsRegistry,
             NeedInferenceService needInferenceService,
-            IntentScopeNormalizer intentScopeNormalizer
+            IntentScopeNormalizer intentScopeNormalizer,
+            ConstraintResolver constraintResolver
     ) {
         this.intentRouterService = intentRouterService;
         this.activeLearningService = activeLearningService;
@@ -123,8 +127,23 @@ public class QaAskFlowService {
         this.canonicalFactsRegistry = canonicalFactsRegistry;
         this.needInferenceService = needInferenceService;
         this.intentScopeNormalizer = intentScopeNormalizer;
+        this.constraintResolver = constraintResolver;
     }
 
+    /**
+     * 单轮问答主流程，同步 {@link QaAskOrchestrator#buildAskResponse} 与流式 SSE 共用。
+     * <p>
+     * 阶段顺序：会话准备 →（可选）主动学习写入 → Bootstrap 召回 → 澄清分支 → 意图/Need →
+     * 多路检索 → 证据闸门 → LLM 生成或拒答 → 日志与会话落盘。
+     * 澄清类分支（公司/人物）在中间提前返回，不走检索与生成。
+     *
+     * @param question       用户原问
+     * @param scope          知识域（如 {@link QaScopes#ENTERPRISE}）
+     * @param conversationId 会话 ID；空则新建
+     * @param followUpFlag   是否接续上一轮；{@code null} 时由会话服务推断
+     * @param progress       思考阶段回调；同步入口传 {@link QaAskProgress#NOOP}
+     * @return 结构化响应（answer、evidence、route、conversationId 等）
+     */
     public Map<String, Object> run(
             String question,
             String scope,
@@ -132,12 +151,14 @@ public class QaAskFlowService {
             Boolean followUpFlag,
             QaAskProgress progress
     ) throws IOException {
+        // --- 1. 会话与多轮上下文 ---
         progress.onThinking("prep", "正在初始化会话…", null);
         String turnId = qaLogService.nextTurnId();
         String convId = conversationService.resolveConversationId(conversationId);
         List<QaConversationService.ConversationTurn> prior = conversationService.recentTurns(convId, 4);
         boolean followUpApplied = conversationService.resolveFollowUp(followUpFlag, question, prior);
 
+        // 人物澄清后用户选序号/短名时，拼回上轮原问供检索与意图使用
         question = applyPersonFollowUpQuestion(question, prior);
 
         String sessionRetrievalSeed = conversationService.buildRetrievalQuestion(question, prior, followUpApplied);
@@ -146,6 +167,7 @@ public class QaAskFlowService {
         boolean skipCompanyClarify = followUpApplied && conversationService.priorHasCompanyFocus(convId);
         String modelContextBlock = conversationService.buildModelContextBlock(prior, followUpApplied, question);
 
+        // --- 2. 主动学习指令（非问答，直接落库后返回）---
         var learningOpt = learningCommandParser.parse(question, scope);
         if (learningOpt.isPresent()) {
             var learningCommand = learningOpt.get();
@@ -178,6 +200,7 @@ public class QaAskFlowService {
             return learningResponse;
         }
 
+        // --- 3. Bootstrap 召回（在意图路由之前，供别名改写与 preferActiveLearning 判断）---
         List<ContextChunk> canonicalHits = mergeBootstrapKnowledge(
                 canonicalFactsRegistry.retrieve(sessionRetrievalSeed, scope),
                 canonicalFactsRegistry.retrieve(question, scope)
@@ -204,6 +227,7 @@ public class QaAskFlowService {
                 )
         );
 
+        // --- 4. 公司指代澄清（模糊指代且主动学习未强命中时提前返回）---
         if (!explicitCompanyHint
                 && !skipCompanyClarify
                 && companyClarificationAdvisor.needsClarification(question, scope)
@@ -213,6 +237,7 @@ public class QaAskFlowService {
                     turnId, question, scope, convId, followUpApplied, graphContextService.suggestCompanyCandidates(question, 5));
         }
 
+        // --- 5. 意图路由 + 信息需求（Need）推断 ---
         progress.onThinking("intent_wait", "正在理解问题意图…", null);
         FollowUpIntentContext followUpContext = followUpApplied
                 ? conversationService.buildFollowUpContext(prior, null)
@@ -228,12 +253,14 @@ public class QaAskFlowService {
                 QaThinkingDigest.route(intentDecision, intentDecision.reason())
         );
 
+        // --- 6. 人物歧义澄清（图谱多候选，意图阶段提前返回）---
         if (routing.needsPersonClarification()) {
             progress.onThinking("clarify", "人物指称存在歧义，需要补充全名。", null);
             return buildPersonClarificationResponse(
                     turnId, question, scope, convId, followUpApplied, intentDecision, routing.personResolution());
         }
 
+        // --- 7. 多路检索（enterprise 统一召回或按意图分路）---
         progress.onThinking(
                 "retrieve",
                 informationNeed.isTypeCatalog()
@@ -249,6 +276,7 @@ public class QaAskFlowService {
                 scope, question, retrievalQuestion, learnedFirst, intentDecision, explicitCompanyHint, informationNeed);
         String retrievalSource = retrievalResult.retrievalSource();
         List<ContextChunk> evidence = new ArrayList<>(retrievalResult.evidence());
+        // 别名已改写为实名时，丢弃「员工未找到」预检片段，避免与改写后检索矛盾
         if (QaScopes.ENTERPRISE.equals(scope) && retrievalPlan.appliedLearningRewrite()) {
             evidence.removeIf(c ->
                     "mysql-employee-precheck".equals(c.source())
@@ -256,6 +284,7 @@ public class QaAskFlowService {
             );
         }
 
+        // --- 8. 证据闸门 → 生成 / 拒答 / 降级 / 闸门后人物澄清 ---
         QaAnswerGateService.GateDecision gate = answerGateService.evaluate(
                 question, intentDecision, informationNeed, evidence);
         boolean canAnswer = gate.canAnswer();
@@ -305,6 +334,7 @@ public class QaAskFlowService {
             }
         }
 
+        // --- 9. 响应组装、事件日志、知识沉淀队列与会话落盘 ---
         Map<String, Object> response = assembleResponse(
                 turnId, question, scope, convId, followUpApplied, intentDecision, informationNeed, evidence,
                 answer, canAnswer, confidence, route, retrievalSource, retrievalResult, gate, degraded, fallbackReason, unknownIntent
@@ -361,7 +391,10 @@ public class QaAskFlowService {
             InformationNeed need
     ) throws IOException {
         if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
-            return retrievalPipeline.retrieveUnifiedEnterprise(retrievalQuestion, learnedFirst, intentDecision, need);
+            // 解析结构化硬约束：region/status/industry/companyHints；闸门基于此做"合同"判定
+            ConstraintSet constraint = constraintResolver.resolve(retrievalQuestion, intentDecision);
+            return retrievalPipeline.retrieveUnifiedEnterprise(
+                    retrievalQuestion, learnedFirst, intentDecision, need, constraint);
         }
         if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             return new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);

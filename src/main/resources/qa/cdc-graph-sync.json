@@ -77,8 +77,8 @@
     "company": {
       "roleBindingsRef": "sql-role-columns",
       "sections": [
-        { "label": "法定代表人", "roleLabels": ["法定代表人"], "join": "、" },
-        { "label": "关键人员", "roleLabels": ["*"], "format": "{role}:{personId}", "join": ", " }
+        { "label": "法定代表人", "roleLabels": ["法定代表人"], "format": "{personDisplay}", "join": "、" },
+        { "label": "关键人员", "roleLabels": ["*"], "format": "{role}:{personDisplay}", "join": ", " }
       ]
     }
   }

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "description": "CDC 写入 Neo4j 的节点范围（与 graph-node-definitions.json 互不重叠）。CDC 实时入图仅承担 company/employee 增量字段修正；其它子表/辅助表入图由 Python 离线灌库完成。",
+  "writableTables": ["company", "employee"],
+  "skipTables": [
+    "branch",
+    "partner",
+    "bank_account",
+    "certificate_management",
+    "seal_management",
+    "seal_person_detail",
+    "company_product_line",
+    "company_shareholder_info",
+    "company_directors_supervisors",
+    "certificate_attachment",
+    "certificate_person_detail",
+    "company_change_log"
+  ],
+  "nodeTargets": {
+    "company":  "Company",
+    "employee": "Person"
+  },
+  "notes": [
+    "writableTables 与 application.properties 的 qa.assistant.cdc-table-include-list 必须保持一致（仅含 company/employee）。",
+    "Neo4jCdcWriter.switch 在 P0 阶段不新增 case；子表入图通过 Python scripts/enterprise_pipeline/sync_neo4j.py 完成。",
+    "CdcGraphRelationshipSync 仅维护 HAS_ROLE_IN / HAS_BRANCH / PARTNER_OF 4 条规则，HAS_BRANCH / PARTNER_OF 留作未来扩展。"
+  ]
+}

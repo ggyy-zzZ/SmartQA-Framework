@@ -2,6 +2,8 @@ package com.qa.demo.qa.cdc.graph;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.qa.demo.qa.cdc.CdcEntityIdResolver;
+import com.qa.demo.qa.cdc.CdcPersonDisplay;
+import com.qa.demo.qa.cdc.CdcPersonDisplayResolver;
 import com.qa.demo.qa.cdc.CdcTdcompFields;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
@@ -23,13 +25,16 @@ public class CdcGraphRelationshipSync {
 
     private final CdcGraphSyncCatalog catalog;
     private final CdcPersonRoleBindingExtractor bindingExtractor;
+    private final CdcPersonDisplayResolver personDisplayResolver;
 
     public CdcGraphRelationshipSync(
             CdcGraphSyncCatalog catalog,
-            CdcPersonRoleBindingExtractor bindingExtractor
+            CdcPersonRoleBindingExtractor bindingExtractor,
+            CdcPersonDisplayResolver personDisplayResolver
     ) {
         this.catalog = catalog;
         this.bindingExtractor = bindingExtractor;
+        this.personDisplayResolver = personDisplayResolver;
     }
 
     public void syncTable(Session session, String table, JsonNode row) {
@@ -84,7 +89,7 @@ public class CdcGraphRelationshipSync {
             if (binding.personId() == null || binding.personId().isBlank()) {
                 continue;
             }
-            mergePerson(session, personType, binding.personKey(), binding.personId(), null);
+            mergePerson(session, personType, binding.personKey(), personDisplayResolver.fromPersonId(binding.personId()));
             mergeRoleEdge(
                     session,
                     personType,
@@ -104,8 +109,7 @@ public class CdcGraphRelationshipSync {
             JsonNode row
     ) {
         String personKey = bindingExtractor.personKeyFromEmployeeRow(row);
-        String personId = CdcEntityIdResolver.resolveEntityId("employee", row);
-        String name = CdcTdcompFields.employeeName(row);
+        CdcPersonDisplay person = personDisplayResolver.fromEmployeeRow(row);
         String companyId = CdcRowFieldReader.firstText(row, rule.toId().columns());
         if (companyId == null || companyId.isBlank()) {
             return;
@@ -117,7 +121,7 @@ public class CdcGraphRelationshipSync {
 
         CdcGraphSyncCatalog.NodeTypeDef personType = catalog.nodeType(rule.fromNodeType());
         CdcGraphSyncCatalog.NodeTypeDef companyType = catalog.nodeType(rule.toNodeType());
-        mergePerson(session, personType, personKey, personId, name);
+        mergePerson(session, personType, personKey, person);
         mergeRoleEdge(session, personType, companyType, personKey, companyId, roleLabel, rule, "employee.role");
     }
 
@@ -188,22 +192,30 @@ public class CdcGraphRelationshipSync {
             Session session,
             CdcGraphSyncCatalog.NodeTypeDef personType,
             String personKey,
-            String personId,
-            String name
+            CdcPersonDisplay person
     ) {
+        if (person == null) {
+            person = new CdcPersonDisplay(null, null, null);
+        }
         Map<String, Object> params = new HashMap<>();
         params.put("personKey", personKey);
-        params.put("personId", personId);
-        params.put("name", name);
+        params.put("personId", person.personId());
+        params.put("name", person.name());
+        params.put("anotherName", person.anotherName());
+        params.put("displayName", person.displayName());
         session.run(
                 """
                 MERGE (p:%s {%s: $personKey})
-                SET p.%s = $personId
+                SET p.%s = $personId,
+                    p.%s = $name,
+                    p.anotherName = $anotherName,
+                    p.displayName = $displayName
                 """.formatted(
                         personType.label(),
                         personType.idProperty(),
-                        personType.personIdProperty()
-                ) + (name != null ? ", p." + personType.nameProperty() + " = $name" : ""),
+                        personType.personIdProperty(),
+                        personType.nameProperty()
+                ),
                 params
         );
     }

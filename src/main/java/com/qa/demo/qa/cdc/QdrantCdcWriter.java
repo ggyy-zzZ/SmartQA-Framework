@@ -2,6 +2,7 @@ package com.qa.demo.qa.cdc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.qa.demo.qa.cdc.graph.CdcVectorRoleDocumentEnricher;
+import com.qa.demo.qa.cdc.CdcPersonDisplay;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,17 +29,20 @@ public class QdrantCdcWriter {
     private final QaAssistantProperties props;
     private final CdcSyncAuditLogger auditLogger;
     private final CdcVectorRoleDocumentEnricher roleDocumentEnricher;
+    private final CdcFieldEnricher fieldEnricher;
     private final RestClient restClient;
     private volatile boolean collectionEnsured;
 
     public QdrantCdcWriter(
             QaAssistantProperties props,
             CdcSyncAuditLogger auditLogger,
-            CdcVectorRoleDocumentEnricher roleDocumentEnricher
+            CdcVectorRoleDocumentEnricher roleDocumentEnricher,
+            CdcFieldEnricher fieldEnricher
     ) {
         this.props = props;
         this.auditLogger = auditLogger;
         this.roleDocumentEnricher = roleDocumentEnricher;
+        this.fieldEnricher = fieldEnricher;
         this.restClient = RestClient.builder()
                 .baseUrl(props.getQdrantUrl())
                 .build();
@@ -146,13 +150,18 @@ public class QdrantCdcWriter {
     }
 
     private String buildDocumentText(String table, JsonNode row) {
-        String docText = CdcTdcompFields.buildDocument(table, row);
         if ("company".equalsIgnoreCase(table)) {
-            StringBuilder sb = new StringBuilder(docText);
+            StringBuilder sb = new StringBuilder();
+            fieldEnricher.appendCompanyDocument(sb, row);
             roleDocumentEnricher.appendCompanyRoleSections(sb, row);
             return sb.toString();
         }
-        return docText;
+        if ("employee".equalsIgnoreCase(table)) {
+            StringBuilder sb = new StringBuilder();
+            fieldEnricher.appendEmployeeDocument(sb, row);
+            return sb.toString();
+        }
+        return CdcTdcompFields.buildDocument(table, row);
     }
 
     private String upsertPoint(String table, JsonNode row, String entityId) {
@@ -211,13 +220,19 @@ public class QdrantCdcWriter {
         if ("company".equals(table)) {
             payload.put("company_id", entityId);
             payload.put("company_name", CdcTdcompFields.firstText(row, "company_name", "name"));
-            payload.put("status", CdcTdcompFields.operatingStatus(row));
-            payload.put("entity_type", CdcTdcompFields.entityType(row));
-            payload.put("entity_category", CdcTdcompFields.entityCategory(row));
+            payload.put("status", fieldEnricher.operatingStatusLabel(row));
+            payload.put("status_code", CdcTdcompFields.operatingStatus(row));
+            payload.put("entity_type", fieldEnricher.mainTypeLabel(row));
+            payload.put("entity_type_code", CdcTdcompFields.entityType(row));
+            payload.put("entity_category", fieldEnricher.mainClassTypeLabel(row));
+            payload.put("entity_category_code", CdcTdcompFields.entityCategory(row));
             payload.put("registered_area", CdcTdcompFields.registeredArea(row));
         } else if ("employee".equals(table)) {
+            CdcPersonDisplay person = fieldEnricher.personFromEmployeeRow(row);
             payload.put("person_id", entityId);
-            payload.put("name", CdcTdcompFields.employeeName(row));
+            payload.put("name", person.name());
+            payload.put("another_name", person.anotherName());
+            payload.put("display_name", person.displayName());
             payload.put("company_id", CdcTdcompFields.employeeCompanyId(row));
         }
         return payload;

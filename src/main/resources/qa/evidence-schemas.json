@@ -33,6 +33,9 @@
   },
   "sourceToSchema": {
     "mysql-person-certificate": "person_certificate_v1",
+    "mysql-structured-person_stewardship": "person_certificate_v1",
+    "mysql-structured-certificate_by_company": "person_certificate_v1",
+    "neo4j-certificate-instance": "person_certificate_v1",
     "employee_identity": "employee_identity_v1",
     "employee_base": "employee_identity_v1",
     "enterprise_canonical": "enterprise_fact_v1",

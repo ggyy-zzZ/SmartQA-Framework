@@ -25,11 +25,18 @@ public final class GraphCompanySnippetBuilder {
             CertificateSealEnumCatalog enumCatalog
     ) {
         Map<String, String> scalars = new LinkedHashMap<>();
-        scalars.put("status", safeString(record, "status"));
-        scalars.put("entityType", safeString(record, "entityType"));
-        scalars.put("entityCategory", safeString(record, "entityCategory"));
+        scalars.put("status", pickDisplay(record, "statusDisplay", "status"));
+        scalars.put("entityType", pickDisplay(record, "entityTypeDisplay", "entityType"));
+        scalars.put("entityCategory", pickDisplay(record, "entityCategoryDisplay", "entityCategory"));
         scalars.put("registeredAddress", safeString(record, "registeredAddress"));
+        scalars.put("officeAddress", safeString(record, "officeAddress"));
         scalars.put("businessScope", safeString(record, "businessScope"));
+        scalars.put("registeredCapital", buildCapital(record));
+        scalars.put("alias", safeString(record, "alias"));
+        scalars.put("contactPhone", safeString(record, "contactPhone"));
+        scalars.put("contactEmail", safeString(record, "contactEmail"));
+        scalars.put("establishedDate", safeString(record, "establishedDate"));
+        scalars.put("modifytime", safeString(record, "modifytime"));
 
         Map<String, String> lists = new LinkedHashMap<>();
         lists.put("productLines", safeList(record, "productLines"));
@@ -37,13 +44,64 @@ public final class GraphCompanySnippetBuilder {
         lists.put("roles", safeList(record, "roles"));
         lists.put("certificates", safeList(record, "certificates"));
         lists.put("seals", safeList(record, "seals"));
+        lists.put("attachments", safeList(record, "attachments"));
+        lists.put("certificatePersons", safeList(record, "certificatePersons"));
+        lists.put("changeEvents", safeList(record, "changeEvents"));
 
         String queryType = intent == null ? "" : intent.queryType();
         List<String> facets = facetCatalog.facetsForQueryType(queryType);
         return buildSnippet(scalars, lists, facets, facetCatalog, enumCatalog);
     }
 
-    static String buildSnippet(
+    /**
+     * 直接按 facetKeys 投影（不需要 IntentDecision）。其它辅助调用方使用。
+     */
+    public static String buildSnippet(
+            Record record,
+            List<String> facetKeys,
+            GraphCompanyFacetCatalog facetCatalog,
+            CertificateSealEnumCatalog enumCatalog
+    ) {
+        Map<String, String> scalars = new LinkedHashMap<>();
+        scalars.put("status", pickDisplay(record, "statusDisplay", "status"));
+        scalars.put("entityType", pickDisplay(record, "entityTypeDisplay", "entityType"));
+        scalars.put("entityCategory", pickDisplay(record, "entityCategoryDisplay", "entityCategory"));
+        scalars.put("registeredAddress", safeString(record, "registeredAddress"));
+        scalars.put("officeAddress", safeString(record, "officeAddress"));
+        scalars.put("businessScope", safeString(record, "businessScope"));
+        scalars.put("registeredCapital", buildCapital(record));
+        scalars.put("alias", safeString(record, "alias"));
+        scalars.put("contactPhone", safeString(record, "contactPhone"));
+        scalars.put("contactEmail", safeString(record, "contactEmail"));
+        scalars.put("establishedDate", safeString(record, "establishedDate"));
+        scalars.put("modifytime", safeString(record, "modifytime"));
+
+        Map<String, String> lists = new LinkedHashMap<>();
+        lists.put("productLines", safeList(record, "productLines"));
+        lists.put("shareholders", safeList(record, "shareholders"));
+        lists.put("roles", safeList(record, "roles"));
+        lists.put("certificates", safeList(record, "certificates"));
+        lists.put("seals", safeList(record, "seals"));
+        lists.put("attachments", safeList(record, "attachments"));
+        lists.put("certificatePersons", safeList(record, "certificatePersons"));
+        lists.put("changeEvents", safeList(record, "changeEvents"));
+
+        return buildSnippet(scalars, lists, facetKeys, facetCatalog, enumCatalog);
+    }
+
+    /**
+     * 注册资本 + 币种合并到同一字符串；币种缺失时仅返回数字。
+     */
+    private static String buildCapital(Record record) {
+        String amount = safeString(record, "registeredCapital");
+        if (amount == null || amount.isBlank()) {
+            return "";
+        }
+        String currency = safeString(record, "capitalCurrency");
+        return currency == null || currency.isBlank() ? amount : (amount + " " + currency);
+    }
+
+    public static String buildSnippet(
             Map<String, String> scalars,
             Map<String, String> lists,
             List<String> facetKeys,
@@ -85,6 +143,14 @@ public final class GraphCompanySnippetBuilder {
         }
         String trimmed = value.trim();
         return !"[]".equals(trimmed) && !"null".equalsIgnoreCase(trimmed);
+    }
+
+    private static String pickDisplay(Record record, String displayKey, String fallbackKey) {
+        String display = safeString(record, displayKey);
+        if (!display.isBlank()) {
+            return display;
+        }
+        return safeString(record, fallbackKey);
     }
 
     private static String safeString(Record record, String key) {

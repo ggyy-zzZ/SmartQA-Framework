@@ -122,19 +122,15 @@ public class QaAnswerGateService {
             if (chunk == null || chunk.snippet() == null || chunk.snippet().isBlank()) {
                 continue;
             }
+            if ("person_certificate_v1".equalsIgnoreCase(chunk.evidenceSchema())) {
+                return true;
+            }
             String source = chunk.source() == null ? "" : chunk.source().toLowerCase(Locale.ROOT);
-            String snippet = chunk.snippet().toLowerCase(Locale.ROOT);
             boolean sourceHint = source.contains("document-chunk-db")
                     || source.contains("enterprise_mysql_compiled")
-                    || source.contains("mysql-company-certificate")
-                    || source.contains("mysql-person-certificate");
-            boolean contentHint = snippet.contains("证照信息")
-                    || snippet.contains("类型:")
-                    || snippet.contains("状态:有效")
-                    || snippet.contains("有效期:")
-                    || snippet.contains("许可证")
-                    || snippet.contains("证书");
-            if (sourceHint && contentHint) {
+                    || source.startsWith("mysql-structured-")
+                    || source.contains("neo4j-certificate-instance");
+            if (sourceHint && chunk.snippet() != null && !chunk.snippet().isBlank()) {
                 return true;
             }
         }

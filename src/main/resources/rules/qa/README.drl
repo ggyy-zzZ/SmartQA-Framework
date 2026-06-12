@@ -1,0 +1,11 @@
+// 占位 DRL：P0-S1 仅做 KieSession 启动期自检，真实规则在 P0-S3 / P1 落地。
+// 规则命名：qa.{stage}.{topic}.{id}
+package rules.qa
+
+rule "qa.bootstrap.hello"
+    salience -10000
+    when
+    then
+        // no-op；启动期 DRL 自检要求至少能 fire 一条规则
+        // System.out 由日志切面替代，避免 P0 阶段引入日志耦合
+end

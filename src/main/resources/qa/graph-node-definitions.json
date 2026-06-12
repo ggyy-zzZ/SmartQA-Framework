@@ -1,0 +1,280 @@
+{
+  "version": 2,
+  "description": "tdcomp 全量入图字段白名单（Python 离线灌库 + Java CDC 写入共用）。本文件是节点 Label、属性白名单、截断策略、枚举字典、约束/索引的唯一权威源。",
+  "global": {
+    "truncation": {
+      "maxChars": 4000,
+      "suffix": "…[Truncated]",
+      "markPropertySuffix": "Truncated",
+      "charCountPropertySuffix": "CharCount"
+    },
+    "exclude": ["id", "tenant", "creator_id", "modifier_id", "domain", "source_file"]
+  },
+  "enumDicts": {
+    "operatingStatus":   { "ref": "qa/enterprise-enums.json#operatingStatus" },
+    "mainType":          { "ref": "qa/enterprise-enums.json#mainType" },
+    "mainClassType":     { "ref": "qa/enterprise-enums.json#mainClassType" },
+    "certificateType":   { "ref": "qa/enterprise-enums.json#certificateTypes" },
+    "sealType":          { "ref": "qa/enterprise-enums.json#sealTypes" },
+    "sealCategory":      { "ref": "qa/enterprise-enums.json#sealCategory" },
+    "sealStatus":        { "ref": "qa/enterprise-enums.json#sealStatus" },
+    "bankAccountType":   { "ref": "qa/enterprise-enums.json#bankAccountType" },
+    "bankAccountStatus": { "ref": "qa/enterprise-enums.json#bankAccountStatus" },
+    "certStatus":        { "ref": "qa/enterprise-enums.json#licenseStatus" },
+    "shareholderType":   { "ref": "qa/enterprise-enums.json#shareholderType" },
+    "memberType":        { "ref": "qa/enterprise-enums.json#memberType" },
+    "moduleKind":        { "ref": "qa/enterprise-enums.json#moduleKind" },
+    "productLine":       { "ref": "qa/enterprise-enums.json#productLine" }
+  },
+  "nodeTypes": {
+    "Company": {
+      "idProperty": "companyId",
+      "keyStrategy": "physical_column",
+      "keyColumn": "company_id",
+      "labels": ["Company"],
+      "cdcWritable": true,
+      "properties": [
+        { "name": "name",              "columns": ["company_name", "name"], "type": "string",   "maxChars": 200,  "required": true, "indexed": true },
+        { "name": "shortName",         "columns": ["company_short_name", "short_name"], "type": "string", "maxChars": 100 },
+        { "name": "creditCode",        "columns": ["social_credit_code", "credit_code", "unified_social_credit_code"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "status",            "columns": ["operating_status", "status", "company_status"], "type": "string", "enumDictKey": "operatingStatus" },
+        { "name": "statusCode",        "columns": ["operating_status", "status"], "type": "string" },
+        { "name": "entityType",        "columns": ["main_type", "entity_type", "company_type"], "type": "string", "enumDictKey": "mainType" },
+        { "name": "entityTypeCode",    "columns": ["main_type", "entity_type"], "type": "string" },
+        { "name": "entityCategory",    "columns": ["main_class_type", "entity_category", "company_category"], "type": "string", "enumDictKey": "mainClassType" },
+        { "name": "entityCategoryCode","columns": ["main_class_type", "entity_category"], "type": "string" },
+        { "name": "registeredArea",    "columns": ["reg_province_region", "registered_area", "register_region"], "type": "string", "maxChars": 200 },
+        { "name": "registeredAreaCode","columns": ["registered_area_code", "reg_area_code"], "type": "string", "maxChars": 32, "indexed": true, "derivedFrom": "registeredArea", "derivedVia": "region-dictionary.json" },
+        { "name": "registeredAddress", "columns": ["registered_address", "register_address", "address"], "type": "text", "maxChars": 4000 },
+        { "name": "officeArea",        "columns": ["office_province_region", "office_area", "office_region"], "type": "string", "maxChars": 200 },
+        { "name": "officeAreaCode",    "columns": ["office_area_code"], "type": "string", "maxChars": 32, "indexed": true, "derivedFrom": "officeAddress", "derivedVia": "region-dictionary.json" },
+        { "name": "officeAddress",     "columns": ["actual_office_address", "office_address", "work_address"], "type": "text", "maxChars": 4000 },
+        { "name": "businessScope",     "columns": ["business_scope_info", "business_scope", "scope"], "type": "text", "maxChars": 4000 },
+        { "name": "establishedDate",   "columns": ["establishment_date", "established_date", "setup_date"], "type": "date" },
+        { "name": "parentCompanyId",   "columns": ["head_office_company_id", "parent_company_id", "parent_id"], "type": "string", "maxChars": 64 },
+        { "name": "registeredCapital", "columns": ["registered_capital", "reg_capital"], "type": "string", "maxChars": 64 },
+        { "name": "capitalCurrency",   "columns": ["currency_type", "currency"], "type": "string", "maxChars": 16 },
+        { "name": "alias",             "columns": ["alias", "another_name", "former_name"], "type": "string", "maxChars": 200 },
+        { "name": "contactPhone",      "columns": ["contact_phone", "phone"], "type": "string", "maxChars": 32 },
+        { "name": "contactEmail",      "columns": ["contact_email", "email"], "type": "string", "maxChars": 128 },
+        { "name": "taxpayerQualification", "columns": ["taxpayer_qualification"], "type": "string", "maxChars": 32 },
+        { "name": "operationStartDate","columns": ["operation_start_date", "operation_start"], "type": "date" },
+        { "name": "operationEndDate",  "columns": ["operation_end_date", "operation_end"], "type": "date" },
+        { "name": "annualInspectionDate","columns": ["annual_inspection_date"], "type": "date" },
+        { "name": "modifytime",        "columns": ["modifytime", "updated_at"], "type": "datetime" }
+      ]
+    },
+    "Person": {
+      "idProperty": "personKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{personId}|NAME::{name}",
+      "labels": ["Person"],
+      "cdcWritable": true,
+      "properties": [
+        { "name": "personId",    "columns": ["id", "person_id", "employee_id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "name",        "columns": ["name", "employee_name"], "type": "string", "maxChars": 64, "required": true },
+        { "name": "anotherName", "columns": ["another_name", "nickname", "alias_name"], "type": "string", "maxChars": 64 },
+        { "name": "displayName", "columns": ["display_name", "person_display"], "type": "string", "maxChars": 128 },
+        { "name": "email",       "columns": ["email"], "type": "string", "maxChars": 128 },
+        { "name": "phone",       "columns": ["phone", "mobile"], "type": "string", "maxChars": 32 },
+        { "name": "department",  "columns": ["department", "dept_name"], "type": "string", "maxChars": 128 }
+      ]
+    },
+    "Certificate": {
+      "idProperty": "certKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{companyId}|{certificateId}|{code}",
+      "labels": ["Certificate"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "certificateId", "columns": ["certificate_id", "id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "certType",      "columns": ["certificate_type", "cert_type", "type"], "type": "string", "enumDictKey": "certificateType" },
+        { "name": "certTypeCode",  "columns": ["certificate_type", "cert_type_code"], "type": "string" },
+        { "name": "code",          "columns": ["code", "certificate_no", "cert_no"], "type": "string", "maxChars": 128 },
+        { "name": "name",          "columns": ["name", "certificate_name"], "type": "string", "maxChars": 200 },
+        { "name": "status",        "columns": ["status"], "type": "string", "enumDictKey": "certStatus" },
+        { "name": "statusCode",    "columns": ["status"], "type": "string" },
+        { "name": "validFrom",     "columns": ["valid_from", "start_date", "issue_date"], "type": "date" },
+        { "name": "validTo",       "columns": ["valid_to", "end_date", "expire_date"], "type": "date", "indexed": true },
+        { "name": "issueDate",     "columns": ["issue_date"], "type": "date" },
+        { "name": "issueOrg",      "columns": ["issue_org", "issuer", "issue_authority"], "type": "string", "maxChars": 200 },
+        { "name": "keeper",        "columns": ["keeper", "custodian"], "type": "string", "maxChars": 128 },
+        { "name": "supervisor",    "columns": ["supervisor"], "type": "string", "maxChars": 128 },
+        { "name": "executor",      "columns": ["executor"], "type": "string", "maxChars": 128 },
+        { "name": "remarks",       "columns": ["remarks", "memo"], "type": "text", "maxChars": 4000 }
+      ]
+    },
+    "Seal": {
+      "idProperty": "sealKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{companyId}|{sealId}",
+      "labels": ["Seal"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "sealId",        "columns": ["seal_id", "id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "sealType",      "columns": ["seal_type", "type"], "type": "string", "enumDictKey": "sealType" },
+        { "name": "sealTypeCode",  "columns": ["seal_type", "seal_type_code"], "type": "string" },
+        { "name": "sealCategory",  "columns": ["seal_category", "category"], "type": "string", "enumDictKey": "sealCategory" },
+        { "name": "sealCategoryCode","columns": ["seal_category", "seal_category_code"], "type": "string" },
+        { "name": "status",        "columns": ["status"], "type": "string", "enumDictKey": "sealStatus" },
+        { "name": "statusCode",    "columns": ["status"], "type": "string" },
+        { "name": "sealNo",        "columns": ["seal_no", "seal_code"], "type": "string", "maxChars": 128 },
+        { "name": "keeperDept",    "columns": ["keeper_dept", "custodian_dept", "custody_department"], "type": "string", "maxChars": 128 },
+        { "name": "registerDate",  "columns": ["register_time", "register_date"], "type": "datetime" },
+        { "name": "cancelDate",    "columns": ["cancel_time", "cancel_date"], "type": "datetime" },
+        { "name": "validFrom",     "columns": ["valid_from", "start_date"], "type": "date" },
+        { "name": "validTo",       "columns": ["valid_to", "end_date"], "type": "date" },
+        { "name": "remarks",       "columns": ["remarks", "memo"], "type": "text", "maxChars": 4000 }
+      ]
+    },
+    "BankAccount": {
+      "idProperty": "accountKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{companyId}|{accountId}",
+      "labels": ["BankAccount"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "accountId",      "columns": ["account_id", "id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "bankName",       "columns": ["bank_name"], "type": "string", "maxChars": 128 },
+        { "name": "accountName",    "columns": ["account_name"], "type": "string", "maxChars": 128 },
+        { "name": "bankCode",       "columns": ["bank_code"], "type": "string", "maxChars": 32 },
+        { "name": "branchBankName", "columns": ["branch_bank_name", "branch_name"], "type": "string", "maxChars": 200 },
+        { "name": "accountNo",      "columns": ["account_no", "account_number"], "type": "string", "maxChars": 64 },
+        { "name": "accountType",    "columns": ["account_type", "type"], "type": "string", "enumDictKey": "bankAccountType" },
+        { "name": "accountTypeCode","columns": ["account_type", "account_type_code"], "type": "string" },
+        { "name": "status",         "columns": ["status"], "type": "string", "enumDictKey": "bankAccountStatus" },
+        { "name": "statusCode",     "columns": ["status"], "type": "string" },
+        { "name": "openDate",       "columns": ["open_date"], "type": "date" },
+        { "name": "currency",       "columns": ["currency"], "type": "string", "maxChars": 16 }
+      ]
+    },
+    "Shareholder": {
+      "idProperty": "shareholderKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{shareholderId}|{holderType}|{name}",
+      "labels": ["Shareholder"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "shareholderId",     "columns": ["shareholder_id", "id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "name",              "columns": ["holder_name", "shareholder_name"], "type": "string", "maxChars": 200 },
+        { "name": "holderType",        "columns": ["holder_type", "shareholder_type"], "type": "string", "enumDictKey": "shareholderType" },
+        { "name": "holderTypeCode",    "columns": ["holder_type", "shareholder_type_code"], "type": "string" },
+        { "name": "ratio",             "columns": ["ratio", "stock_ratio", "percent"], "type": "string", "maxChars": 32 },
+        { "name": "subscribedCapital", "columns": ["subscribed_capital", "should_capital"], "type": "string", "maxChars": 64 },
+        { "name": "paidCapital",       "columns": ["paid_capital", "actual_capital"], "type": "string", "maxChars": 64 },
+        { "name": "paidDate",          "columns": ["paid_date", "capital_paid_date"], "type": "date" },
+        { "name": "country",           "columns": ["country", "region"], "type": "string", "maxChars": 64 }
+      ]
+    },
+    "ProductLine": {
+      "idProperty": "productKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{moduleCode}|{lineCode}",
+      "labels": ["ProductLine"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "module",      "columns": ["module_kind", "module"], "type": "string", "enumDictKey": "moduleKind" },
+        { "name": "moduleCode",  "columns": ["module_kind", "module_code"], "type": "string" },
+        { "name": "line",        "columns": ["product_line", "line"], "type": "string", "enumDictKey": "productLine" },
+        { "name": "lineCode",    "columns": ["product_line", "line_code"], "type": "string" },
+        { "name": "relation",    "columns": ["relation"], "type": "string", "maxChars": 32 },
+        { "name": "startDate",   "columns": ["start_date"], "type": "date" },
+        { "name": "endDate",     "columns": ["end_date"], "type": "date" }
+      ]
+    },
+    "DirectorSupervisor": {
+      "idProperty": "directorKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{companyId}|{memberId}|{memberTypeCode}",
+      "labels": ["DirectorSupervisor"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "memberId",       "columns": ["member_id", "id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "memberName",     "columns": ["member_name", "name"], "type": "string", "maxChars": 64 },
+        { "name": "memberType",     "columns": ["member_type", "type"], "type": "string", "enumDictKey": "memberType" },
+        { "name": "memberTypeCode", "columns": ["member_type", "member_type_code"], "type": "string" },
+        { "name": "appointedDate",  "columns": ["appointed_date", "start_date"], "type": "date" },
+        { "name": "resignedDate",   "columns": ["resigned_date", "end_date"], "type": "date" },
+        { "name": "positionTitle",  "columns": ["position_title", "title"], "type": "string", "maxChars": 64 }
+      ]
+    },
+    "CertificateAttachment": {
+      "idProperty": "attachmentKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{companyId}|{certificateId}|{fileId}",
+      "labels": ["CertificateAttachment"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "attachmentId",  "columns": ["attachment_id", "id"], "type": "string", "maxChars": 64 },
+        { "name": "certificateId", "columns": ["certificate_id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "fileId",        "columns": ["file_id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "fileName",      "columns": ["file_name", "name"], "type": "string", "maxChars": 255 },
+        { "name": "fileType",      "columns": ["file_type", "mime_type"], "type": "string", "maxChars": 64 },
+        { "name": "uploadTime",    "columns": ["upload_time", "create_time"], "type": "datetime" },
+        { "name": "uploader",      "columns": ["uploader", "creator"], "type": "string", "maxChars": 128 }
+      ]
+    },
+    "CertificatePersonDetail": {
+      "idProperty": "personDetailKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{companyId}|{certificateId}|{personId}|{roleTypeCode}",
+      "labels": ["CertificatePersonDetail"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "personDetailId", "columns": ["id", "person_detail_id"], "type": "string", "maxChars": 64 },
+        { "name": "certificateId",  "columns": ["certificate_id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "personId",       "columns": ["person_id", "employee_id"], "type": "string", "maxChars": 64, "indexed": true },
+        { "name": "personName",     "columns": ["person_name", "name"], "type": "string", "maxChars": 64 },
+        { "name": "roleType",       "columns": ["role_type"], "type": "string", "maxChars": 32 },
+        { "name": "roleTypeCode",   "columns": ["role_type_code"], "type": "string", "maxChars": 32 },
+        { "name": "validFrom",      "columns": ["valid_from", "start_date"], "type": "date" },
+        { "name": "validTo",        "columns": ["valid_to", "end_date"], "type": "date" },
+        { "name": "remark",         "columns": ["remark", "remarks", "memo"], "type": "text", "maxChars": 4000 }
+      ]
+    },
+    "CompanyChangeEvent": {
+      "idProperty": "eventKey",
+      "keyStrategy": "composite",
+      "keyTemplate": "{companyId}|{eventId}",
+      "labels": ["CompanyChangeEvent"],
+      "cdcWritable": false,
+      "properties": [
+        { "name": "eventId",        "columns": ["id", "event_id"], "type": "string", "maxChars": 64 },
+        { "name": "changeType",     "columns": ["change_type", "type"], "type": "string", "maxChars": 64 },
+        { "name": "changeTypeCode", "columns": ["change_type", "change_type_code"], "type": "string", "maxChars": 32 },
+        { "name": "changeItem",     "columns": ["change_item", "item"], "type": "string", "maxChars": 128 },
+        { "name": "beforeValue",    "columns": ["before_value", "old_value"], "type": "text", "maxChars": 4000 },
+        { "name": "afterValue",     "columns": ["after_value", "new_value"], "type": "text", "maxChars": 4000 },
+        { "name": "changeDate",     "columns": ["change_date"], "type": "date", "indexed": true },
+        { "name": "changeTime",     "columns": ["change_time", "modifytime"], "type": "datetime" },
+        { "name": "operator",       "columns": ["operator", "modifier", "creator"], "type": "string", "maxChars": 128 },
+        { "name": "sourceDocId",    "columns": ["source_doc_id", "doc_id"], "type": "string", "maxChars": 64 }
+      ]
+    }
+  },
+  "constraints": [
+    { "name": "company_id",         "label": "Company",                 "property": "companyId",         "type": "UNIQUE" },
+    { "name": "person_key",         "label": "Person",                  "property": "personKey",         "type": "UNIQUE" },
+    { "name": "cert_key",           "label": "Certificate",             "property": "certKey",           "type": "UNIQUE" },
+    { "name": "seal_key",           "label": "Seal",                    "property": "sealKey",           "type": "UNIQUE" },
+    { "name": "bank_account_key",   "label": "BankAccount",             "property": "accountKey",        "type": "UNIQUE" },
+    { "name": "shareholder_key",    "label": "Shareholder",             "property": "shareholderKey",    "type": "UNIQUE" },
+    { "name": "product_key",        "label": "ProductLine",             "property": "productKey",        "type": "UNIQUE" },
+    { "name": "director_key",       "label": "DirectorSupervisor",      "property": "directorKey",       "type": "UNIQUE" },
+    { "name": "cert_attach_key",    "label": "CertificateAttachment",   "property": "attachmentKey",     "type": "UNIQUE" },
+    { "name": "cert_person_key",    "label": "CertificatePersonDetail", "property": "personDetailKey",   "type": "UNIQUE" },
+    { "name": "change_event_key",   "label": "CompanyChangeEvent",      "property": "eventKey",          "type": "UNIQUE" }
+  ],
+  "indexes": [
+    { "label": "Company",                 "properties": ["creditCode"],                  "type": "BTREE",   "name": "company_credit_code" },
+    { "label": "Company",                 "properties": ["name"],                        "type": "FULLTEXT","name": "company_name_ft" },
+    { "label": "Company",                 "properties": ["registeredCapital"],           "type": "BTREE",   "name": "company_capital" },
+    { "label": "Certificate",             "properties": ["validTo"],                     "type": "BTREE",   "name": "cert_valid_to" },
+    { "label": "Certificate",             "properties": ["certTypeCode"],                "type": "BTREE",   "name": "cert_type_code" },
+    { "label": "Seal",                    "properties": ["statusCode"],                  "type": "BTREE",   "name": "seal_status" },
+    { "label": "Shareholder",             "properties": ["name"],                        "type": "FULLTEXT","name": "shareholder_name_ft" },
+    { "label": "CertificateAttachment",   "properties": ["fileId"],                      "type": "BTREE",   "name": "cert_attach_file" },
+    { "label": "CertificatePersonDetail", "properties": ["personId"],                    "type": "BTREE",   "name": "cert_person_pid" },
+    { "label": "CompanyChangeEvent",      "properties": ["changeDate"],                  "type": "BTREE",   "name": "change_event_date" }
+  ]
+}

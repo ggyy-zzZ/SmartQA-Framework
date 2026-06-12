@@ -1,10 +1,27 @@
 {
+  "version": 2,
+  "schemaVersion": "1.0",
   "needInferenceRules": [
     {
       "id": "global_compliance_list",
-      "allKeywords": ["所有", "证照"],
-      "anyKeywords": ["列出", "清单", "列举", "全部"],
-      "contextKeywords": ["主体", "状态", "有效", "存续", "吊销", "注销"],
+      "allKeywords": [
+        "所有",
+        "证照"
+      ],
+      "anyKeywords": [
+        "列出",
+        "清单",
+        "列举",
+        "全部"
+      ],
+      "contextKeywords": [
+        "主体",
+        "状态",
+        "有效",
+        "存续",
+        "吊销",
+        "注销"
+      ],
       "need": {
         "facet": "compliance",
         "granularity": "instance",
@@ -13,8 +30,25 @@
     },
     {
       "id": "type_catalog",
-      "anyKeywords": ["类型", "种类", "有哪些证", "什么证", "哪些证", "什么类型", "有哪些类型", "资质证照"],
-      "contextKeywords": ["证照", "许可证", "资质", "执照", "备案", "证书", "证"],
+      "anyKeywords": [
+        "类型",
+        "种类",
+        "有哪些证",
+        "什么证",
+        "哪些证",
+        "什么类型",
+        "有哪些类型",
+        "资质证照"
+      ],
+      "contextKeywords": [
+        "证照",
+        "许可证",
+        "资质",
+        "执照",
+        "备案",
+        "证书",
+        "证"
+      ],
       "need": {
         "facet": "certificate",
         "granularity": "type_catalog",
@@ -23,9 +57,33 @@
     },
     {
       "id": "license_status_catalog",
-      "anyKeywords": ["状态", "取值", "类型", "有效", "失效"],
-      "contextKeywords": ["证照", "证", "资质", "许可证", "执照", "备案"],
-      "excludeKeywords": ["经营状态", "股东类型", "主体类型", "主体分类", "关系", "模块", "产品线", "币种", "纳税人", "角色"],
+      "anyKeywords": [
+        "状态",
+        "取值",
+        "类型",
+        "有效",
+        "失效"
+      ],
+      "contextKeywords": [
+        "证照",
+        "证",
+        "资质",
+        "许可证",
+        "执照",
+        "备案"
+      ],
+      "excludeKeywords": [
+        "经营状态",
+        "股东类型",
+        "主体类型",
+        "主体分类",
+        "关系",
+        "模块",
+        "产品线",
+        "币种",
+        "纳税人",
+        "角色"
+      ],
       "need": {
         "facet": "certificate",
         "granularity": "type_catalog",
@@ -34,7 +92,18 @@
     },
     {
       "id": "operating_status_catalog",
-      "anyKeywords": ["经营状态", "存续", "在业", "吊销", "注销", "迁入", "迁出", "停业", "清算", "注册中"],
+      "anyKeywords": [
+        "经营状态",
+        "存续",
+        "在业",
+        "吊销",
+        "注销",
+        "迁入",
+        "迁出",
+        "停业",
+        "清算",
+        "注册中"
+      ],
       "need": {
         "facet": "profile",
         "granularity": "type_catalog",
@@ -43,7 +112,14 @@
     },
     {
       "id": "main_type_catalog",
-      "anyKeywords": ["主体类型", "有限责任", "分支", "合伙", "股份有限", "办事处"],
+      "anyKeywords": [
+        "主体类型",
+        "有限责任",
+        "分支",
+        "合伙",
+        "股份有限",
+        "办事处"
+      ],
       "need": {
         "facet": "profile",
         "granularity": "type_catalog",
@@ -52,7 +128,12 @@
     },
     {
       "id": "main_class_catalog",
-      "anyKeywords": ["主体分类", "集团内", "战投", "参股"],
+      "anyKeywords": [
+        "主体分类",
+        "集团内",
+        "战投",
+        "参股"
+      ],
       "need": {
         "facet": "profile",
         "granularity": "type_catalog",
@@ -61,7 +142,15 @@
     },
     {
       "id": "relationship_kind_catalog",
-      "anyKeywords": ["关系", "运营主体", "股东", "分公司", "子公司", "多级股东", "多级子公司"],
+      "anyKeywords": [
+        "关系",
+        "运营主体",
+        "股东",
+        "分公司",
+        "子公司",
+        "多级股东",
+        "多级子公司"
+      ],
       "need": {
         "facet": "relation",
         "granularity": "type_catalog",
@@ -70,7 +159,14 @@
     },
     {
       "id": "module_kind_catalog",
-      "anyKeywords": ["模块", "中台", "招聘", "SaaS", "职业教育", "外包"],
+      "anyKeywords": [
+        "模块",
+        "中台",
+        "招聘",
+        "SaaS",
+        "职业教育",
+        "外包"
+      ],
       "need": {
         "facet": "profile",
         "granularity": "type_catalog",
@@ -79,7 +175,28 @@
     },
     {
       "id": "product_line_catalog",
-      "anyKeywords": ["产品线", "集团", "产研", "非关联", "战投", "同道精英", "猎聘加盟", "校园", "CGL", "北美", "万仕道", "测培", "多面", "问卷星", "多猎", "赛优", "RPO外包", "勋厚", "有薪", "项目公司"],
+      "anyKeywords": [
+        "产品线",
+        "集团",
+        "产研",
+        "非关联",
+        "战投",
+        "同道精英",
+        "猎聘加盟",
+        "校园",
+        "CGL",
+        "北美",
+        "万仕道",
+        "测培",
+        "多面",
+        "问卷星",
+        "多猎",
+        "赛优",
+        "RPO外包",
+        "勋厚",
+        "有薪",
+        "项目公司"
+      ],
       "need": {
         "facet": "profile",
         "granularity": "type_catalog",
@@ -88,7 +205,11 @@
     },
     {
       "id": "shareholder_type_catalog",
-      "anyKeywords": ["股东类型", "公司股东", "自然人股东"],
+      "anyKeywords": [
+        "股东类型",
+        "公司股东",
+        "自然人股东"
+      ],
       "need": {
         "facet": "relation",
         "granularity": "type_catalog",
@@ -97,7 +218,11 @@
     },
     {
       "id": "member_type_catalog",
-      "anyKeywords": ["董监高类型", "董事", "监事"],
+      "anyKeywords": [
+        "董监高类型",
+        "董事",
+        "监事"
+      ],
       "need": {
         "facet": "role",
         "granularity": "type_catalog",
@@ -106,7 +231,17 @@
     },
     {
       "id": "currency_type_catalog",
-      "anyKeywords": ["币种", "人民币", "美元", "港币", "日元", "RMB", "USD", "HKD", "JPY"],
+      "anyKeywords": [
+        "币种",
+        "人民币",
+        "美元",
+        "港币",
+        "日元",
+        "RMB",
+        "USD",
+        "HKD",
+        "JPY"
+      ],
       "need": {
         "facet": "profile",
         "granularity": "type_catalog",
@@ -115,7 +250,12 @@
     },
     {
       "id": "taxpayer_qualification_catalog",
-      "anyKeywords": ["纳税人资质", "一般纳税人", "小规模纳税人", "增值税"],
+      "anyKeywords": [
+        "纳税人资质",
+        "一般纳税人",
+        "小规模纳税人",
+        "增值税"
+      ],
       "need": {
         "facet": "profile",
         "granularity": "type_catalog",
@@ -124,7 +264,14 @@
     },
     {
       "id": "enterprise_role_dict_catalog",
-      "anyKeywords": ["企业角色", "会计主管", "所属会计", "所属出纳", "SSC薪酬", "所属IT"],
+      "anyKeywords": [
+        "企业角色",
+        "会计主管",
+        "所属会计",
+        "所属出纳",
+        "SSC薪酬",
+        "所属IT"
+      ],
       "need": {
         "facet": "role",
         "granularity": "type_catalog",
@@ -133,8 +280,21 @@
     },
     {
       "id": "instance_list",
-      "anyKeywords": ["哪些", "列出", "名单", "多少", "分别"],
-      "contextKeywords": ["担任", "任职", "角色", "法人", "董事", "监事"],
+      "anyKeywords": [
+        "哪些",
+        "列出",
+        "名单",
+        "多少",
+        "分别"
+      ],
+      "contextKeywords": [
+        "担任",
+        "任职",
+        "角色",
+        "法人",
+        "董事",
+        "监事"
+      ],
       "need": {
         "facet": "role",
         "granularity": "list",
@@ -185,8 +345,13 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["certificate"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "certificate"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -201,8 +366,14 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["seal", "compliance"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "seal",
+          "compliance"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -217,8 +388,15 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["certificate", "compliance", "status"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "certificate",
+          "compliance",
+          "status"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -233,8 +411,15 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["profile", "status", "compliance"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "profile",
+          "status",
+          "compliance"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -249,8 +434,13 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["profile"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "profile"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -265,8 +455,13 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["profile"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "profile"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -281,8 +476,14 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["relation", "profile"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "relation",
+          "profile"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -297,8 +498,13 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["profile"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "profile"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -313,8 +519,13 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["profile"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "profile"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -329,8 +540,14 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["relation", "shareholder"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "relation",
+          "shareholder"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -345,8 +562,13 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["role"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "role"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -361,8 +583,13 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["profile"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "profile"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -377,8 +604,14 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["profile", "compliance"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "profile",
+          "compliance"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -393,8 +626,14 @@
       "evidenceSchema": "catalog_v1",
       "source": "catalog-enum",
       "match": {
-        "facets": ["role", "profile"],
-        "granularities": ["type_catalog", "definition"]
+        "facets": [
+          "role",
+          "profile"
+        ],
+        "granularities": [
+          "type_catalog",
+          "definition"
+        ]
       },
       "retriever": {
         "type": "enum_labels",
@@ -407,20 +646,71 @@
   ],
   "gateRules": [
     {
-      "granularities": ["type_catalog", "definition"],
-      "requiredSchemas": ["catalog_v1"]
+      "granularities": [
+        "type_catalog",
+        "definition"
+      ],
+      "requiredSchemas": [
+        "catalog_v1"
+      ]
     },
     {
-      "granularities": ["instance", "list"],
-      "facets": ["certificate"],
-      "requiredSchemas": ["person_certificate_v1", "catalog_v1"],
+      "granularities": [
+        "instance",
+        "list"
+      ],
+      "facets": [
+        "certificate"
+      ],
+      "requiredSchemas": [
+        "person_certificate_v1",
+        "catalog_v1"
+      ],
       "acceptableSources": [
-        "mysql-person-certificate",
-        "mysql-company-certificate",
+        "mysql-structured-person_stewardship",
+        "mysql-structured-certificate_by_company",
+        "neo4j-certificate-instance",
         "catalog-enum",
         "enterprise_mysql_compiled.txt",
         "document-chunk-db"
       ]
     }
+  ],
+  "evidenceMatchRules": [
+    {
+      "id": "person_certificate_v1",
+      "queryType": "PERSON_CERTIFICATE_LIST",
+      "sourcePrefixes": [
+        "document-chunk-db",
+        "enterprise_mysql_compiled",
+        "mysql-structured-",
+        "neo4j-certificate-instance"
+      ],
+      "schemaIds": [
+        "person_certificate_v1"
+      ],
+      "minCount": 1
+    },
+    {
+      "id": "company_certificate_flexible",
+      "queryType": "COMPANY_CERTIFICATE",
+      "sourcePrefixes": [
+        "mysql-structured-",
+        "neo4j-certificate-instance"
+      ],
+      "schemaIds": [
+        "company_certificate_v1"
+      ]
+    }
+  ],
+  "compiledDocsTriggers": [
+    "证照",
+    "许可证",
+    "备案",
+    "印章",
+    "公章",
+    "资质",
+    "执照",
+    "证书"
   ]
 }

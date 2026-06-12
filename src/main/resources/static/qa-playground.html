@@ -356,10 +356,10 @@
             color: var(--accent);
         }
 
-        /* 同步面板（折叠） */
-        .sync-toggle {
+        /* 侧边浮层：文档学习 / MySQL 同步 */
+        .sync-toggle,
+        .learn-toggle {
             position: fixed;
-            bottom: 80px;
             right: 24px;
             width: 40px;
             height: 40px;
@@ -373,14 +373,22 @@
             align-items: center;
             justify-content: center;
             transition: border-color 0.2s, color 0.2s;
+            z-index: 90;
         }
-        .sync-toggle:hover {
+        .learn-toggle {
+            bottom: 128px;
+        }
+        .sync-toggle {
+            bottom: 80px;
+        }
+        .sync-toggle:hover,
+        .learn-toggle:hover {
             border-color: var(--border-focus);
             color: var(--accent);
         }
-        .sync-panel {
+        .sync-panel,
+        .learn-panel {
             position: fixed;
-            bottom: 130px;
             right: 24px;
             width: 320px;
             background: var(--surface);
@@ -391,21 +399,67 @@
             box-shadow: var(--shadow);
             max-height: 520px;
             overflow-y: auto;
+            z-index: 89;
         }
-        .sync-panel.open {
+        .learn-panel {
+            bottom: 178px;
+            max-height: 420px;
+        }
+        .sync-panel {
+            bottom: 130px;
+        }
+        .sync-panel.open,
+        .learn-panel.open {
             display: block;
         }
-        .sync-panel h3 {
+        .sync-panel h3,
+        .learn-panel h3 {
             margin: 0 0 12px;
             font-size: 14px;
             color: var(--text);
         }
-        .sync-form {
+        .learn-dropzone {
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+            padding: 16px 12px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--muted);
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .learn-dropzone:hover,
+        .learn-dropzone.dragover {
+            border-color: var(--border-focus);
+            background: rgba(129, 140, 248, 0.08);
+            color: var(--text);
+        }
+        .learn-dropzone strong {
+            display: block;
+            color: var(--accent);
+            margin-bottom: 4px;
+            font-size: 13px;
+        }
+        .learn-file-name {
+            font-size: 11px;
+            color: #a5b4fc;
+            margin-top: 8px;
+            word-break: break-all;
+        }
+        .learn-hint {
+            margin: 10px 0 0;
+            font-size: 10px;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+        .sync-form,
+        .learn-form {
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
-        .sync-form input {
+        .sync-form input,
+        .learn-form input[type="file"] {
             width: 100%;
             padding: 8px 12px;
             border-radius: 8px;
@@ -414,7 +468,23 @@
             color: var(--text);
             font-size: 13px;
         }
-        .sync-form button {
+        .learn-form input[type="file"] {
+            display: none;
+        }
+        .learn-form textarea {
+            width: 100%;
+            min-height: 72px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text);
+            font-size: 12px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .sync-form button,
+        .learn-form button {
             padding: 8px 16px;
             border-radius: 8px;
             border: none;
@@ -423,11 +493,13 @@
             font-size: 13px;
             cursor: pointer;
         }
-        .sync-form button:disabled {
+        .sync-form button:disabled,
+        .learn-form button:disabled {
             opacity: 0.55;
             cursor: not-allowed;
         }
-        .sync-form button.secondary {
+        .sync-form button.secondary,
+        .learn-form button.secondary {
             background: var(--surface-2);
             border: 1px solid var(--border);
             color: var(--text);
@@ -463,7 +535,8 @@
             flex: 1;
             min-width: 120px;
         }
-        .sync-log {
+        .sync-log,
+        .learn-log {
             margin-top: 12px;
             background: #080c18;
             border-radius: 8px;
@@ -475,7 +548,8 @@
             color: #94a3b8;
             white-space: pre-wrap;
         }
-        .sync-status {
+        .sync-status,
+        .learn-status {
             font-size: 11px;
             margin-top: 6px;
         }
@@ -485,6 +559,126 @@
             .message { max-width: 92%; }
             .sync-panel { width: calc(100vw - 32px); right: 16px; }
         }
+
+        /* ===== Admin Panel ===== */
+        details.admin-toggle {
+            flex-shrink: 0;
+            margin: 6px auto 0;
+            max-width: 720px;
+            text-align: left;
+        }
+        details.admin-toggle > summary {
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+            font-size: 12px;
+            color: var(--muted);
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+            background: var(--surface-2);
+        }
+        details.admin-toggle > summary::-webkit-details-marker { display: none; }
+        details.admin-toggle > summary::before { content: "▸"; transition: transform .2s; display: inline-block; }
+        details.admin-toggle[open] > summary::before { transform: rotate(90deg); }
+        .admin-panel {
+            margin: 10px auto 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px;
+            box-shadow: var(--shadow);
+        }
+        .admin-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+        .admin-card {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 11px;
+            min-height: 70px;
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .admin-card-title { color: var(--muted); font-size: 10px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+        .admin-card .row { display: flex; justify-content: space-between; gap: 6px; }
+        .admin-card .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+        .admin-card .dot.ok { background: var(--success); }
+        .admin-card .dot.fail { background: var(--error); }
+        .admin-card .dot.warn { background: #fbbf24; }
+        .admin-group-title { color: var(--muted); font-size: 10px; margin: 8px 0 4px; text-transform: uppercase; letter-spacing: .05em; }
+        .admin-btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        .admin-btn {
+            font-size: 11px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text);
+            cursor: pointer;
+            text-align: center;
+            transition: border-color .15s;
+        }
+        .admin-btn:hover { border-color: var(--border-focus); }
+        .admin-btn.danger { color: var(--error); border-color: rgba(251, 113, 133, 0.4); }
+        .admin-btn:disabled { opacity: .4; cursor: not-allowed; }
+        .admin-btn.running { background: var(--primary-dark); color: #fff; border-color: var(--primary); }
+        .admin-log {
+            background: #0a0d18;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-top: 8px;
+            max-height: 180px;
+            overflow-y: auto;
+            font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            color: #cbd5e1;
+        }
+        .admin-log-line { white-space: pre-wrap; word-break: break-all; }
+        .admin-log-line.running { color: var(--accent); }
+        .admin-log-line.ok { color: var(--success); }
+        .admin-log-line.err { color: var(--error); }
+        .admin-modal-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999;
+        }
+        .admin-modal {
+            background: var(--bg-accent);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 20px;
+            max-width: 420px;
+            width: calc(100vw - 32px);
+            color: var(--text);
+        }
+        .admin-modal h4 { margin: 0 0 6px; color: var(--error); font-size: 14px; }
+        .admin-modal p { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+        .admin-modal input {
+            width: 100%; margin: 8px 0;
+            padding: 8px 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 8px;
+            font-family: inherit; font-size: 12px;
+        }
+        .admin-modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+        .admin-modal button.confirm {
+            background: var(--error); color: #fff;
+            padding: 6px 14px; border: 0; border-radius: 8px; font-size: 12px; cursor: pointer;
+        }
+        .admin-modal button.confirm:disabled { background: #555; cursor: not-allowed; }
+        .admin-modal button.cancel {
+            background: transparent; color: var(--muted);
+            padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -492,8 +686,66 @@
     <header class="hero">
         <div class="hero-orb" aria-hidden="true">✦</div>
         <h1>企业智能助手</h1>
-        <p>基于企业知识图谱与向量库</p>
+        <p>上传 Markdown 学习进知识库 · 图谱与向量检索 · 智能问答</p>
     </header>
+
+    <details class="admin-toggle" id="adminPanelDetails" open>
+        <summary>🛠 运维面板（Admin）</summary>
+        <div class="admin-panel" id="adminPanel">
+            <div class="admin-cards">
+                <div class="admin-card" data-card="services">
+                    <div class="admin-card-title">服务状态（6）</div>
+                    <div class="card-body" id="adminCardServices">—</div>
+                </div>
+                <div class="admin-card" data-card="neo4j">
+                    <div class="admin-card-title">Neo4j 节点/关系</div>
+                    <div class="card-body" id="adminCardNeo4j">—</div>
+                </div>
+                <div class="admin-card" data-card="qdrant">
+                    <div class="admin-card-title">Qdrant 集合</div>
+                    <div class="card-body" id="adminCardQdrant">—</div>
+                </div>
+                <div class="admin-card" data-card="recent">
+                    <div class="admin-card-title">最近 5 条运维日志</div>
+                    <div class="card-body" id="adminCardRecent">—</div>
+                </div>
+            </div>
+
+            <div class="admin-group-title">服务</div>
+            <div class="admin-btn-grid">
+                <button class="admin-btn" data-action="health">健康检查</button>
+            </div>
+
+            <div class="admin-group-title">ETL 镜像</div>
+            <div class="admin-btn-grid">
+                <button class="admin-btn" data-action="etl-rebuild-mirror">重建 JSONL 镜像</button>
+                <button class="admin-btn" data-action="etl-incremental">业务库增量同步</button>
+            </div>
+
+            <div class="admin-group-title">图谱 Neo4j</div>
+            <div class="admin-btn-grid">
+                <button class="admin-btn" data-action="neo4j-sync">重建约束/索引</button>
+                <button class="admin-btn danger" data-action="neo4j-sync-with-wipe" data-confirm="YES">wipe 后全量重灌</button>
+                <button class="admin-btn danger" data-action="neo4j-wipe" data-confirm="YES">仅清空 Neo4j</button>
+            </div>
+
+            <div class="admin-group-title">向量 Qdrant</div>
+            <div class="admin-btn-grid">
+                <button class="admin-btn" data-action="qdrant-sync">灌 Qdrant 知识库</button>
+                <button class="admin-btn" data-action="qdrant-sync-active">灌 Qdrant 主动学习</button>
+                <button class="admin-btn danger" data-action="qdrant-sync-with-wipe" data-confirm="YES">wipe Qdrant 后重灌</button>
+            </div>
+
+            <div class="admin-group-title">应用 / 会话</div>
+            <div class="admin-btn-grid">
+                <button class="admin-btn" data-action="cache-refresh">Spring 热重载</button>
+                <button class="admin-btn" data-action="config-reload">重载 qa/*.json</button>
+                <button class="admin-btn danger" data-action="session-logs-truncate" data-confirm="YES">清空对话日志</button>
+            </div>
+
+            <div class="admin-log" id="adminLog" aria-live="polite"></div>
+        </div>
+    </details>
 
     <div id="chatContainer" class="chat-container">
         <div class="welcome-hint">
@@ -502,6 +754,7 @@
                 <span class="example-chip" onclick="fillQuestion('戴先生是哪些主体的法定代表人')">戴先生是哪些主体的法定代表人</span>
                 <span class="example-chip" onclick="fillQuestion('某公司有哪些证照')">某公司有哪些证照</span>
                 <span class="example-chip" onclick="fillQuestion('周吴徐具体是哪些人')">周吴徐具体是哪些人</span>
+                <span class="example-chip" onclick="openLearnPanel()">先上传 MD 文档学习</span>
             </div>
         </div>
     </div>
@@ -525,7 +778,27 @@
     </footer>
 </div>
 
-<button class="sync-toggle" id="syncToggleBtn" title="知识同步">📚</button>
+<button class="learn-toggle" id="learnToggleBtn" title="上传 Markdown 学习">📄</button>
+<div class="learn-panel" id="learnPanel">
+    <h3>文档学习</h3>
+    <div class="learn-form">
+        <div class="learn-dropzone" id="learnDropzone">
+            <strong>选择或拖拽 .md 文件</strong>
+            <span>写入 MySQL · Qdrant · Neo4j</span>
+            <div class="learn-file-name" id="learnFileName">未选择文件</div>
+        </div>
+        <input type="file" id="learnFile" accept=".md,text/markdown">
+        <button type="button" id="learnUploadBtn">开始学习</button>
+        <label for="learnTextContent">或直接粘贴 Markdown 文本</label>
+        <textarea id="learnTextContent" placeholder="# 标题&#10;&#10;正文内容…"></textarea>
+        <button type="button" class="secondary" id="learnTextBtn">学习以上文本</button>
+        <p class="learn-hint">学习完成后在下方对话框提问，系统会从向量库与图谱中检索刚写入的内容。也可在对话中说「请记住：…」进行短句学习。</p>
+        <div id="learnStatus" class="learn-status status"></div>
+        <div id="learnLog" class="learn-log">尚未学习</div>
+    </div>
+</div>
+
+<button class="sync-toggle" id="syncToggleBtn" title="MySQL 企业库同步">📚</button>
 <div class="sync-panel" id="syncPanel">
     <h3>同步企业知识</h3>
     <div class="sync-form">
@@ -570,6 +843,11 @@
     const statusText = document.getElementById("statusText");
     const syncToggleBtn = document.getElementById("syncToggleBtn");
     const syncPanel = document.getElementById("syncPanel");
+    const learnToggleBtn = document.getElementById("learnToggleBtn");
+    const learnPanel = document.getElementById("learnPanel");
+    const learnFileInput = document.getElementById("learnFile");
+    const learnDropzone = document.getElementById("learnDropzone");
+    const learnFileName = document.getElementById("learnFileName");
 
     let qaConversationId = sessionStorage.getItem("qaConversationId") || null;
     let askAbortController = null;
@@ -583,6 +861,162 @@
         questionInput.value = text;
         questionInput.focus();
     }
+
+    function openLearnPanel() {
+        syncPanel.classList.remove("open");
+        learnPanel.classList.add("open");
+        learnFileInput.click();
+    }
+
+    function renderMarkdownInto(el, text) {
+        if (window.marked && typeof window.marked.parse === "function") {
+            el.innerHTML = window.marked.parse(text || "", {gfm: true, breaks: true});
+        } else {
+            el.textContent = text || "";
+        }
+    }
+
+    function formatSinkStatus(sinkStatus) {
+        if (!sinkStatus) return "";
+        const lines = [];
+        for (const key of ["mysql", "vector", "graph"]) {
+            const s = sinkStatus[key];
+            if (s) lines.push(key + ": " + (s.ok ? "成功" : "失败") + " — " + (s.detail || ""));
+        }
+        return lines.join("\n");
+    }
+
+    function showLearnResultInChat(userLabel, data) {
+        addMessage("user", userLabel, null);
+        const failed = data.ok === false || data.canAnswer === false;
+        let body = data.answer || data.message || (failed ? "学习失败" : "学习完成");
+        if (data.sinkStatus) {
+            body += "\n\n```\n" + formatSinkStatus(data.sinkStatus) + "\n```";
+        }
+        if (data.knowledgeId) {
+            body += "\n\n知识条目 ID：`" + data.knowledgeId + "`";
+        }
+        addMessage("assistant", "", null);
+        const messages = chatContainer.querySelectorAll(".message.assistant");
+        const bubble = messages[messages.length - 1].querySelector(".message-bubble");
+        if (failed) {
+            bubble.innerHTML = '<span style="color:var(--error)">' + escapeHtml(body) + '</span>';
+        } else {
+            renderMarkdownInto(bubble, body);
+        }
+        removeWelcomeHint();
+    }
+
+    function removeWelcomeHint() {
+        const hint = chatContainer.querySelector(".welcome-hint");
+        if (hint) hint.remove();
+    }
+
+    function setLearnStatus(text, ok) {
+        const el = document.getElementById("learnStatus");
+        el.textContent = text;
+        el.className = "learn-status status" + (ok === true ? " ok" : (ok === false ? " error" : ""));
+    }
+
+    function appendLearnLog(text) {
+        document.getElementById("learnLog").textContent = text;
+    }
+
+    function updateLearnFileLabel(file) {
+        learnFileName.textContent = file ? file.name + " (" + Math.ceil(file.size / 1024) + " KB)" : "未选择文件";
+    }
+
+    learnToggleBtn.addEventListener("click", () => {
+        learnPanel.classList.toggle("open");
+        if (learnPanel.classList.contains("open")) syncPanel.classList.remove("open");
+    });
+
+    learnDropzone.addEventListener("click", () => learnFileInput.click());
+    learnFileInput.addEventListener("change", () => {
+        updateLearnFileLabel(learnFileInput.files[0] || null);
+    });
+    ["dragenter", "dragover"].forEach(evt => {
+        learnDropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            learnDropzone.classList.add("dragover");
+        });
+    });
+    ["dragleave", "drop"].forEach(evt => {
+        learnDropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            learnDropzone.classList.remove("dragover");
+        });
+    });
+    learnDropzone.addEventListener("drop", (e) => {
+        const files = e.dataTransfer.files;
+        if (!files || !files.length) return;
+        learnFileInput.files = files;
+        updateLearnFileLabel(files[0]);
+    });
+
+    document.getElementById("learnUploadBtn").addEventListener("click", async () => {
+        const file = learnFileInput.files[0];
+        if (!file) {
+            alert("请先选择 .md 文件");
+            return;
+        }
+        if (!file.name.toLowerCase().endsWith(".md")) {
+            alert("仅支持 .md 文件");
+            return;
+        }
+        const btn = document.getElementById("learnUploadBtn");
+        btn.disabled = true;
+        setLearnStatus("学习中…", null);
+        appendLearnLog("上传: " + file.name);
+        try {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("trigger", "playground_upload");
+            const resp = await fetch("/qa/learn/upload", {method: "POST", body: fd});
+            const data = await resp.json();
+            appendLearnLog(formatSinkStatus(data.sinkStatus) || JSON.stringify(data, null, 2));
+            const ok = data.ok !== false && data.canAnswer !== false;
+            setLearnStatus(ok ? "学习完成，可以提问了" : (data.message || "学习失败"), ok);
+            showLearnResultInChat("📄 上传学习：" + file.name, data);
+            if (ok) {
+                learnPanel.classList.remove("open");
+                questionInput.focus();
+            }
+        } catch (e) {
+            setLearnStatus(e.message, false);
+            appendLearnLog("错误: " + e.message);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    document.getElementById("learnTextBtn").addEventListener("click", async () => {
+        const content = document.getElementById("learnTextContent").value.trim();
+        if (!content) {
+            alert("请粘贴 Markdown 文本");
+            return;
+        }
+        const btn = document.getElementById("learnTextBtn");
+        btn.disabled = true;
+        setLearnStatus("学习中…", null);
+        try {
+            const resp = await fetch("/qa/learn/text", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({content, title: "playground_paste", scope: "enterprise"})
+            });
+            const data = await resp.json();
+            appendLearnLog(formatSinkStatus(data.sinkStatus) || JSON.stringify(data, null, 2));
+            const ok = data.ok !== false && data.canAnswer !== false;
+            setLearnStatus(ok ? "学习完成" : (data.message || "失败"), ok);
+            showLearnResultInChat("📝 文本学习（" + content.length + " 字）", data);
+            if (ok) document.getElementById("learnTextContent").value = "";
+        } catch (e) {
+            setLearnStatus(e.message, false);
+        } finally {
+            btn.disabled = false;
+        }
+    });
 
     function autoResize() {
         questionInput.style.height = "auto";
@@ -600,6 +1034,7 @@
 
     /* ===== 消息渲染 ===== */
     function addMessage(role, content, thinkingHtml) {
+        removeWelcomeHint();
         const div = document.createElement("div");
         div.className = "message " + role;
 
@@ -992,13 +1427,14 @@
     newChatBtn.addEventListener("click", () => {
         qaConversationId = null;
         sessionStorage.removeItem("qaConversationId");
-        chatContainer.innerHTML = '<div class="welcome-hint"><div>向我提问，例如：</div><div class="welcome-hint-examples"><span class="example-chip" onclick="fillQuestion(\'戴先生是哪些主体的法定代表人\')">戴先生是哪些主体的法定代表人</span><span class="example-chip" onclick="fillQuestion(\'某公司有哪些证照\')">某公司有哪些证照</span><span class="example-chip" onclick="fillQuestion(\'周吴徐具体是哪些人\')">周吴徐具体是哪些人</span></div></div>';
+        chatContainer.innerHTML = '<div class="welcome-hint"><div>向我提问，例如：</div><div class="welcome-hint-examples"><span class="example-chip" onclick="fillQuestion(\'戴先生是哪些主体的法定代表人\')">戴先生是哪些主体的法定代表人</span><span class="example-chip" onclick="fillQuestion(\'某公司有哪些证照\')">某公司有哪些证照</span><span class="example-chip" onclick="fillQuestion(\'周吴徐具体是哪些人\')">周吴徐具体是哪些人</span><span class="example-chip" onclick="openLearnPanel()">先上传 MD 文档学习</span></div></div>';
         setStatus("已开启新对话");
     });
 
     /* ===== 同步面板 ===== */
     syncToggleBtn.addEventListener("click", () => {
         syncPanel.classList.toggle("open");
+        if (syncPanel.classList.contains("open")) learnPanel.classList.remove("open");
     });
 
     const syncIncrementalBtn = document.getElementById("syncIncrementalBtn");
@@ -1185,6 +1621,266 @@
         el.textContent = text;
         el.className = "sync-status status" + (ok === true ? " ok" : (ok === false ? " error" : ""));
     }
+
+    // ===== Admin Panel IIFE =====
+    (function AdminPanel() {
+        const logEl = () => document.getElementById("adminLog");
+        const details = () => document.getElementById("adminPanelDetails");
+        const buttonLocks = new Set();
+        let refreshTimer = null;
+        const statePollAbort = { ctrl: null };
+
+        const ACTION_TO_ENDPOINT = {
+            "health": { method: "GET", url: "/admin/ops/state", stream: false },
+            "etl-rebuild-mirror": { method: "POST", url: "/admin/ops/etl/rebuild-mirror", stream: false },
+            "etl-incremental":   { method: "POST", url: "/admin/ops/etl/incremental", stream: false },
+            "neo4j-sync":          { method: "POST", url: "/admin/ops/neo4j/sync", stream: true },
+            "neo4j-sync-with-wipe":{ method: "POST", url: "/admin/ops/neo4j/sync-with-wipe", stream: true, confirm: true },
+            "neo4j-wipe":          { method: "POST", url: "/admin/ops/neo4j/wipe", stream: true, confirm: true },
+            "qdrant-sync":         { method: "POST", url: "/admin/ops/qdrant/sync", stream: true },
+            "qdrant-sync-active":  { method: "POST", url: "/admin/ops/qdrant/sync-active", stream: true },
+            "qdrant-sync-with-wipe":{method: "POST", url: "/admin/ops/qdrant/sync-with-wipe", stream: true, confirm: true },
+            "session-logs-truncate":{ method: "POST", url: "/admin/ops/session-logs/truncate", stream: true, confirm: true },
+            "cache-refresh":       { method: "POST", url: "/admin/ops/cache/refresh", stream: false },
+            "config-reload":       { method: "POST", url: "/admin/ops/config/reload", stream: false }
+        };
+
+        function appendLog(text, kind) {
+            const el = logEl(); if (!el) return;
+            const line = document.createElement("div");
+            line.className = "admin-log-line" + (kind ? " " + kind : "");
+            line.textContent = "[" + new Date().toLocaleTimeString() + "] " + text;
+            el.appendChild(line);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function setButtonsDisabled(group, disabled) {
+            document.querySelectorAll(".admin-btn[data-action]").forEach(b => {
+                if (disabled) b.classList.add("running"); else b.classList.remove("running");
+            });
+        }
+
+        function lockAction(action) { buttonLocks.add(action); refreshBtnState(); }
+        function unlockAction(action) { buttonLocks.delete(action); refreshBtnState(); }
+
+        function refreshBtnState() {
+            document.querySelectorAll(".admin-btn[data-action]").forEach(b => {
+                const a = b.getAttribute("data-action");
+                b.disabled = buttonLocks.has(a) || (a === "neo4j-sync" && buttonLocks.has("neo4j-sync-with-wipe"))
+                    || (a === "neo4j-sync-with-wipe" && buttonLocks.has("neo4j-sync"))
+                    || (a === "neo4j-wipe" && buttonLocks.has("neo4j-sync-with-wipe"));
+            });
+        }
+
+        function renderServices(svcs) {
+            const root = document.getElementById("adminCardServices");
+            if (!root) return;
+            if (!svcs) { root.innerHTML = '<span class="dot fail"></span>无响应'; return; }
+            const names = ["neo4j","qdrant","mysql","kafka","dashscope","qaApp"];
+            root.innerHTML = names.map(n => {
+                const s = svcs[n] || {};
+                const ok = s.ok === true;
+                const dot = ok ? "ok" : "fail";
+                const ms = s.latencyMs != null ? s.latencyMs + "ms" : "-";
+                return '<div class="row"><span><span class="dot ' + dot + '"></span>' + n + '</span><span>' + ms + '</span></div>';
+            }).join("");
+        }
+        function renderNeo4j(counts) {
+            const root = document.getElementById("adminCardNeo4j");
+            if (!root) return;
+            if (!counts || counts.error) { root.innerHTML = '<span class="dot fail"></span>' + ((counts && counts.error) || "无数据"); return; }
+            const by = counts.byLabel || {};
+            const top = Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0, 6);
+            root.innerHTML = '<div class="row"><span>关系</span><span>' + (counts.relationshipCount||0) + '</span></div>'
+                + top.map(([k,v]) => '<div class="row"><span>'+k+'</span><span>'+v+'</span></div>').join("");
+        }
+        function renderQdrant(cols) {
+            const root = document.getElementById("adminCardQdrant");
+            if (!root) return;
+            if (!cols || cols.error) { root.innerHTML = '<span class="dot fail"></span>' + ((cols && cols.error) || "无数据"); return; }
+            const list = cols.collections || [];
+            if (!list.length) { root.innerHTML = '<span class="dot warn"></span>未发现已知集合'; return; }
+            root.innerHTML = list.map(c => {
+                const pts = c.pointsCount != null ? c.pointsCount : "?";
+                const sz = c.vectorSize != null ? c.vectorSize : "?";
+                return '<div class="row"><span>'+c.name+'</span><span>'+pts+' × '+sz+'d</span></div>';
+            }).join("");
+        }
+        function renderRecent(recent) {
+            const root = document.getElementById("adminCardRecent");
+            if (!root) return;
+            if (!recent || !recent.length) { root.innerHTML = '<span class="dot warn"></span>暂无日志'; return; }
+            root.innerHTML = recent.slice().reverse().map(r => {
+                const dot = r.status === "succeeded" ? "ok" : (r.status === "failed" ? "fail" : "warn");
+                const ts = (r.ts || "").substring(11, 19);
+                const act = r.action || r.jobType || "?";
+                const dur = r.durationMs != null ? " · " + r.durationMs + "ms" : "";
+                return '<div class="row"><span><span class="dot '+dot+'"></span>'+ts+' '+act+dur+'</span></div>';
+            }).join("");
+        }
+
+        async function fetchState() {
+            try {
+                if (statePollAbort.ctrl) statePollAbort.ctrl.abort();
+                statePollAbort.ctrl = new AbortController();
+                const r = await fetch("/admin/ops/state", { signal: statePollAbort.ctrl.signal });
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                const data = await r.json();
+                renderServices(data.services);
+                renderNeo4j(data.neo4jCounts);
+                renderQdrant(data.qdrantCollections);
+                renderRecent(data.recentAdminActions);
+            } catch (e) {
+                if (e.name !== "AbortError") {
+                    renderServices(null);
+                    renderNeo4j({ error: e.message });
+                    renderQdrant({ error: e.message });
+                }
+            }
+        }
+
+        function startRefresh() {
+            stopRefresh();
+            if (!details().open) return;
+            fetchState();
+            refreshTimer = setInterval(fetchState, 10000);
+        }
+        function stopRefresh() {
+            if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+        }
+
+        details().addEventListener("toggle", () => {
+            if (details().open) startRefresh(); else stopRefresh();
+        });
+        if (details().open) startRefresh();
+
+        async function runAction(action) {
+            const cfg = ACTION_TO_ENDPOINT[action];
+            if (!cfg) { appendLog("未知动作: " + action, "err"); return; }
+            const headers = {};
+            if (cfg.confirm) headers["X-Confirm"] = "YES";
+            lockAction(action);
+            appendLog("→ " + action + (cfg.confirm ? " [YES 已确认]" : ""), "running");
+            try {
+                const resp = await fetch(cfg.url, { method: cfg.method, headers });
+                if (!resp.ok) {
+                    let body = "";
+                    try { body = await resp.text(); } catch (_) {}
+                    appendLog("✗ HTTP " + resp.status + " " + (body.substring(0, 200)), "err");
+                    unlockAction(action);
+                    return;
+                }
+                if (cfg.stream) {
+                    await consumeSSE(resp, action);
+                } else {
+                    const data = await resp.json().catch(() => ({}));
+                    appendLog("✓ " + action + " " + JSON.stringify(data).substring(0, 200), "ok");
+                }
+            } catch (e) {
+                appendLog("✗ " + action + " " + e.message, "err");
+            } finally {
+                unlockAction(action);
+                setTimeout(fetchState, 300);
+            }
+        }
+
+        async function consumeSSE(resp, action) {
+            const reader = resp.body.getReader();
+            const dec = new TextDecoder("utf-8");
+            let buf = "";
+            let currentEvent = "message";
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                let idx;
+                while ((idx = buf.indexOf("\n\n")) >= 0) {
+                    const frame = buf.substring(0, idx);
+                    buf = buf.substring(idx + 2);
+                    const lines = frame.split(/\r?\n/);
+                    let name = currentEvent;
+                    let data = "";
+                    for (const ln of lines) {
+                        if (ln.startsWith("event:")) name = ln.substring(6).trim();
+                        else if (ln.startsWith("data:")) data += ln.substring(5).trim();
+                    }
+                    handleSSEEvent(name, data, action);
+                }
+            }
+        }
+
+        function handleSSEEvent(name, dataJson, action) {
+            let data = {};
+            try { data = JSON.parse(dataJson); } catch (_) { data = { raw: dataJson }; }
+            if (name === "meta") {
+                appendLog("▶ start: " + (data.action || action) + " jobId=" + (data.jobId || "?"), "running");
+            } else if (name === "thinking") {
+                appendLog("  " + (data.line || ""), "running");
+            } else if (name === "final") {
+                appendLog("✓ done " + (data.durationMs != null ? data.durationMs + "ms" : ""), "ok");
+            } else if (name === "error") {
+                appendLog("✗ ERROR: " + (data.error || "exit " + data.exitCode), "err");
+                if (data.tail) data.tail.forEach(t => appendLog("    " + t, "err"));
+            } else if (name === "done") {
+                // no-op
+            }
+        }
+
+        function showConfirm(action, label) {
+            return new Promise((resolve) => {
+                const back = document.createElement("div");
+                back.className = "admin-modal-backdrop";
+                back.innerHTML = '<div class="admin-modal">'
+                    + '<h4>⚠ 高危操作</h4>'
+                    + '<p>即将执行：<b>' + label + '</b></p>'
+                    + '<p>请输入 <code style="color:var(--error)">YES</code> 确认（5 秒倒计时后才能点确认）：</p>'
+                    + '<input type="text" id="adminConfirmInput" placeholder="YES" autocomplete="off" />'
+                    + '<div class="actions">'
+                    + '<button class="cancel" id="adminConfirmCancel">取消</button>'
+                    + '<button class="confirm" id="adminConfirmOk" disabled>确认（5s）</button>'
+                    + '</div></div>';
+                document.body.appendChild(back);
+                const input = document.getElementById("adminConfirmInput");
+                const okBtn = document.getElementById("adminConfirmOk");
+                const cancelBtn = document.getElementById("adminConfirmCancel");
+                let count = 5;
+                const tick = setInterval(() => {
+                    count--;
+                    if (count <= 0) {
+                        clearInterval(tick);
+                        okBtn.textContent = "确认";
+                        okBtn.disabled = (input.value.trim() !== "YES");
+                    } else {
+                        okBtn.textContent = "确认（" + count + "s）";
+                    }
+                }, 1000);
+                input.addEventListener("input", () => {
+                    if (count <= 0) okBtn.disabled = (input.value.trim() !== "YES");
+                });
+                cancelBtn.onclick = () => { clearInterval(tick); back.remove(); resolve(false); };
+                okBtn.onclick = () => {
+                    if (input.value.trim() !== "YES") return;
+                    clearInterval(tick); back.remove(); resolve(true);
+                };
+                setTimeout(() => input.focus(), 50);
+            });
+        }
+
+        document.querySelectorAll(".admin-btn[data-action]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const action = btn.getAttribute("data-action");
+                const cfg = ACTION_TO_ENDPOINT[action];
+                if (!cfg) return;
+                if (buttonLocks.has(action)) return;
+                if (cfg.confirm) {
+                    const label = btn.textContent.trim();
+                    const ok = await showConfirm(action, label);
+                    if (!ok) return;
+                }
+                runAction(action);
+            });
+        });
+    })();
 </script>
 </body>
 </html>

@@ -36,6 +36,11 @@ public class BusinessRulesConfiguration {
                 loadDataSources(config, dataSourcesNode);
             }
 
+            JsonNode certificateRetrievalNode = root.get("certificateRetrieval");
+            if (certificateRetrievalNode != null) {
+                loadCertificateRetrieval(config, certificateRetrievalNode);
+            }
+
             // 加载 correctionRules
             JsonNode correctionRulesNode = root.get("correctionRules");
             if (correctionRulesNode != null && correctionRulesNode.isArray()) {
@@ -152,6 +157,25 @@ public class BusinessRulesConfiguration {
                 queryConfig.setTable(queryNode.get("table") != null ? queryNode.get("table").asText() : "");
                 queryConfig.setDeleteflagColumn(queryNode.has("deleteflagColumn") ? queryNode.get("deleteflagColumn").asText() : "deleteflag");
                 queryConfig.setEntityIdColumn(queryNode.has("entityIdColumn") ? queryNode.get("entityIdColumn").asText() : "id");
+                if (queryNode.has("scopeKind")) {
+                    queryConfig.setScopeKind(queryNode.get("scopeKind").asText());
+                }
+                if (queryNode.has("scopeColumn")) {
+                    queryConfig.setScopeColumn(queryNode.get("scopeColumn").asText());
+                }
+                copyStringArray(queryNode, "boundQueryTypes", queryConfig.getBoundQueryTypes());
+                copyStringArray(queryNode, "statusActiveValues", queryConfig.getStatusActiveValues());
+                if (queryNode.get("projections") != null && queryNode.get("projections").isArray()) {
+                    for (JsonNode projNode : queryNode.get("projections")) {
+                        BusinessRulesConfig.ProjectionColumnConfig proj = new BusinessRulesConfig.ProjectionColumnConfig();
+                        proj.setColumn(projNode.path("column").asText(""));
+                        proj.setLabel(projNode.path("label").asText(""));
+                        if (projNode.has("enumField")) {
+                            proj.setEnumField(projNode.get("enumField").asText());
+                        }
+                        queryConfig.getProjections().add(proj);
+                    }
+                }
 
                 if (queryNode.get("displayNameColumns") != null && queryNode.get("displayNameColumns").isArray()) {
                     queryNode.get("displayNameColumns").forEach(c -> queryConfig.getDisplayNameColumns().add(c.asText()));
@@ -181,6 +205,24 @@ public class BusinessRulesConfiguration {
                 config.getDataSources().getStructuredQueries().add(queryConfig);
             }
         }
+    }
+
+    private void loadCertificateRetrieval(BusinessRulesConfig config, JsonNode node) {
+        BusinessRulesConfig.CertificateRetrievalConfig cr = config.getCertificateRetrieval();
+        if (node.has("personQueryConfigId")) {
+            cr.setPersonQueryConfigId(node.get("personQueryConfigId").asText());
+        }
+        if (node.has("companyQueryConfigId")) {
+            cr.setCompanyQueryConfigId(node.get("companyQueryConfigId").asText());
+        }
+        if (node.has("graphInstanceSource")) {
+            cr.setGraphInstanceSource(node.get("graphInstanceSource").asText());
+        }
+        if (node.has("forbidUnscopedGlobalScan")) {
+            cr.setForbidUnscopedGlobalScan(node.get("forbidUnscopedGlobalScan").asBoolean(true));
+        }
+        copyStringArray(node, "activeCompanyOperatingStatusCodes", cr.getActiveCompanyOperatingStatusCodes());
+        copyStringArray(node, "activeCertificateStatusValues", cr.getActiveCertificateStatusValues());
     }
 
     private void loadConversationScope(BusinessRulesConfig config, JsonNode node) {

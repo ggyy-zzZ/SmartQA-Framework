@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * tdcomp 物理列名 → 规范字段读取（与 scripts/enterprise_pipeline/schema_field_maps.py 对齐）。
+ *
+ * <p>本类只服务于 CDC 的 {@code company / employee} 节点增量修正；子表
+ * （bank_account / certificate_management / seal_management 等）入图由
+ * Python 离线灌库完成，不在 CDC 实时路径中。</p>
  */
 public final class CdcTdcompFields {
 
@@ -25,10 +29,6 @@ public final class CdcTdcompFields {
             }
         }
         return null;
-    }
-
-    static String companyId(JsonNode row) {
-        return CdcEntityIdResolver.resolveEntityId("company", row);
     }
 
     static String creditCode(JsonNode row) {
@@ -73,6 +73,14 @@ public final class CdcTdcompFields {
 
     public static String employeeName(JsonNode row) {
         return firstText(row, "name", "employee_name", "emp_name");
+    }
+
+    public static String employeeAnotherName(JsonNode row) {
+        return firstText(row, "another_name", "nickname", "alias_name");
+    }
+
+    static String companyId(JsonNode row) {
+        return CdcEntityIdResolver.resolveEntityId("company", row);
     }
 
     static String employeeCompanyId(JsonNode row) {

@@ -299,6 +299,21 @@ public class QaAssistantProperties {
     /** 图谱任职召回仅返回边界（companyId/role），明细由 enricher 拉取 */
     private boolean personRoleSlimGraph = true;
 
+    /** 富图 P0：图谱「全 facet 字段」查询开关；false 时退回 SQL/旧图谱 */
+    private boolean graphFullProfileEnabled = true;
+
+    /** 富图 P0：重建 Neo4j 时的批大小（仅作运维参考，本类不直接读取） */
+    private int graphRebuildBatchSize = 200;
+
+    /** 富图 P0：重建时是否先清空图谱（默认 false，避免误操作） */
+    private boolean graphWipeOnRebuild = false;
+
+    /** 富图 P0：CDC 写入范围声明（classpath:qa/cdc-write-scope.json） */
+    private String cdcWriteScopeRef = "qa/cdc-write-scope.json";
+
+    /** 富图 P0：长文本截断上限（与 graph-node-definitions.json#global.truncation.maxChars 对齐） */
+    private int graphTruncateMaxChars = 4000;
+
     /**
      * 清单 JSON 文件路径（仅运维配置本地路径）；含 {@code tables} 数组与可选 {@code jobName}。
      */
@@ -1118,5 +1133,45 @@ public class QaAssistantProperties {
 
     public void setPersonRoleSlimGraph(boolean personRoleSlimGraph) {
         this.personRoleSlimGraph = personRoleSlimGraph;
+    }
+
+    public boolean isGraphFullProfileEnabled() {
+        return graphFullProfileEnabled;
+    }
+
+    public void setGraphFullProfileEnabled(boolean graphFullProfileEnabled) {
+        this.graphFullProfileEnabled = graphFullProfileEnabled;
+    }
+
+    public int getGraphRebuildBatchSize() {
+        return graphRebuildBatchSize;
+    }
+
+    public void setGraphRebuildBatchSize(int graphRebuildBatchSize) {
+        this.graphRebuildBatchSize = graphRebuildBatchSize;
+    }
+
+    public boolean isGraphWipeOnRebuild() {
+        return graphWipeOnRebuild;
+    }
+
+    public void setGraphWipeOnRebuild(boolean graphWipeOnRebuild) {
+        this.graphWipeOnRebuild = graphWipeOnRebuild;
+    }
+
+    public String getCdcWriteScopeRef() {
+        return cdcWriteScopeRef;
+    }
+
+    public void setCdcWriteScopeRef(String cdcWriteScopeRef) {
+        this.cdcWriteScopeRef = cdcWriteScopeRef;
+    }
+
+    public int getGraphTruncateMaxChars() {
+        return graphTruncateMaxChars;
+    }
+
+    public void setGraphTruncateMaxChars(int graphTruncateMaxChars) {
+        this.graphTruncateMaxChars = graphTruncateMaxChars;
     }
 }

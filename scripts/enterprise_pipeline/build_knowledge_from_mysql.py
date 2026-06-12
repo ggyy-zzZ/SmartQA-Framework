@@ -19,8 +19,19 @@ from typing import Any
 import pymysql
 from pymysql.cursors import DictCursor
 
+from graph_export_util import (
+    COMPANY_JSONL_NESTED_KEYS,
+    attach_graph_props,
+    build_graph_props,
+    list_exportable_column_names,
+    prepare_jsonl_row_for_neo4j,
+)
+from graph_node_definitions import GraphNodeDefinitions
 from schema_field_maps import (
+    BANK_ACCOUNT_STATUS_LABELS,
+    BANK_ACCOUNT_TYPE_LABELS,
     CERTIFICATE_TYPE_LABELS,
+    CERT_STATUS_LABELS,
     COMPANY_ID_COLUMN_EXCLUDE,
     COMPANY_SCALAR_ALIASES,
     LEGAL_REP_COLUMN_CANDIDATES,
@@ -31,8 +42,13 @@ from schema_field_maps import (
     OPERATING_STATUS_LABELS,
     PERSON_ROLE_COLUMNS,
     PRODUCT_LINE_LABELS,
+    SEAL_CATEGORY_LABELS,
+    SEAL_STATUS_LABELS,
     SEAL_TYPE_LABELS,
     SHAREHOLDER_TYPE_LABELS,
+    coded_field,
+    format_id_label,
+    person_profile,
 )
 
 
@@ -186,6 +202,24 @@ def append_select_alias(selected: list[str], cols: set[str], canonical: str, can
         selected.append(f"`{physical}` AS {canonical}")
 
 
+def query_exportable_rows(
+    conn,
+    schema: str,
+    table: str,
+    where_clause: str | None = None,
+) -> list[dict[str, Any]]:
+    """导出单表全部可灌图列（排除长文本）。"""
+    cols = list_exportable_column_names(conn, schema, table)
+    if not cols:
+        return []
+    if where_clause is None:
+        where_clause = "deleteflag = 0" if "deleteflag" in table_columns(conn, schema, table) else "1=1"
+    sql = f"SELECT {', '.join(f'`{c}`' for c in cols)} FROM `{table}` WHERE {where_clause}"
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        return cur.fetchall()
+
+
 def parse_company_ids(raw: str) -> list[str]:
     if not raw or not raw.strip():
         return []
@@ -235,6 +269,12 @@ def query_companies(
     if "assigned_it_ids" in cols and "assigned_it_ids" not in selected_canonical:
         selected.append("`assigned_it_ids` AS assigned_it_ids")
 
+    exportable_cols = list_exportable_column_names(conn, schema, table)
+    selected_physical = {s.split(" AS ")[-1].strip() for s in selected if " AS " in s}
+    for col in exportable_cols:
+        if col not in selected_physical:
+            selected.append(f"`{col}`")
+
     where_parts: list[str] = []
     params: list[Any] = []
     if "deleteflag" in cols:
@@ -275,28 +315,7 @@ def query_companies(
 def query_bank_accounts(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "bank_account"):
         return []
-    sql = """
-    SELECT
-      id,
-      account_name,
-      account_type,
-      company_id,
-      bank_name,
-      account_number,
-      bank_subject_code,
-      bank_contact_id,
-      submit_key_holder_id,
-      auth_key_holder_id,
-      supervisor_id,
-      account_set_code,
-      status,
-      remark
-    FROM `bank_account`
-    WHERE deleteflag = 0
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        return cur.fetchall()
+    return query_exportable_rows(conn, schema, "bank_account")
 
 
 def parse_id_list(value: Any) -> list[int]:
@@ -322,55 +341,25 @@ def parse_id_list(value: Any) -> list[int]:
 def query_company_product_lines(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "company_product_line"):
         return []
-    sql = """
-    SELECT company_id, module_kind, product_line
-    FROM `company_product_line`
-    WHERE deleteflag = 0
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        return cur.fetchall()
+    return query_exportable_rows(conn, schema, "company_product_line")
 
 
 def query_company_shareholders(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "company_shareholder_info"):
         return []
-    sql = """
-    SELECT
-      company_id,
-      shareholder_type,
-      shareholder_id,
-      paid_in_capital,
-      subscribed_capital
-    FROM `company_shareholder_info`
-    WHERE deleteflag = 0
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        return cur.fetchall()
+    return query_exportable_rows(conn, schema, "company_shareholder_info")
 
 
 def query_directors_supervisors(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "company_directors_supervisors"):
         return []
-    sql = """
-    SELECT
-      id,
-      company_id,
-      member_type,
-      member_id,
-      mobile
-    FROM `company_directors_supervisors`
-    WHERE deleteflag = 0
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        return cur.fetchall()
+    return query_exportable_rows(conn, schema, "company_directors_supervisors")
 
 
 def query_certificate_management(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "certificate_management"):
         return []
+    rows = query_exportable_rows(conn, schema, "certificate_management")
     cols = table_columns(conn, schema, "certificate_management")
     code_col = choose_first(
         cols,
@@ -383,25 +372,6 @@ def query_certificate_management(conn, schema: str) -> list[dict[str, Any]]:
             "cert_number",
         ],
     )
-    selected = [
-        "id",
-        "company_id",
-        "certificate_type",
-        "issue_date",
-        "valid_from",
-        "valid_to",
-        "annual_inspection_date",
-        "supervisors",
-        "certification_keepers",
-        "executors",
-        "status",
-    ]
-    if code_col:
-        selected.append(code_col)
-    sql = f"SELECT {', '.join(selected)} FROM `certificate_management` WHERE deleteflag = 0"
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        rows = cur.fetchall()
     if code_col:
         for row in rows:
             row["certificate_code"] = row_value(row, code_col, "")
@@ -411,53 +381,49 @@ def query_certificate_management(conn, schema: str) -> list[dict[str, Any]]:
 def query_seal_management(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "seal_management"):
         return []
-    sql = """
-    SELECT
-      id,
-      company_id,
-      seal_type,
-      seal_category,
-      custody_department,
-      supplier,
-      supplier_seal_code,
-      status
-    FROM `seal_management`
-    WHERE deleteflag = 0
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        return cur.fetchall()
+    return query_exportable_rows(conn, schema, "seal_management")
 
 
 def query_seal_person_detail(conn, schema: str) -> list[dict[str, Any]]:
     if not table_exists(conn, schema, "seal_person_detail"):
         return []
-    sql = """
-    SELECT
-      id,
-      seal_id,
-      role_type,
-      user_id,
-      account_name
-    FROM `seal_person_detail`
-    WHERE deleteflag = 0
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        return cur.fetchall()
+    return query_exportable_rows(conn, schema, "seal_person_detail")
 
 
-def query_employee_map(conn, schema: str) -> tuple[dict[int, str], dict[str, int]]:
-    """返回 employee_id->主姓名、别名(含英文名/曾用名)->employee_id。"""
+def query_certificate_attachment(conn, schema: str) -> list[dict[str, Any]]:
+    """证照附件（辅助表 1）—— 按 company_id 关联企业。"""
+    if not table_exists(conn, schema, "certificate_attachment"):
+        return []
+    return query_exportable_rows(conn, schema, "certificate_attachment")
+
+
+def query_certificate_person_detail(conn, schema: str) -> list[dict[str, Any]]:
+    """证照关联人员（辅助表 2）。"""
+    if not table_exists(conn, schema, "certificate_person_detail"):
+        return []
+    return query_exportable_rows(conn, schema, "certificate_person_detail")
+
+
+def query_company_change_log(conn, schema: str) -> list[dict[str, Any]]:
+    """公司变更事件（辅助表 3）—— 同一公司内多行事件。"""
+    if not table_exists(conn, schema, "company_change_log"):
+        return []
+    return query_exportable_rows(conn, schema, "company_change_log")
+
+
+def query_employee_map(
+    conn, schema: str
+) -> tuple[dict[int, str], dict[str, int], dict[int, dict[str, str]]]:
+    """返回 employee_id->主姓名、别名->employee_id、employee_id->人员展示档案。"""
     if not table_exists(conn, schema, "employee"):
-        return {}, {}
+        return {}, {}, {}
     cols = table_columns(conn, schema, "employee")
     id_col = "id" if "id" in cols else None
     if id_col is None:
-        return {}, {}
+        return {}, {}, {}
     name_col = choose_first(cols, ["name", "employee_name", "real_name", "nickname"])
     if name_col is None:
-        return {}, {}
+        return {}, {}, {}
 
     alias_cols = [
         c
@@ -465,6 +431,10 @@ def query_employee_map(conn, schema: str) -> tuple[dict[int, str], dict[str, int
         if c in cols
     ]
     selected = [f"`{id_col}` AS id", f"`{name_col}` AS name"] + [f"`{c}` AS {c}" for c in alias_cols]
+    selected_aliases = {s.split(" AS ")[-1].strip() for s in selected if " AS " in s}
+    for col in list_exportable_column_names(conn, schema, "employee"):
+        if col not in selected_aliases:
+            selected.append(f"`{col}` AS {col}")
     where_parts = []
     if "deleteflag" in cols:
         where_parts.append("deleteflag = 0")
@@ -475,12 +445,18 @@ def query_employee_map(conn, schema: str) -> tuple[dict[int, str], dict[str, int
         rows = cur.fetchall()
     result: dict[int, str] = {}
     alias_to_id: dict[str, int] = {}
+    profiles: dict[int, dict[str, str]] = {}
     for row in rows:
         try:
             key = int(row_value(row, "id", 0))
         except Exception:
             continue
         name = str(row_value(row, "name", "") or "").strip()
+        another = ""
+        if "another_name" in cols:
+            another = str(row_value(row, "another_name", "") or "").strip()
+        profile = person_profile(str(key), name, another)
+        profiles[key] = profile
         if name:
             result[key] = name
             alias_to_id[name] = key
@@ -488,7 +464,7 @@ def query_employee_map(conn, schema: str) -> tuple[dict[int, str], dict[str, int
             alias = str(row_value(row, col, "") or "").strip()
             if alias and len(alias) >= 2:
                 alias_to_id[alias] = key
-    return result, alias_to_id
+    return result, alias_to_id, profiles
 
 
 def normalize_status(value: Any) -> str:
@@ -503,17 +479,52 @@ def normalize_status(value: Any) -> str:
     return mapping.get(text, text)
 
 
-def role_person(role: str, emp_id: Any, emp_map: dict[int, str]) -> dict[str, Any] | None:
+def person_display_for(
+    pid: int, emp_map: dict[int, str], profiles: dict[int, dict[str, str]]
+) -> dict[str, str]:
+    prof = profiles.get(pid, {})
+    name = prof.get("name") or emp_map.get(pid, f"员工#{pid}")
+    another = prof.get("another_name", "")
+    display = prof.get("display") or format_id_label(str(pid), name)
+    return {"name": name, "another_name": another, "display": display}
+
+
+def _mysql_row_payload(row: dict[str, Any], overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+    """保留 MySQL 行全部短字段，并生成 graph_props 供 Neo4j 灌入。"""
+    payload: dict[str, Any] = {}
+    for key, value in row.items():
+        if value is None:
+            continue
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            payload[str(key)] = value
+        else:
+            payload[str(key)] = str(value)
+    if overrides:
+        payload.update(overrides)
+    attach_graph_props(payload)
+    return payload
+
+
+def role_person(
+    role: str,
+    emp_id: Any,
+    emp_map: dict[int, str],
+    profiles: dict[int, dict[str, str]] | None = None,
+) -> dict[str, Any] | None:
     try:
         pid = int(emp_id or 0)
     except Exception:
         pid = 0
     if pid <= 0:
         return None
+    person = person_display_for(pid, emp_map, profiles or {})
     return {
         "role": role,
-        "name": emp_map.get(pid, f"员工#{pid}"),
+        "role_display": role,
+        "name": person["name"],
+        "another_name": person["another_name"],
         "person_id": str(pid),
+        "person_display": person["display"],
     }
 
 
@@ -547,6 +558,10 @@ def build_company_rows(
     shareholders: list[dict[str, Any]],
     employee_map: dict[int, str],
     company_name_by_id: dict[str, str],
+    employee_profiles: dict[int, dict[str, str]],
+    certificate_attachments: list[dict[str, Any]] | None = None,
+    certificate_person_details: list[dict[str, Any]] | None = None,
+    company_change_logs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     by_company_accounts: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in bank_accounts:
@@ -578,6 +593,18 @@ def build_company_rows(
     for row in shareholders:
         by_company_shareholders[str(row.get("company_id") or "")].append(row)
 
+    by_company_attachments: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in certificate_attachments or []:
+        by_company_attachments[str(row.get("company_id") or "")].append(row)
+
+    by_company_cert_persons: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in certificate_person_details or []:
+        by_company_cert_persons[str(row.get("company_id") or "")].append(row)
+
+    by_company_change_events: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in company_change_logs or []:
+        by_company_change_events[str(row.get("company_id") or "")].append(row)
+
     rows: list[dict[str, Any]] = []
     for c in companies:
         company_id = str(c.get("company_id") or "").strip()
@@ -597,7 +624,7 @@ def build_company_rows(
         person_dedup: set[tuple[str, str]] = set()
 
         for col, role in PERSON_ROLE_COLUMNS.items():
-            person = role_person(role, c.get(col), employee_map)
+            person = role_person(role, c.get(col), employee_map, employee_profiles)
             if not person:
                 continue
             key = (person["role"], person["person_id"])
@@ -607,7 +634,7 @@ def build_company_rows(
             key_people.append(person)
 
         for pid in parse_id_list(c.get("assigned_it_ids")):
-            person = role_person("IT负责人", pid, employee_map)
+            person = role_person("IT负责人", pid, employee_map, employee_profiles)
             if not person:
                 continue
             key = (person["role"], person["person_id"])
@@ -623,7 +650,7 @@ def build_company_rows(
                 ("授权盾持有人", "auth_key_holder_id"),
                 ("监管人", "supervisor_id"),
             ):
-                person = role_person(role, ba.get(col), employee_map)
+                person = role_person(role, ba.get(col), employee_map, employee_profiles)
                 if not person:
                     continue
                 key = (person["role"], person["person_id"])
@@ -632,36 +659,49 @@ def build_company_rows(
                 person_dedup.add(key)
                 key_people.append(person)
 
+            acct_type = coded_field(ba.get("account_type"), BANK_ACCOUNT_TYPE_LABELS, "账户类型")
+            acct_status = coded_field(ba.get("status"), BANK_ACCOUNT_STATUS_LABELS, "")
             bank_payloads.append(
-                {
-                    "account_id": str(ba.get("id") or ""),
-                    "account_name": str(ba.get("account_name") or ""),
-                    "account_type": "基本户" if str(ba.get("account_type") or "0") == "0" else "一般户",
-                    "bank_name": str(ba.get("bank_name") or ""),
-                    "account_number": str(ba.get("account_number") or ""),
-                    "bank_subject_code": str(ba.get("bank_subject_code") or ""),
-                    "account_set_code": str(ba.get("account_set_code") or ""),
-                    "status": normalize_status(ba.get("status")),
-                    "remark": str(ba.get("remark") or ""),
-                }
+                _mysql_row_payload(
+                    ba,
+                    {
+                        "account_id": str(ba.get("id") or ""),
+                        "account_type": acct_type["label"] or acct_type["code"],
+                        "account_type_code": acct_type["code"],
+                        "account_type_display": acct_type["display"],
+                        "status": acct_status["label"] or normalize_status(ba.get("status")),
+                        "status_code": acct_status["code"],
+                        "status_display": acct_status["display"],
+                    },
+                )
             )
 
         for ds in directors_rows:
-            role_name = member_type_name(ds.get("member_type"))
+            member_type = coded_field(ds.get("member_type"), MEMBER_TYPE_LABELS, "董监高-")
+            role_name = member_type["label"] or member_type_name(ds.get("member_type"))
             pid = str(ds.get("member_id") or "").strip()
             member_name = ""
+            member_display = ""
             if pid:
                 try:
-                    member_name = employee_map.get(int(pid), f"员工#{pid}")
+                    person = person_display_for(int(pid), employee_map, employee_profiles)
+                    member_name = person["name"]
+                    member_display = person["display"]
                 except Exception:
                     member_name = f"员工#{pid}"
+                    member_display = format_id_label(pid, member_name)
             directors_supervisors_payload.append(
-                {
-                    "member_type": role_name,
-                    "member_id": pid,
-                    "member_name": member_name,
-                    "mobile": str(ds.get("mobile") or ""),
-                }
+                _mysql_row_payload(
+                    ds,
+                    {
+                        "member_type": role_name,
+                        "member_type_code": member_type["code"],
+                        "member_type_display": member_type["display"],
+                        "member_id": pid,
+                        "member_name": member_name,
+                        "member_display": member_display,
+                    },
+                )
             )
             if pid:
                 key = (f"董监高-{role_name}", pid)
@@ -670,8 +710,10 @@ def build_company_rows(
                     key_people.append(
                         {
                             "role": f"董监高-{role_name}",
+                            "role_display": member_type["display"] or f"董监高-{role_name}",
                             "name": member_name or f"员工#{pid}",
                             "person_id": pid,
+                            "person_display": member_display or format_id_label(pid, member_name),
                         }
                     )
 
@@ -685,25 +727,38 @@ def build_company_rows(
                 or cert.get("cert_no")
                 or ""
             ).strip()
+            cert_type = coded_field(cert.get("certificate_type"), CERTIFICATE_TYPE_LABELS, "证照类型")
+            cert_status = coded_field(cert.get("status"), CERT_STATUS_LABELS, "")
+            cert_id = str(cert.get("id") or "").strip()
+
+            def _person_refs(ids: list[int]) -> list[str]:
+                return [
+                    person_display_for(pid, employee_map, employee_profiles)["display"]
+                    for pid in ids
+                ]
+
             certificates_payload.append(
-                {
-                    "cert_type": enum_label(
-                        cert.get("certificate_type"), CERTIFICATE_TYPE_LABELS, "证照类型"
-                    ),
-                    "status": normalize_status(cert.get("status")),
-                    "code": cert_code,
-                    "issue_date": str(cert.get("issue_date") or ""),
-                    "expire_date": str(cert.get("valid_to") or ""),
-                    "valid_from": str(cert.get("valid_from") or ""),
-                    "annual_inspection_date": str(cert.get("annual_inspection_date") or ""),
-                    "supervisors": [employee_map.get(pid, f"员工#{pid}") for pid in supervisors],
-                    "certification_keepers": [employee_map.get(pid, f"员工#{pid}") for pid in keepers],
-                    "executors": [employee_map.get(pid, f"员工#{pid}") for pid in executors],
-                }
+                _mysql_row_payload(
+                    cert,
+                    {
+                        "certificate_id": cert_id,
+                        "cert_type": cert_type["label"] or cert_type["code"],
+                        "cert_type_code": cert_type["code"],
+                        "cert_type_display": cert_type["display"],
+                        "status": cert_status["label"] or normalize_status(cert.get("status")),
+                        "status_code": cert_status["code"],
+                        "status_display": cert_status["display"],
+                        "code": cert_code,
+                        "expire_date": str(cert.get("valid_to") or ""),
+                        "supervisors": _person_refs(supervisors),
+                        "certification_keepers": _person_refs(keepers),
+                        "executors": _person_refs(executors),
+                    },
+                )
             )
             for role, ids in (("证照监管人", supervisors), ("证照保管人", keepers), ("证照执行人", executors)):
                 for pid in ids:
-                    person = role_person(role, pid, employee_map)
+                    person = role_person(role, pid, employee_map, employee_profiles)
                     if not person:
                         continue
                     key = (person["role"], person["person_id"])
@@ -719,17 +774,22 @@ def build_company_rows(
             for p in persons:
                 uid = str(p.get("user_id") or "").strip()
                 account_name = str(p.get("account_name") or "").strip()
+                person_display = account_name
                 if uid:
                     try:
-                        account_name = employee_map.get(int(uid), account_name or f"员工#{uid}")
+                        person = person_display_for(int(uid), employee_map, employee_profiles)
+                        account_name = person["name"] or account_name or f"员工#{uid}"
+                        person_display = person["display"]
                     except Exception:
                         account_name = account_name or f"员工#{uid}"
+                        person_display = format_id_label(uid, account_name)
                 role_type = str(p.get("role_type") or "")
                 person_items.append(
                     {
                         "role_type": role_type,
                         "user_id": uid,
                         "account_name": account_name,
+                        "person_display": person_display,
                     }
                 )
                 if uid:
@@ -739,28 +799,111 @@ def build_company_rows(
                         key_people.append(
                             {
                                 "role": f"印章角色-{role_type or '未知'}",
+                                "role_display": f"印章角色-{role_type or '未知'}",
                                 "name": account_name,
                                 "person_id": uid,
+                                "person_display": person_display,
                             }
                         )
+            seal_type = coded_field(seal.get("seal_type"), SEAL_TYPE_LABELS, "印章类型")
+            seal_category = coded_field(seal.get("seal_category"), SEAL_CATEGORY_LABELS, "印章分类")
+            seal_status = coded_field(seal.get("status"), SEAL_STATUS_LABELS, "")
             seals_payload.append(
-                {
-                    "seal_id": seal_id,
-                    "seal_type": enum_label(seal.get("seal_type"), SEAL_TYPE_LABELS, "印章类型"),
-                    "seal_category": str(seal.get("seal_category") or ""),
-                    "custody_department": str(seal.get("custody_department") or ""),
-                    "supplier": str(seal.get("supplier") or ""),
-                    "supplier_seal_code": str(seal.get("supplier_seal_code") or ""),
-                    "status": normalize_status(seal.get("status")),
-                    "persons": person_items,
-                }
+                _mysql_row_payload(
+                    seal,
+                    {
+                        "seal_id": seal_id,
+                        "seal_type": seal_type["label"] or seal_type["code"],
+                        "seal_type_code": seal_type["code"],
+                        "seal_type_display": seal_type["display"],
+                        "seal_category": seal_category["label"] or seal_category["code"],
+                        "seal_category_code": seal_category["code"],
+                        "seal_category_display": seal_category["display"],
+                        "status": seal_status["label"] or normalize_status(seal.get("status")),
+                        "status_code": seal_status["code"],
+                        "status_display": seal_status["display"],
+                        "persons": person_items,
+                    },
+                )
             )
 
         product_lines_payload: list[dict[str, Any]] = []
+        module_map = {str(k): v for k, v in MODULE_KIND_LABELS.items()}
+        line_map = {str(k): v for k, v in PRODUCT_LINE_LABELS.items()}
         for pl in by_company_product_lines.get(company_id, []):
-            module, line = product_line_label(pl.get("module_kind"), pl.get("product_line"))
+            module_f = coded_field(pl.get("module_kind"), module_map, "模块")
+            line_f = coded_field(pl.get("product_line"), line_map, "线")
             product_lines_payload.append(
-                {"module": module, "line": line, "relation": "关联"}
+                _mysql_row_payload(
+                    pl,
+                    {
+                        "module": module_f["label"] or module_f["code"],
+                        "module_code": module_f["code"],
+                        "module_display": module_f["display"],
+                        "line": line_f["label"] or line_f["code"],
+                        "line_code": line_f["code"],
+                        "line_display": line_f["display"],
+                        "relation": "关联",
+                    },
+                )
+            )
+
+        # 3 类辅助表：证照附件 / 证照关联人员 / 公司变更事件
+        attachments_payload: list[dict[str, Any]] = []
+        for att in by_company_attachments.get(company_id, []):
+            file_id = str(att.get("file_id") or att.get("id") or "").strip()
+            if not file_id:
+                continue
+            attachments_payload.append(
+                _mysql_row_payload(
+                    att,
+                    {
+                        "file_id": file_id,
+                        "attachment_id": str(att.get("attachment_id") or att.get("id") or file_id),
+                        "certificate_id": str(att.get("certificate_id") or ""),
+                        "company_id": company_id,
+                    },
+                )
+            )
+
+        certificate_persons_payload: list[dict[str, Any]] = []
+        for cp in by_company_cert_persons.get(company_id, []):
+            person_id = str(cp.get("person_id") or "").strip()
+            certificate_id = str(cp.get("certificate_id") or "").strip()
+            person_detail_id = str(cp.get("id") or cp.get("person_detail_id") or "").strip()
+            if not (person_id and certificate_id) and not person_detail_id:
+                continue
+            role_f = coded_field(cp.get("role_type"), MEMBER_TYPE_LABELS, "证照角色")
+            certificate_persons_payload.append(
+                _mysql_row_payload(
+                    cp,
+                    {
+                        "person_id": person_id,
+                        "certificate_id": certificate_id,
+                        "person_detail_id": person_detail_id,
+                        "role_type": role_f["label"] or role_f["code"],
+                        "role_type_code": role_f["code"],
+                        "company_id": company_id,
+                    },
+                )
+            )
+
+        change_events_payload: list[dict[str, Any]] = []
+        for ev in by_company_change_events.get(company_id, []):
+            event_id = str(ev.get("id") or ev.get("event_id") or "").strip()
+            if not event_id:
+                continue
+            change_type_f = coded_field(ev.get("change_type"), {}, "变更类型")
+            change_events_payload.append(
+                _mysql_row_payload(
+                    ev,
+                    {
+                        "event_id": event_id,
+                        "change_type": change_type_f["label"] or str(ev.get("change_type") or ""),
+                        "change_type_code": change_type_f["code"],
+                        "company_id": company_id,
+                    },
+                )
             )
 
         shareholder_rows = by_company_shareholders.get(company_id, [])
@@ -772,9 +915,11 @@ def build_company_rows(
                 pass
         shareholders_payload: list[dict[str, Any]] = []
         for sh in shareholder_rows:
-            holder_type = enum_label(sh.get("shareholder_type"), SHAREHOLDER_TYPE_LABELS, "股东类型")
+            holder_type_f = coded_field(sh.get("shareholder_type"), SHAREHOLDER_TYPE_LABELS, "股东类型")
+            holder_type = holder_type_f["label"] or holder_type_f["code"]
             sid = sh.get("shareholder_id")
             holder_name = ""
+            holder_display = ""
             try:
                 sid_int = int(sid or 0)
             except Exception:
@@ -784,6 +929,7 @@ def build_company_rows(
                     holder_name = company_name_by_id.get(str(sid_int), f"公司#{sid_int}")
                 else:
                     holder_name = employee_map.get(sid_int, f"自然人#{sid_int}")
+                holder_display = format_id_label(str(sid_int), holder_name)
             ratio = ""
             try:
                 sub = float(sh.get("subscribed_capital") or 0)
@@ -794,13 +940,18 @@ def build_company_rows(
             except Exception:
                 ratio = ""
             shareholders_payload.append(
-                {
-                    "holder_type": holder_type,
-                    "holder_name": holder_name,
-                    "ratio": ratio,
-                    "subscribed_capital": str(sh.get("subscribed_capital") or ""),
-                    "paid_in_capital": str(sh.get("paid_in_capital") or ""),
-                }
+                _mysql_row_payload(
+                    sh,
+                    {
+                        "shareholder_id": str(sid or "").strip(),
+                        "holder_type": holder_type,
+                        "holder_type_code": holder_type_f["code"],
+                        "holder_type_display": holder_type_f["display"],
+                        "holder_name": holder_name,
+                        "holder_display": holder_display,
+                        "ratio": ratio,
+                    },
+                )
             )
 
         parent_company = str(c.get("parent_company") or "").strip()
@@ -809,6 +960,10 @@ def build_company_rows(
             parent_name = company_name_by_id.get(parent_id, "")
             parent_company = f"{parent_name}（ID {parent_id}）" if parent_name else f"总公司ID {parent_id}"
 
+        status_f = coded_field(c.get("status"), OPERATING_STATUS_LABELS, "")
+        entity_type_f = coded_field(c.get("entity_type"), MAIN_TYPE_LABELS, "主体类型")
+        entity_category_f = coded_field(c.get("entity_category"), MAIN_CLASS_TYPE_LABELS, "主体分类")
+
         row = {
             "domain": "org_master",
             "company_id": company_id,
@@ -816,9 +971,15 @@ def build_company_rows(
             "company_short_name": str(c.get("company_short_name") or ""),
             "company_code": str(c.get("company_code") or ""),
             "credit_code": str(c.get("credit_code") or ""),
-            "status": enum_label(c.get("status"), OPERATING_STATUS_LABELS) or normalize_status(c.get("status")),
-            "entity_type": enum_label(c.get("entity_type"), MAIN_TYPE_LABELS, "主体类型"),
-            "entity_category": enum_label(c.get("entity_category"), MAIN_CLASS_TYPE_LABELS, "主体分类"),
+            "status": status_f["label"] or enum_label(c.get("status"), OPERATING_STATUS_LABELS) or normalize_status(c.get("status")),
+            "status_code": status_f["code"],
+            "status_display": status_f["display"],
+            "entity_type": entity_type_f["label"] or entity_type_f["code"],
+            "entity_type_code": entity_type_f["code"],
+            "entity_type_display": entity_type_f["display"],
+            "entity_category": entity_category_f["label"] or entity_category_f["code"],
+            "entity_category_code": entity_category_f["code"],
+            "entity_category_display": entity_category_f["display"],
             "currency": str(c.get("currency") or ""),
             "registered_area": str(c.get("registered_area") or ""),
             "registered_address": str(c.get("registered_address") or ""),
@@ -826,6 +987,7 @@ def build_company_rows(
             "established_date": str(c.get("established_date") or ""),
             "business_scope": str(c.get("business_scope") or ""),
             "parent_company": parent_company,
+            "parent_company_id": parent_id,
             "tax_registered": yes_no_flag(c.get("tax_registered")),
             "bank_account_opened": yes_no_flag(c.get("bank_account_opened")),
             "social_security_opened": yes_no_flag(c.get("social_security_opened")),
@@ -837,17 +999,33 @@ def build_company_rows(
             "seals": seals_payload,
             "key_people": key_people,
             "bank_accounts": bank_payloads,
+            "attachments": attachments_payload,
+            "certificate_persons": certificate_persons_payload,
+            "change_events": change_events_payload,
             "source_file": "mysql.tdcomp",
         }
+        overlay = {
+            k: v
+            for k, v in row.items()
+            if k not in COMPANY_JSONL_NESTED_KEYS
+            and k != "domain"
+            and not isinstance(v, (list, dict))
+        }
+        row["company_graph_props"] = build_graph_props(
+            {**c, **overlay},
+            exclude_keys=frozenset({"domain", "source_file"}),
+        )
         rows.append(row)
     return rows
 
 
 def _format_certificate_for_text(cert: dict[str, Any]) -> str:
     parts = [
-        f"类型:{cert.get('cert_type')}",
-        f"状态:{cert.get('status')}",
+        f"类型:{cert.get('cert_type_display') or cert.get('cert_type')}",
+        f"状态:{cert.get('status_display') or cert.get('status')}",
     ]
+    if cert.get("certificate_id"):
+        parts.insert(0, f"证照ID:{cert.get('certificate_id')}")
     if cert.get("code"):
         parts.append(f"编号:{cert.get('code')}")
     if cert.get("valid_from") or cert.get("expire_date"):
@@ -866,8 +1044,8 @@ def _format_certificate_for_text(cert: dict[str, Any]) -> str:
 
 def _format_seal_for_text(seal: dict[str, Any]) -> str:
     parts = [
-        f"印章类型:{seal.get('seal_type')}",
-        f"分类:{seal.get('seal_category')}",
+        f"印章类型:{seal.get('seal_type_display') or seal.get('seal_type')}",
+        f"分类:{seal.get('seal_category_display') or seal.get('seal_category')}",
         f"保管部门:{seal.get('custody_department')}",
         f"状态:{seal.get('status')}",
     ]
@@ -946,7 +1124,7 @@ def build_compiled_text(rows: list[dict[str, Any]]) -> str:
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            f.write(json.dumps(prepare_jsonl_row_for_neo4j(row), ensure_ascii=False) + "\n")
 
 
 def main() -> None:
@@ -974,7 +1152,10 @@ def main() -> None:
         seal_person_detail = query_seal_person_detail(conn, args.schema)
         product_line_rows = query_company_product_lines(conn, args.schema)
         shareholder_rows = query_company_shareholders(conn, args.schema)
-        employee_map, _employee_aliases = query_employee_map(conn, args.schema)
+        certificate_attachments = query_certificate_attachment(conn, args.schema)
+        certificate_person_details = query_certificate_person_detail(conn, args.schema)
+        company_change_logs = query_company_change_log(conn, args.schema)
+        employee_map, _employee_aliases, employee_profiles = query_employee_map(conn, args.schema)
 
     company_name_by_id = {
         str(c.get("company_id") or "").strip(): str(c.get("company_name") or "").strip()
@@ -993,6 +1174,10 @@ def main() -> None:
         shareholder_rows,
         employee_map,
         company_name_by_id,
+        employee_profiles,
+        certificate_attachments=certificate_attachments,
+        certificate_person_details=certificate_person_details,
+        company_change_logs=company_change_logs,
     )
     if not rows:
         raise SystemExit("No normalized rows built from MySQL. Please check company table / permissions.")
@@ -1014,6 +1199,9 @@ def main() -> None:
         "seals": sum(len(x.get("seals", [])) for x in rows),
         "product_lines": sum(len(x.get("product_lines", [])) for x in rows),
         "shareholders": sum(len(x.get("shareholders", [])) for x in rows),
+        "attachments": sum(len(x.get("attachments", [])) for x in rows),
+        "certificate_persons": sum(len(x.get("certificate_persons", [])) for x in rows),
+        "change_events": sum(len(x.get("change_events", [])) for x in rows),
         "legal_rep_roles": sum(
             1
             for x in rows
