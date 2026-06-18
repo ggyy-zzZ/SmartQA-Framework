@@ -46,6 +46,24 @@ public class ConversationScopeSupport {
                 || containsAnyPhrase(q, scope.getGlobalListContextKeywords());
     }
 
+    /**
+     * 枚举/类型目录问法（如「经营状态包含哪些种类」），不应继承上轮 region/主体/queryType。
+     * 含「这些/那些/它们」等指代时视为接续，不算全新 catalog。
+     */
+    public boolean isCatalogQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String q = question.strip();
+        if (explicitlyBreaksContext(q)) {
+            return true;
+        }
+        if (!containsAnyPhrase(q, scope.getCatalogQuestionMarkers())) {
+            return false;
+        }
+        return !referencesPriorSubjects(q);
+    }
+
     public boolean isContinuationUtterance(String question) {
         if (question == null || question.isBlank()) {
             return false;

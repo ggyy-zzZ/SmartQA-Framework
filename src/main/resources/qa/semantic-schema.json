@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "description": "业务库语义 Schema（tdcomp）；供 LLM 生成只读 SQL 与 CDC 角色列解析。枚举见 enterprise-enums.json。",
+  "database": "tdcomp",
+  "enumCatalog": "enterprise-enums",
+  "roleColumnPriority": [
+    { "contains": "legal_rep", "priority": 0 },
+    { "contains": "manager", "priority": 1 },
+    { "contains": "financial", "priority": 2 },
+    { "contains": "tax", "priority": 2 },
+    { "contains": "contact", "priority": 3 },
+    { "contains": "ssc", "priority": 3 }
+  ],
+  "defaultRoleColumnPriority": 4,
+  "entities": {
+    "company": {
+      "table": "company",
+      "label": "公司主体",
+      "idColumn": "id",
+      "displayColumns": ["company_name", "company_short_name"],
+      "softDeleteColumn": "deleteflag",
+      "attributes": [
+        { "column": "company_name", "label": "公司名称", "queryable": true },
+        { "column": "company_short_name", "label": "公司简称", "queryable": true },
+        { "column": "social_credit_code", "label": "统一社会信用代码", "queryable": true },
+        { "column": "company_code", "label": "公司编码", "queryable": true },
+        { "column": "operating_status", "label": "经营状态", "queryable": true, "enumField": "operatingStatus" },
+        { "column": "main_type", "label": "主体类型", "queryable": true, "enumField": "mainType" },
+        { "column": "main_class_type", "label": "主体分类", "queryable": true, "enumField": "mainClassType" },
+        { "column": "taxpayer_qualification", "label": "纳税人资质", "queryable": true, "enumField": "taxpayerQualification" },
+        { "column": "currency_type", "label": "币种", "queryable": true, "enumField": "currencyType" },
+        { "column": "establishment_date", "label": "成立日期", "queryable": true, "type": "date_yyyymmdd" },
+        { "column": "operation_start_date", "label": "经营期限起", "queryable": true, "type": "date_yyyymmdd" },
+        { "column": "operation_end_date", "label": "经营期限止", "queryable": true, "type": "date_yyyymmdd" },
+        { "column": "reg_province_region", "label": "注册地区", "queryable": true },
+        { "column": "registered_address", "label": "注册地址", "queryable": true },
+        { "column": "actual_office_address", "label": "实际办公地址", "queryable": true },
+        { "column": "business_scope_info", "label": "经营范围", "queryable": true },
+        { "column": "head_office_company_id", "label": "总公司ID", "queryable": true, "reference": { "entity": "company", "column": "id" } },
+        { "column": "has_social_sec_account", "label": "是否有社保账户", "queryable": true, "enumField": "booleanFlag" },
+        { "column": "has_provident_account", "label": "是否有公积金账户", "queryable": true, "enumField": "booleanFlag" },
+        { "column": "has_tax_registration", "label": "是否税务登记", "queryable": true, "enumField": "booleanFlag" },
+        { "column": "has_bank_account", "label": "是否有银行账户", "queryable": true, "enumField": "booleanFlag" },
+        { "column": "has_no_fixed_term", "label": "是否无固定期限", "queryable": true, "enumField": "booleanFlag" }
+      ],
+      "roleReferences": [
+        { "column": "legal_rep_id", "label": "法定代表人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "company_supervisor_id", "label": "监事", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "manager_id", "label": "经理", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "financial_manager_id", "label": "财务负责人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "accounting_supervisor_id", "label": "会计主管", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "assigned_accountant_id", "label": "会计", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "assigned_cashier_id", "label": "出纳", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "tax_handler_id", "label": "办税人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "ticket_purchaser_id", "label": "购票人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "company_contact_id", "label": "联络人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "chairman_exec_director_id", "label": "执行董事/董事长", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "ssc_payroll_manager_id", "label": "SSC薪资负责人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" },
+        { "column": "limited_partner_id", "label": "有限合伙人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "employee_id" }
+      ]
+    },
+    "employee": {
+      "table": "employee",
+      "label": "员工",
+      "idColumn": "id",
+      "displayColumns": ["name"],
+      "softDeleteColumn": null,
+      "attributes": [
+        { "column": "name", "label": "姓名", "queryable": true }
+      ],
+      "roleReferences": []
+    },
+    "certificate_management": {
+      "table": "certificate_management",
+      "label": "证照管理",
+      "idColumn": "id",
+      "displayColumns": ["id"],
+      "softDeleteColumn": "deleteflag",
+      "attributes": [
+        { "column": "certificate_type", "label": "证照类型", "queryable": true, "enumField": "certificateTypes" },
+        { "column": "company_id", "label": "所属公司", "queryable": true, "reference": { "entity": "company", "column": "id" } },
+        { "column": "status", "label": "证照状态", "queryable": true, "enumField": "licenseStatus" },
+        { "column": "issue_date", "label": "发证日期", "queryable": true, "type": "date_yyyymmdd" },
+        { "column": "valid_from", "label": "有效期起", "queryable": true, "type": "date_yyyymmdd" },
+        { "column": "valid_to", "label": "有效期止", "queryable": true, "type": "date_yyyymmdd" },
+        { "column": "annual_inspection_date", "label": "年检日期", "queryable": true, "type": "date_yyyymmdd" }
+      ],
+      "roleReferences": [
+        { "column": "supervisors", "label": "监管人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "comma_separated_ids" },
+        { "column": "certification_keepers", "label": "保管人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "comma_separated_ids" },
+        { "column": "executors", "label": "执行人", "targetEntity": "employee", "targetIdColumn": "id", "targetDisplayColumn": "name", "type": "comma_separated_ids" }
+      ]
+    }
+  },
+  "relationships": [
+    { "fromEntity": "certificate_management", "fromColumn": "company_id", "toEntity": "company", "toColumn": "id", "label": "证照归属公司" },
+    { "fromEntity": "company", "fromColumn": "head_office_company_id", "toEntity": "company", "toColumn": "id", "label": "总公司" }
+  ]
+}

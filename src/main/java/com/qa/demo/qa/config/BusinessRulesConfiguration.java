@@ -91,6 +91,11 @@ public class BusinessRulesConfiguration {
                 loadRetrievalThresholds(config, thresholdsNode);
             }
 
+            JsonNode filterFieldNode = root.get("filterFieldCoverageRules");
+            if (filterFieldNode != null && filterFieldNode.isArray()) {
+                loadFilterFieldCoverageRules(config, filterFieldNode);
+            }
+
             // 加载 outputContracts
             JsonNode outputContractsNode = root.get("outputContracts");
             if (outputContractsNode != null && outputContractsNode.isObject()) {
@@ -230,6 +235,7 @@ public class BusinessRulesConfiguration {
         copyStringArray(node, "breakContextPhrases", scope.getBreakContextPhrases());
         copyStringArray(node, "globalListMarkers", scope.getGlobalListMarkers());
         copyStringArray(node, "globalListContextKeywords", scope.getGlobalListContextKeywords());
+        copyStringArray(node, "catalogQuestionMarkers", scope.getCatalogQuestionMarkers());
         copyStringArray(node, "continuationMarkers", scope.getContinuationMarkers());
         copyStringArray(node, "continuationExcludePatterns", scope.getContinuationExcludePatterns());
         if (node.has("continuationMaxLength")) {
@@ -311,6 +317,19 @@ public class BusinessRulesConfiguration {
                 threshold.setDescription(thresholdNode.get("description") != null ? thresholdNode.get("description").asText() : "");
                 config.getRetrievalThresholds().getSourceThresholds().add(threshold);
             }
+        }
+    }
+
+    private void loadFilterFieldCoverageRules(BusinessRulesConfig config, JsonNode arrayNode) {
+        for (JsonNode node : arrayNode) {
+            BusinessRulesConfig.FilterFieldCoverageRule rule = new BusinessRulesConfig.FilterFieldCoverageRule();
+            rule.setId(node.path("id").asText(""));
+            rule.setDisplayLabel(node.path("displayLabel").asText(""));
+            copyStringArray(node, "questionAnyKeywords", rule.getQuestionAnyKeywords());
+            copyStringArray(node, "filterIntentKeywords", rule.getFilterIntentKeywords());
+            copyStringArray(node, "snippetMarkers", rule.getSnippetMarkers());
+            copyStringArray(node, "sourceColumns", rule.getSourceColumns());
+            config.getFilterFieldCoverageRules().add(rule);
         }
     }
 }

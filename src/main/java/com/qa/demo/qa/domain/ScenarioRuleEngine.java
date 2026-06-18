@@ -113,6 +113,18 @@ public class ScenarioRuleEngine {
         return false;
     }
 
+    public boolean questionSuggestsCompiledDocs(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        for (String keyword : config.getIntentRouting().getCompiledDocumentKeywords()) {
+            if (keyword != null && !keyword.isBlank() && question.contains(keyword.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * 推断查询类型：在全部匹配条件中取关键词命中数最高者；同分时优先需要人名且问句已有人名的条件。
      */

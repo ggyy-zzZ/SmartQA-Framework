@@ -24,7 +24,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.QaScopes;
+import com.qa.demo.qa.debug.GateMetricsWriter;
 import com.qa.demo.qa.embedding.TextEmbeddingService;
+import com.qa.demo.qa.learning.DocumentIngestService;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.learning.BatchCsvAnalysisService;
 import com.qa.demo.qa.learning.BatchLearningOrchestrator;
@@ -47,6 +49,7 @@ import com.qa.demo.qa.retrieval.EvidenceRerankService;
 import com.qa.demo.qa.sedimentation.FeedbackPersistenceService;
 import com.qa.demo.qa.sedimentation.SedimentationQueueService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -82,6 +85,11 @@ public class QaController {
     private final SyncEntityStateService syncEntityStateService;
     private final KnowledgeSyncChangeDetector knowledgeSyncChangeDetector;
     private final ScheduledSyncService scheduledSyncService;
+    private final DocumentIngestService documentIngestService;
+    private final GateMetricsWriter gateMetricsWriter;
+
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(QaController.class);
 
     public QaController(
             QaAskOrchestrator askOrchestrator,
@@ -106,7 +114,9 @@ public class QaController {
             EnterpriseKnowledgeSyncService enterpriseKnowledgeSyncService,
             SyncEntityStateService syncEntityStateService,
             KnowledgeSyncChangeDetector knowledgeSyncChangeDetector,
-            ScheduledSyncService scheduledSyncService
+            ScheduledSyncService scheduledSyncService,
+            DocumentIngestService documentIngestService,
+            GateMetricsWriter gateMetricsWriter
     ) {
         this.askOrchestrator = askOrchestrator;
         this.qaLogService = qaLogService;
@@ -131,6 +141,8 @@ public class QaController {
         this.syncEntityStateService = syncEntityStateService;
         this.knowledgeSyncChangeDetector = knowledgeSyncChangeDetector;
         this.scheduledSyncService = scheduledSyncService;
+        this.documentIngestService = documentIngestService;
+        this.gateMetricsWriter = gateMetricsWriter;
     }
 
     /**
@@ -310,6 +322,30 @@ public class QaController {
                 result,
                 normalizedScope
         );
+    }
+
+    /**
+     * P5：用户文档上传（Markdown/TXT）→ 切块写入 qa_document_chunk，与结构化证据统一检索。
+     */
+    @PostMapping(value = "/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> uploadDocument(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(defaultValue = QaScopes.ENTERPRISE) String scope,
+            @RequestParam(defaultValue = "user_uploads") String corpusCode,
+            @RequestParam(required = false) String title,
+            @RequestParam(defaultValue = "false") boolean replaceExisting
+    ) {
+        DocumentIngestService.IngestResult result = documentIngestService.ingestUpload(
+                file, QaScopes.normalize(scope), corpusCode, title, replaceExisting);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", result.ok());
+        body.put("message", result.message());
+        body.put("filename", result.filename());
+        body.put("corpusCode", result.corpusCode());
+        body.put("chunkCount", result.chunkCount());
+        body.put("vectorCount", result.vectorCount());
+        body.put("timestamp", OffsetDateTime.now().toString());
+        return body;
     }
 
     @PostMapping("/learn/text")
@@ -942,7 +978,21 @@ public class QaController {
 
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public Map<String, Object> handleException(Exception e) {
+    public Map<String, Object> handleException(Exception e, HttpServletRequest request) {
+        // P0 门禁(Step1)：将 500 错误埋点记录到 gate_metrics.jsonl，
+        // 失败信息写错误消息（截 500 字符避免 metrics 体积膨胀）。
+        try {
+            String turnId = (String) request.getAttribute("qa.turnId");
+            String question = (String) request.getAttribute("qa.question");
+            String errorMessage = e.getMessage();
+            if (errorMessage != null && errorMessage.length() > 500) {
+                errorMessage = errorMessage.substring(0, 500);
+            }
+            gateMetricsWriter.recordError(turnId, question, "http_500", errorMessage, 0L);
+        } catch (Exception ignored) {
+            // 埋点失败不影响 500 响应
+            log.warn("[QaController] gateMetricsWriter.recordError failed", ignored);
+        }
         return Map.of(
                 "error", "QA request failed",
                 "message", e.getMessage()

@@ -6,6 +6,9 @@ package com.qa.demo.knowledge;
  * <p>
  * 通用生成原则在本类；按 queryType 的「输出契约」见 {@link AnswerOutputContractRegistry} 与
  * {@code classpath:qa/answer-output-contracts.json}，不在此硬编码业务字段或问法模板。
+ * <p>
+ * 意图路由 prompt 只要求 LLM 输出 {@code retrievalStrategy} 与实体槽位；{@code queryType}/{@code intent}
+ * 由系统内部推导，供闸门与输出契约等遗留路径使用（见 {@code IntentSlots}）。
  */
 public final class KnowledgeAssistantPrompts {
 
@@ -13,82 +16,68 @@ public final class KnowledgeAssistantPrompts {
     }
 
     public static String intentRouterLlmSystemPrompt() {
-        return "你是企业知识库问答的「意图与实体路由器」。根据用户问题选择检索通道，并抽取检索所需实体，"
-                + "避免依赖固定问句模板（如必须把「公司」说成「主体」才能识别）。\n\n"
-                + "可选 intent（检索通道）:\n"
-                + "- graph: 人-公司任职/关系、股东、关联、层级、归属\n"
-                + "- document: 制度、流程、政策、步骤类叙述\n"
-                + "- vector: 口语化、语义相近、难以关键词精确命中\n"
-                + "- mysql: 表行/字段明细、结构化记录\n"
-                + "- sql: 统计、计数、分组、排序、占比、排行\n"
-                + "- hybrid: 需多路证据组合\n"
-                + "- unknown: 缺关键信息或明显超范围\n\n"
-                + "可选 queryType（查询形态，与 intent 独立）:\n"
-                + "- person_role_list: 某人担任哪些主体/公司的法人、董事、监事等（列表型）\n"
-                + "- person_certificate_list: 某人负责/管理哪些证照（跨公司，需输出证照类型+公司+角色，非主体类型）\n"
-                + "- company_profile: 某一公司/主体的概况、状态、地址、经营范围等\n"
-                + "- company_certificate: 某公司有哪些证照/许可证、有效期、保管人/监管人\n"
-                + "- company_seal: 某公司印章类型、保管部门、用印相关人员\n"
-                + "- shareholder: 股东、持股、股权结构\n"
-                + "- relation: 关联、穿透、母子关系\n"
-                + "- aggregate: 数量、统计、汇总\n"
-                + "- policy: 制度流程\n"
-                + "- semantic: 泛语义检索\n"
-                + "- mixed: 多形态混合\n"
-                + "- unknown: 无法判断形态\n\n"
-                + "roleFocus（任职类问题时必填具体值，勿填 any）: legal_rep | director | supervisor | shareholder | any\n"
-                + "personName: 问句中出现的自然人指称（全名、姓+敬称、花名等），照实抽取；无则空字符串；勿带「是」「的」等后缀；"
-                + "敬称归一化由系统解析层完成，不必猜测实名\n"
-                + "companyHints: 问句中的公司/主体名称片段数组，无则 []\n"
-                + "confidence: 槽位齐全且意图明确时建议 >= 0.8；不确定时降低并选 unknown 或 hybrid\n\n"
-                + "示例（结构示意，勿照搬具体人名/公司名）："
-                + "「{某人}是哪些{主体}的法人」-> intent=hybrid, queryType=person_role_list, "
-                + "personName={问句中的人名指称}, roleFocus=legal_rep, confidence=0.85\n"
-                + "「{某人}负责哪些证照」-> intent=mysql, queryType=person_certificate_list, "
-                + "personName={人名}, roleFocus=any, confidence=0.88\n"
-                + "追问「类型有哪些」且上文为证照主题时 -> 仍 person_certificate_list，指证照类型名，非公司主体类型\n\n"
-                + "术语澄清：在证照语境下，「证照类型」是类别标签，「证照」是企业名下该类别的一条实例记录；"
-                + "无证据显示同类型多条时，不要把同一企业同一类型拆成多本证照。\n\n"
+        return "你是企业知识库问答的「检索策略路由器」。根据用户问题决定检索执行策略，并抽取检索所需实体。\n"
+                + "不要输出业务场景标签（如 person_role_list、company_certificate 等 queryType），"
+                + "只输出 retrievalStrategy 与实体槽位。\n\n"
+                + "retrievalStrategy（检索执行策略，决定后续是否 TOP-K 召回）:\n"
+                + "- aggregate_count: 问数量/总数/统计值，必须 COUNT，禁止用实例 TOP-K 凑数\n"
+                + "- structured_list: 问有哪些/列出/名单（非枚举目录）\n"
+                + "- type_catalog: 问类型/种类/枚举目录（如状态有哪些种类）\n"
+                + "- instance_fact: 单一实体的一个或少量字段（概况/属性）\n"
+                + "- graph_relational: 任职/股东/关联等人-组织关系\n"
+                + "- semantic_rag: 口语化语义检索，可多路 TOP-K\n"
+                + "- clarify: 信息不足需澄清\n"
+                + "- unknown: 无法判断\n\n"
+                + "判定要点：\n"
+                + "- 含「有多少/几家/总数/统计/占比」→ aggregate_count\n"
+                + "- 含「有哪些种类/包含哪些类型/枚举」→ type_catalog\n"
+                + "- 含「有哪些/列出/名单」且非枚举目录 → structured_list\n"
+                + "- 问单一主体字段 → instance_fact\n"
+                + "- 问任职/法人/股东/关联 → graph_relational\n\n"
+                + "roleFocus（任职/关系类问题时必填具体值，勿填 any）: legal_rep | director | supervisor | shareholder | any\n"
+                + "personName: 问句中出现的自然人指称，照实抽取；无则空字符串\n"
+                + "companyHints: 问句中的组织/主体名称片段数组，无则 []\n"
+                + "confidence: 槽位齐全且策略明确时建议 >= 0.8\n\n"
                 + "输出必须是单行 JSON，字段齐全：\n"
-                + "{\"intent\":\"graph|...\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\","
-                + "\"queryType\":\"person_role_list|...\",\"personName\":\"\",\"companyHints\":[],\"roleFocus\":\"any\"}\n"
+                + "{\"retrievalStrategy\":\"aggregate_count|...\",\"personName\":\"\",\"companyHints\":[],"
+                + "\"roleFocus\":\"any\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
                 + "不要输出 JSON 以外的任何文字。\n";
     }
 
     /**
-     * 追问场景的意图解析 prompt：带会话上下文，让 LLM 判断本轮 queryType。
+     * 追问场景的意图解析 prompt：带会话上下文，让 LLM 判断本轮 retrievalStrategy。
      */
     public static String followUpIntentRouterSystemPrompt() {
-        return "你是企业知识库问答的「追问意图解析器」。根据会话历史与当前问题，判断本轮查询形态。\n\n"
+        return "你是企业知识库问答的「追问检索策略解析器」。根据会话历史与当前问题，判断本轮检索执行策略。\n"
+                + "不要输出 queryType 或 intent，只输出 retrievalStrategy 与实体槽位。\n\n"
                 + "核心原则：\n"
-                + "1. 必须根据**当前问题**的语义判断 queryType 与 intent，不要机械继承上一轮 queryType。\n"
-                + "2. 若当前问题与上一轮属于**不同信息维度**（例如从「谁担任什么」转为「有哪些许可/证照/资质」），必须切换 queryType。\n"
-                + "3. 若当前问题是短追问、指代上文（如「那存续的呢」「分别列一下」「有哪些证」），结合【会话历史】理解指代对象，"
-                + "但 queryType 仍由**当前问句实际想问的内容**决定。\n"
-                + "4. companyHints 表示本轮涉及的组织/主体名称片段，仅作检索范围；不要因为公司数量多就判成「任职列表」类 queryType。\n\n"
-                + "5. 术语澄清：在证照相关问句中，「证照类型」是类别维度，「证照」是企业名下该类别的一条实例记录；"
-                + "若用户问“哪些证照”，不要误改写成“证照类型目录”查询。\n\n"
-                + "可选 queryType：\n"
-                + "- person_role_list: 某人担任哪些主体/公司的法人、董事、监事等（列表型）\n"
-                + "- person_certificate_list: 某人负责/管理哪些证照（需输出证照类型+公司+角色）\n"
-                + "- company_certificate: 某公司有哪些证照/许可证、有效期、保管人/监管人\n"
-                + "- company_profile: 某一公司/主体的概况、状态、地址、经营范围等\n"
-                + "- company_seal: 某公司印章类型、保管部门、用印相关人员\n"
-                + "- shareholder: 股东、持股、股权结构\n"
-                + "- relation: 关联、穿透、母子关系\n"
-                + "- aggregate: 数量、统计、汇总\n"
-                + "- policy: 制度流程\n"
-                + "- semantic: 泛语义检索\n"
-                + "- mixed: 多形态混合\n"
-                + "- unknown: 无法判断形态\n\n"
-                + "roleFocus（任职类问题时必填具体值）：legal_rep | director | supervisor | shareholder | any\n"
-                + "personName: 当前问题中出现的自然人指称，照实抽取；无则空字符串\n"
-                + "companyHints: 当前问题中的公司/主体名称片段数组，无则 []\n"
-                + "confidence: 槽位齐全且意图明确时建议 >= 0.8\n\n"
+                + "1. 必须根据**当前问题**的语义判断 retrievalStrategy，不要机械继承上一轮策略。\n"
+                + "2. 若当前问题与上一轮属于**不同信息维度**（例如从列表转为统计/枚举目录），必须切换策略。\n"
+                + "3. 短追问、指代上文（如「那存续的呢」「分别列一下」）结合【会话历史】理解指代，"
+                + "但 retrievalStrategy 仍由**当前问句实际想问的内容**决定。\n\n"
+                + "retrievalStrategy: aggregate_count | structured_list | type_catalog | instance_fact | "
+                + "graph_relational | semantic_rag | clarify | unknown\n\n"
+                + "roleFocus（任职/关系类）：legal_rep | director | supervisor | shareholder | any\n"
+                + "personName: 当前问题中的自然人指称，无则空字符串\n"
+                + "companyHints: 当前问题中的组织/主体名称片段数组，无则 []\n"
+                + "confidence: 策略明确时建议 >= 0.8\n\n"
                 + "输出必须是单行 JSON：\n"
-                + "{\"intent\":\"graph|mysql|...\",\"queryType\":\"person_certificate_list|...\","
-                + "\"personName\":\"\",\"companyHints\":[],\"roleFocus\":\"any\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
+                + "{\"retrievalStrategy\":\"aggregate_count|...\",\"personName\":\"\",\"companyHints\":[],"
+                + "\"roleFocus\":\"any\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
                 + "不要输出 JSON 以外的任何文字。\n";
+    }
+
+    public static String sqlCountGeneratorSystemPrompt() {
+        return "你是 SQL 计数生成器：根据用户自然语言问题与 MySQL 表结构摘要，生成一条 SELECT COUNT 只读查询。\n"
+                + "约束：\n"
+                + "1) 只允许 SELECT COUNT(*) 或 SELECT COUNT(列) 形式，禁止返回明细行。\n"
+                + "2) 不要加 LIMIT。\n"
+                + "3) 仅使用摘要中出现的表与字段名。\n"
+                + "4) 若表有 deleteflag 或等效软删列，默认过滤已删除行（=0）。\n"
+                + "5) 不要生成任何写操作或 DDL。\n"
+                + "输出必须是单行 JSON：\n"
+                + "{\"sql\":\"SELECT COUNT(*) ...\",\"reason\":\"简短原因\"}\n"
+                + "不要输出 JSON 以外内容。\n";
     }
 
     public static String sqlGeneratorSystemPrompt(int limit) {

@@ -109,7 +109,8 @@ public final class ConversationSessionSupport {
                 person,
                 current.companyHints(),
                 current.roleFocus(),
-                current.personEmployeeId()
+                current.personEmployeeId(),
+                current.retrievalStrategy()
         );
     }
 

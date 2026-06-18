@@ -1,6 +1,7 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.core.RetrievalStrategy;
 import com.qa.demo.qa.domain.ConversationScopeSupport;
 import com.qa.demo.qa.domain.ConversationScopeSupport.OperatingStatusScope;
 import com.qa.demo.qa.domain.EntityRef;
@@ -32,9 +33,12 @@ public class FollowUpSessionHintMerger {
             return decision;
         }
         String q = question.strip();
-        if (scopeSupport.explicitlyBreaksContext(q) || scopeSupport.isUnscopedListQuestion(q)) {
+        if (scopeSupport.explicitlyBreaksContext(q)
+                || scopeSupport.isUnscopedListQuestion(q)
+                || scopeSupport.isCatalogQuestion(q)) {
             return decision;
         }
+        decision = switchFollowUpQueryType(decision, q, context);
         boolean continuation = scopeSupport.isContinuationUtterance(q) || scopeSupport.referencesPriorSubjects(q);
         IntentDecision normalized = normalizeContinuationQueryType(decision, q, context, continuation);
         if (!continuation) {
@@ -84,17 +88,18 @@ public class FollowUpSessionHintMerger {
                 normalized.personName(),
                 List.copyOf(filtered),
                 normalized.roleFocus(),
-                normalized.personEmployeeId()
+                normalized.personEmployeeId(),
+                normalized.retrievalStrategy()
         );
     }
 
-    private static IntentDecision normalizeContinuationQueryType(
+    private IntentDecision normalizeContinuationQueryType(
             IntentDecision decision,
             String question,
             FollowUpIntentContext context,
             boolean continuation
     ) {
-        if (!continuation) {
+        if (!continuation || scopeSupport.isCatalogQuestion(question)) {
             return decision;
         }
         String priorQt = context.priorQueryType() == null ? "" : context.priorQueryType().trim();
@@ -117,8 +122,60 @@ public class FollowUpSessionHintMerger {
                 decision.personName(),
                 decision.companyHints(),
                 decision.roleFocus(),
-                decision.personEmployeeId()
+                decision.personEmployeeId(),
+                decision.retrievalStrategy()
         );
+    }
+
+    /**
+     * 上轮任职列表 + 本轮证照语义 → 切换为证照实例查询（Q-02）。
+     */
+    private IntentDecision switchFollowUpQueryType(
+            IntentDecision decision,
+            String question,
+            FollowUpIntentContext context
+    ) {
+        String priorQt = context.priorQueryType() == null ? "" : context.priorQueryType().trim();
+        if (!"person_role_list".equalsIgnoreCase(priorQt)) {
+            return decision;
+        }
+        if (decision.isPersonCertificateListQuery() || decision.isCompanyComplianceQuery()) {
+            return decision;
+        }
+        if (!looksLikeCertificateInstanceFollowUp(question)) {
+            return decision;
+        }
+        String person = decision.hasPersonFocus()
+                ? decision.personName()
+                : context.focusPersonName();
+        String reason = decision.reason() == null ? "" : decision.reason();
+        if (!reason.contains("followup_querytype_switch")) {
+            reason = (reason.isBlank() ? "" : reason + "; ") + "followup_querytype_switch:person_certificate_list";
+        }
+        return new IntentDecision(
+                "mysql",
+                Math.max(decision.confidence(), 0.85),
+                reason,
+                "person_certificate_list",
+                person == null ? "" : person,
+                decision.companyHints(),
+                decision.roleFocus() == null || decision.roleFocus().isBlank() ? "any" : decision.roleFocus(),
+                decision.personEmployeeId(),
+                RetrievalStrategy.STRUCTURED_LIST.token()
+        );
+    }
+
+    private boolean looksLikeCertificateInstanceFollowUp(String question) {
+        if (question == null || question.isBlank() || scopeSupport.isCatalogQuestion(question)) {
+            return false;
+        }
+        String q = question.strip();
+        boolean certContext = q.contains("证照") || q.contains("许可证") || q.contains("执照")
+                || q.contains("资质") || q.contains("备案");
+        if (certContext) {
+            return true;
+        }
+        return q.contains("证") && !q.contains("公司") && !q.contains("主体");
     }
 
     private InheritedCompanyScope resolveInheritedCompanies(List<EntityRef> priorCompanies, String question) {

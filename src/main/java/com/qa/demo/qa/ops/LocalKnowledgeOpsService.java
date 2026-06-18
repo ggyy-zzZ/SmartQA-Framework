@@ -187,7 +187,7 @@ public class LocalKnowledgeOpsService {
             neo4jArgs.add("--input");
             neo4jArgs.add(DEFAULT_JSONL);
             neo4jArgs.add("--wipe");
-            appendSlimNeo4jFlags(neo4jArgs);
+            neo4jArgs.add("--slim");
             if (effectiveLimit > 0) {
                 neo4jArgs.add("--limit");
                 neo4jArgs.add(String.valueOf(effectiveLimit));
@@ -399,12 +399,6 @@ public class LocalKnowledgeOpsService {
         return file;
     }
 
-    private void appendSlimNeo4jFlags(List<String> neo4jArgs) {
-        if (properties.isPersonRoleSlimGraph()) {
-            neo4jArgs.add("--slim");
-        }
-    }
-
     private static long countLines(Path path) {
         try (Stream<String> lines = Files.lines(path, StandardCharsets.UTF_8)) {
             return lines.filter(l -> !l.isBlank()).count();
@@ -489,7 +483,7 @@ public class LocalKnowledgeOpsService {
         args.add(scriptPath("scripts/enterprise_pipeline/sync_neo4j.py"));
         args.add("--input");
         args.add(DEFAULT_JSONL);
-        appendSlimNeo4jFlags(args);
+        args.add("--slim");
         return args;
     }
 

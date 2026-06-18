@@ -2,6 +2,7 @@ package com.qa.demo.qa.domain;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qa.demo.qa.config.SemanticSchemaRegistry;
 import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -10,7 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * MySQL 公司表「人员角色列」映射（classpath:qa/sql-role-columns.json）。
+ * 公司表人员角色列映射，从 {@code qa/semantic-schema.json} 加载（供 CDC 等复用）。
  */
 public class SqlRoleColumnCatalog {
 
@@ -28,22 +29,48 @@ public class SqlRoleColumnCatalog {
         this.defaultPriority = defaultPriority;
     }
 
-    public static SqlRoleColumnCatalog loadDefault(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) throws Exception {
-        JsonNode root = configLoader.readTree("sql-role-columns");
+    public static SqlRoleColumnCatalog loadDefault(
+            ObjectMapper objectMapper,
+            AssistantConfigJsonLoader configLoader
+    ) throws Exception {
+        JsonNode root = configLoader.readTree("semantic-schema");
         Map<String, String> columns = new LinkedHashMap<>();
-            root.path("columns").fields().forEachRemaining(e ->
-                    columns.put(e.getKey().toLowerCase(Locale.ROOT), e.getValue().asText()));
-            List<PriorityPattern> patterns = new ArrayList<>();
-            for (JsonNode item : root.path("priorityPatterns")) {
-                patterns.add(new PriorityPattern(
-                        item.path("contains").asText(""),
-                        item.path("priority").asInt(99)
-                ));
+        for (JsonNode ref : root.path("entities").path("company").path("roleReferences")) {
+            String column = ref.path("column").asText("");
+            String label = ref.path("label").asText("");
+            if (!column.isBlank() && !label.isBlank()) {
+                columns.put(column.toLowerCase(Locale.ROOT), label);
             }
+        }
+        List<PriorityPattern> patterns = new ArrayList<>();
+        for (JsonNode item : root.path("roleColumnPriority")) {
+            patterns.add(new PriorityPattern(
+                    item.path("contains").asText(""),
+                    item.path("priority").asInt(99)
+            ));
+        }
         return new SqlRoleColumnCatalog(
                 columns,
                 patterns,
-                root.path("defaultPriority").asInt(4)
+                root.path("defaultRoleColumnPriority").asInt(4)
+        );
+    }
+
+    public static SqlRoleColumnCatalog fromRegistry(SemanticSchemaRegistry registry) {
+        Map<String, String> columns = new LinkedHashMap<>();
+        registry.companyRoleColumnLabels().forEach(columns::put);
+        List<PriorityPattern> patterns = new ArrayList<>();
+        JsonNode root = registry.root();
+        for (JsonNode item : root.path("roleColumnPriority")) {
+            patterns.add(new PriorityPattern(
+                    item.path("contains").asText(""),
+                    item.path("priority").asInt(99)
+            ));
+        }
+        return new SqlRoleColumnCatalog(
+                columns,
+                patterns,
+                root.path("defaultRoleColumnPriority").asInt(4)
         );
     }
 

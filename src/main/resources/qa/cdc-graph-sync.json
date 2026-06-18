@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "CDC 写入 Neo4j 的节点与关系规则；人员角色列与 qa/sql-role-columns.json 对齐，避免业务硬编码。",
+  "description": "CDC 写入 Neo4j 的节点与关系规则；人员角色列与 qa/semantic-schema.json 对齐。",
   "nodeTypes": {
     "company": {
       "label": "Company",
@@ -34,7 +34,7 @@
       "toId": { "resolveEntityTable": "company" },
       "personIdBindings": {
         "mode": "role_column_catalog",
-        "catalog": "sql-role-columns",
+        "catalog": "semantic-schema",
         "exclusiveRoleLabel": true,
         "stampSourceColumn": true
       }
@@ -75,7 +75,7 @@
   ],
   "vectorDocumentEnrichment": {
     "company": {
-      "roleBindingsRef": "sql-role-columns",
+      "roleBindingsRef": "semantic-schema",
       "sections": [
         { "label": "法定代表人", "roleLabels": ["法定代表人"], "format": "{personDisplay}", "join": "、" },
         { "label": "关键人员", "roleLabels": ["*"], "format": "{role}:{personDisplay}", "join": ", " }

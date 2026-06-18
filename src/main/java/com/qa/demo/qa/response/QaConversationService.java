@@ -461,9 +461,11 @@ public class QaConversationService {
                 : (resolveFocusPerson(last) != null ? resolveFocusPerson(last) : "");
         List<String> focusNames = last.focusCompanyNames() != null ? last.focusCompanyNames() : List.of();
         List<EntityRef> scopedPriorCompanies = scopePriorCompaniesByQuestion(last.getCompanies(), last.question());
+        String priorStrategy = IntentSlots.strategyHintFromQueryType(last.lastQueryType());
         return FollowUpIntentContext.of(
                 last.question(),
                 last.lastQueryType(),
+                priorStrategy,
                 last.answer(),
                 personName,
                 scopedPriorCompanies,

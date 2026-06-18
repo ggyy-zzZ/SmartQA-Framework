@@ -50,10 +50,6 @@ public class EnterpriseEnumLabelService {
         }
     }
 
-    /**
-     * @param dictCode 与 enterprise-enums.json 顶层键一致，如 operatingStatus、mainType
-     * @param raw      库内原始码；空则返回空串
-     */
     public String label(String dictCode, String raw) {
         if (raw == null || raw.isBlank()) {
             return "";
@@ -76,6 +72,11 @@ public class EnterpriseEnumLabelService {
             return hit;
         }
         return key;
+    }
+
+    /** 返回枚举字典全部条目，供语义 Schema 摘要等场景使用。 */
+    public Map<String, String> dictEntries(String dictCode) {
+        return Map.copyOf(resolveDict(dictCode));
     }
 
     private Map<String, String> resolveDict(String dictCode) {

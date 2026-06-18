@@ -95,6 +95,7 @@ public class IntentDecisionEnricher {
             String source
     ) {
         String queryType = base.queryType();
+        String retrievalStrategy = base.retrievalStrategy();
         String personName = base.personName();
         List<String> companyHints = base.companyHints() == null
                 ? new ArrayList<>()
@@ -117,6 +118,13 @@ public class IntentDecisionEnricher {
 
         String inferredQueryType = ruleEngine.inferQueryType(question, personName);
         queryType = resolveQueryType(queryType, inferredQueryType, source);
+        if (retrievalStrategy == null || retrievalStrategy.isBlank()) {
+            if ("aggregate".equalsIgnoreCase(queryType)) {
+                retrievalStrategy = com.qa.demo.qa.core.RetrievalStrategy.AGGREGATE_COUNT.token();
+            }
+        } else if (isLlmSourced(source)) {
+            // LLM 已给出执行策略时不被规则覆盖
+        }
 
         if ("any".equalsIgnoreCase(roleFocus)) {
             roleFocus = entityExtractor.inferRoleFocus(question);
@@ -133,7 +141,8 @@ public class IntentDecisionEnricher {
                 personName == null ? "" : personName,
                 List.copyOf(companyHints),
                 roleFocus,
-                base.personEmployeeId()
+                base.personEmployeeId(),
+                retrievalStrategy == null ? "" : retrievalStrategy
         );
     }
 
@@ -247,7 +256,8 @@ public class IntentDecisionEnricher {
                 personName,
                 decision.companyHints(),
                 decision.roleFocus(),
-                personEmployeeId != null ? personEmployeeId : decision.personEmployeeId()
+                personEmployeeId != null ? personEmployeeId : decision.personEmployeeId(),
+                decision.retrievalStrategy()
         );
     }
 
@@ -264,7 +274,8 @@ public class IntentDecisionEnricher {
                 decision.personName(),
                 decision.companyHints(),
                 decision.roleFocus(),
-                decision.personEmployeeId()
+                decision.personEmployeeId(),
+                decision.retrievalStrategy()
         );
     }
 }

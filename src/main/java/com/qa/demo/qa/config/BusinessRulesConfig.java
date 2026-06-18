@@ -24,6 +24,7 @@ public class BusinessRulesConfig {
     private DataSources dataSources = new DataSources();
     private List<CorrectionRule> correctionRules = new ArrayList<>();
     private RetrievalThresholds retrievalThresholds = new RetrievalThresholds();
+    private List<FilterFieldCoverageRule> filterFieldCoverageRules = new ArrayList<>();
     private Map<String, String> outputContracts = new HashMap<>();
 
     public IntentRouting getIntentRouting() { return intentRouting; }
@@ -124,6 +125,8 @@ public class BusinessRulesConfig {
         private List<String> breakContextPhrases = new ArrayList<>();
         private List<String> globalListMarkers = new ArrayList<>();
         private List<String> globalListContextKeywords = new ArrayList<>();
+        /** 枚举/目录类问句（如「经营状态包含哪些种类」），不应继承上轮 region/主体 hints */
+        private List<String> catalogQuestionMarkers = new ArrayList<>();
         private List<String> continuationMarkers = new ArrayList<>();
         private List<String> continuationExcludePatterns = new ArrayList<>();
         private int continuationMaxLength = 36;
@@ -140,6 +143,10 @@ public class BusinessRulesConfig {
         public List<String> getGlobalListContextKeywords() { return globalListContextKeywords; }
         public void setGlobalListContextKeywords(List<String> globalListContextKeywords) {
             this.globalListContextKeywords = globalListContextKeywords;
+        }
+        public List<String> getCatalogQuestionMarkers() { return catalogQuestionMarkers; }
+        public void setCatalogQuestionMarkers(List<String> catalogQuestionMarkers) {
+            this.catalogQuestionMarkers = catalogQuestionMarkers;
         }
         public List<String> getContinuationMarkers() { return continuationMarkers; }
         public void setContinuationMarkers(List<String> continuationMarkers) {
@@ -192,6 +199,7 @@ public class BusinessRulesConfig {
          * 规则补充语句前缀（这类语句不应被判为实体纠偏）。
          */
         private List<String> filterRulePrefixes = new ArrayList<>();
+        private List<String> compiledDocumentKeywords = new ArrayList<>();
 
         public List<String> getStructuredListQueryTypes() { return structuredListQueryTypes; }
         public void setStructuredListQueryTypes(List<String> s) { this.structuredListQueryTypes = s; }
@@ -205,6 +213,10 @@ public class BusinessRulesConfig {
         public void setFollowUpReferenceMarkers(List<String> f) { this.followUpReferenceMarkers = f; }
         public List<String> getFilterRulePrefixes() { return filterRulePrefixes; }
         public void setFilterRulePrefixes(List<String> filterRulePrefixes) { this.filterRulePrefixes = filterRulePrefixes; }
+        public List<String> getCompiledDocumentKeywords() { return compiledDocumentKeywords; }
+        public void setCompiledDocumentKeywords(List<String> compiledDocumentKeywords) {
+            this.compiledDocumentKeywords = compiledDocumentKeywords;
+        }
     }
 
     public static class QueryTypeSlotRequirement {
@@ -450,6 +462,34 @@ public class BusinessRulesConfig {
         public void setMinCount(int m) { this.minCount = m; }
         public String getDescription() { return description; }
         public void setDescription(String d) { this.description = d; }
+    }
+
+    public List<FilterFieldCoverageRule> getFilterFieldCoverageRules() { return filterFieldCoverageRules; }
+    public void setFilterFieldCoverageRules(List<FilterFieldCoverageRule> rules) {
+        this.filterFieldCoverageRules = rules;
+    }
+
+    public static class FilterFieldCoverageRule {
+        private String id;
+        private String displayLabel;
+        private List<String> questionAnyKeywords = new ArrayList<>();
+        private List<String> filterIntentKeywords = new ArrayList<>();
+        private List<String> snippetMarkers = new ArrayList<>();
+        /** 业务库源表列名（P3b 专用检索） */
+        private List<String> sourceColumns = new ArrayList<>();
+
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        public String getDisplayLabel() { return displayLabel; }
+        public void setDisplayLabel(String displayLabel) { this.displayLabel = displayLabel; }
+        public List<String> getQuestionAnyKeywords() { return questionAnyKeywords; }
+        public void setQuestionAnyKeywords(List<String> k) { this.questionAnyKeywords = k; }
+        public List<String> getFilterIntentKeywords() { return filterIntentKeywords; }
+        public void setFilterIntentKeywords(List<String> k) { this.filterIntentKeywords = k; }
+        public List<String> getSnippetMarkers() { return snippetMarkers; }
+        public void setSnippetMarkers(List<String> m) { this.snippetMarkers = m; }
+        public List<String> getSourceColumns() { return sourceColumns; }
+        public void setSourceColumns(List<String> sourceColumns) { this.sourceColumns = sourceColumns; }
     }
 
     // ============= Output Contracts =============

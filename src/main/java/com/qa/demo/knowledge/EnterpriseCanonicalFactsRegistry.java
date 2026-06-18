@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.OptionalInt;
 /**
  * 企业「常识事实」注册表（classpath:qa/enterprise-canonical-facts.json）。
  * <p>
@@ -87,6 +88,45 @@ public class EnterpriseCanonicalFactsRegistry {
             }
         }
         return augmented;
+    }
+
+    /**
+     * 当员工索引未命中时，用常识事实中的 employee 锚点 id 解析人物（如 BOSS 锚点 29）。
+     */
+    public OptionalInt resolveEmployeeAnchorId(String personHint, String question) {
+        String q = question == null ? "" : question;
+        String qLower = q.toLowerCase(Locale.ROOT);
+        String hint = personHint == null ? "" : personHint.trim();
+        String hintLower = hint.toLowerCase(Locale.ROOT);
+        for (CanonicalFact fact : facts) {
+            if (!ContextChunk.KIND_EMPLOYEE.equals(fact.entityKind())) {
+                continue;
+            }
+            String legalName = fact.values().getOrDefault("legalName", "");
+            boolean hit = (!hint.isBlank() && hint.equals(fact.displayLabel()))
+                    || (!hint.isBlank() && hintLower.equals(legalName.toLowerCase(Locale.ROOT)))
+                    || (!hint.isBlank() && legalName.length() >= 2
+                        && fact.displayLabel().toLowerCase(Locale.ROOT).contains(hintLower));
+            if (!hit) {
+                continue;
+            }
+            int id = parseAnchorId(fact.anchorId());
+            if (id > 0) {
+                return OptionalInt.of(id);
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    private static int parseAnchorId(String anchorId) {
+        if (anchorId == null || anchorId.isBlank()) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(anchorId.trim());
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
     }
 
     private static ContextChunk chunkFor(CanonicalFact fact, String snippet) {
@@ -186,6 +226,9 @@ public class EnterpriseCanonicalFactsRegistry {
             Map<String, String> values
     ) {
         boolean matches(String qLower, String rawQuestion) {
+            if (looksLikeListQuestion(rawQuestion)) {
+                return false;
+            }
             for (String trigger : triggers) {
                 if (trigger == null || trigger.isBlank()) {
                     continue;
@@ -199,6 +242,18 @@ public class EnterpriseCanonicalFactsRegistry {
                 }
             }
             return false;
+        }
+
+        private static boolean looksLikeListQuestion(String question) {
+            if (question == null || question.isBlank()) {
+                return false;
+            }
+            return question.contains("哪些")
+                    || question.contains("有多少")
+                    || question.contains("名单")
+                    || question.contains("列表")
+                    || question.contains("一共")
+                    || question.contains("总共");
         }
     }
 

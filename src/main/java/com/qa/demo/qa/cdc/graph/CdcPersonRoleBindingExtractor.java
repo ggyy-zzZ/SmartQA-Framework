@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * 按 sql-role-columns 配置从 CDC 行提取人员角色绑定（图谱与向量文档共用）。
+ * 按 semantic-schema 配置从 CDC 行提取人员角色绑定（图谱与向量文档共用）。
  */
 @Component
 public class CdcPersonRoleBindingExtractor {

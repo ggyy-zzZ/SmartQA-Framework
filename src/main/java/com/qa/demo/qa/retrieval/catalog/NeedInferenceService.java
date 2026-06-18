@@ -1,11 +1,17 @@
 package com.qa.demo.qa.retrieval.catalog;
 
+import com.qa.demo.qa.config.BusinessRulesConfig;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.domain.ConversationScopeSupport;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Locale;
+import com.qa.demo.qa.retrieval.certificate.CertificateListQuestionSupport;
+import com.qa.demo.qa.retrieval.filter.FilterFieldQuestionSupport;
+import com.qa.demo.qa.retrieval.region.RegionListQuestionSupport;
+import com.qa.demo.qa.retrieval.structured.RegionResolverService;
 
 /**
  * 从问句与意图决策推断信息需求（规则来自 retrieval-catalog.json，无业务硬编码）。
@@ -14,16 +20,45 @@ import java.util.Locale;
 public class NeedInferenceService {
 
     private final RetrievalCatalogRegistry catalogRegistry;
+    private final ConversationScopeSupport scopeSupport;
+    private final BusinessRulesConfig businessRulesConfig;
+    private final RegionResolverService regionResolver;
 
-    public NeedInferenceService(RetrievalCatalogRegistry catalogRegistry) {
+    public NeedInferenceService(
+            RetrievalCatalogRegistry catalogRegistry,
+            ConversationScopeSupport scopeSupport,
+            BusinessRulesConfig businessRulesConfig,
+            RegionResolverService regionResolver
+    ) {
         this.catalogRegistry = catalogRegistry;
+        this.scopeSupport = scopeSupport;
+        this.businessRulesConfig = businessRulesConfig;
+        this.regionResolver = regionResolver;
     }
 
     public InformationNeed infer(String question, IntentDecision intent) {
         String q = question == null ? "" : question.strip();
         if (!q.isBlank()) {
+            InformationNeed filterNeed = inferFilterThresholdNeed(q);
+            if (filterNeed != null) {
+                return filterNeed;
+            }
+            if (CertificateListQuestionSupport.isUnscopedGlobalCertificateList(q)) {
+                return CertificateListQuestionSupport.globalCertificateNeed();
+            }
+            if (RegionListQuestionSupport.isRegionCompanyList(q, regionResolver)) {
+                return RegionListQuestionSupport.regionCompanyNeed();
+            }
+            InformationNeed forcedCatalog = inferForcedCatalogNeed(q);
+            if (forcedCatalog != null) {
+                return forcedCatalog;
+            }
             InformationNeed fromRules = matchRules(q);
             if (fromRules != null) {
+                // 规则已命中 type_catalog 时不再让 queryType/companyHints 覆盖（避免 MySQL 旧配置缺 catalog markers）
+                if (fromRules.isTypeCatalog()) {
+                    return fromRules;
+                }
                 if (!shouldPreferQueryTypeNeed(q, intent, fromRules)) {
                     return fromRules;
                 }
@@ -46,6 +81,52 @@ public class NeedInferenceService {
             return mapped;
         }
         return InformationNeed.defaultSemantic();
+    }
+
+    /** catalog 问法优先于 queryType 映射，避免「公司经营状态有哪些种类」被 semantic 覆盖。 */
+    private InformationNeed inferForcedCatalogNeed(String question) {
+        if (question.contains("经营状态")
+                && (question.contains("种类") || question.contains("类型") || question.contains("哪些"))) {
+            return new InformationNeed(
+                    "profile",
+                    InformationNeed.GRANULARITY_TYPE_CATALOG,
+                    true,
+                    0.92,
+                    "inference_forced:operating_status_catalog"
+            );
+        }
+        if (!scopeSupport.isCatalogQuestion(question)) {
+            return null;
+        }
+        if (question.contains("经营状态")) {
+            return new InformationNeed(
+                    "profile",
+                    InformationNeed.GRANULARITY_TYPE_CATALOG,
+                    true,
+                    0.92,
+                    "inference_forced:operating_status_catalog"
+            );
+        }
+        if (looksLikeTypeCatalogQuestion(question)) {
+            return new InformationNeed(
+                    "certificate",
+                    InformationNeed.GRANULARITY_TYPE_CATALOG,
+                    true,
+                    0.88,
+                    "inference_heuristic:type_catalog"
+            );
+        }
+        return null;
+    }
+
+    private InformationNeed inferFilterThresholdNeed(String question) {
+        List<BusinessRulesConfig.FilterFieldCoverageRule> rules = businessRulesConfig.getFilterFieldCoverageRules();
+        if (rules == null || rules.isEmpty()) {
+            rules = FilterFieldQuestionSupport.defaultRules();
+        }
+        return FilterFieldQuestionSupport.matchThresholdRule(question, rules)
+                .map(FilterFieldQuestionSupport::aggregateNeedForRule)
+                .orElse(null);
     }
 
     private InformationNeed matchRules(String question) {
@@ -104,10 +185,16 @@ public class NeedInferenceService {
 
     private static boolean looksLikeTypeCatalogQuestion(String question) {
         String lower = question.toLowerCase(Locale.ROOT);
+        // 「他有哪些资质证照」= 实例列表，不是类型目录
+        if (containsAny(lower, "他有哪些", "她有哪些", "它有哪些", "其有哪些")
+                && containsAny(lower, "证照", "资质", "许可证", "执照")
+                && !containsAny(lower, "类型", "种类", "什么类型", "哪些类型")) {
+            return false;
+        }
         boolean typeIntent = lower.contains("类型")
                 || lower.contains("种类")
                 || lower.contains("什么证")
-                || lower.contains("哪些证")
+                || (lower.contains("哪些证") && !lower.contains("哪些资质") && !lower.contains("哪些许可"))
                 || lower.contains("什么类型")
                 || lower.contains("有哪些类型");
         boolean certContext = lower.contains("证照")
@@ -139,6 +226,9 @@ public class NeedInferenceService {
         if (candidate == null || !candidate.isTypeCatalog() || intent == null) {
             return false;
         }
+        if (scopeSupport.isCatalogQuestion(question)) {
+            return false;
+        }
         InformationNeed mapped = mapFromQueryType(intent);
         if (mapped == null || mapped.granularity() == null
                 || InformationNeed.GRANULARITY_TYPE_CATALOG.equalsIgnoreCase(mapped.granularity())) {
@@ -149,7 +239,7 @@ public class NeedInferenceService {
             return true;
         }
         boolean hasContextReference = containsAny(lower,
-                "这些", "那些", "这批", "上一轮", "上轮", "上文", "刚才", "其中", "里面", "里", "主体", "公司", "企业");
+                "这些", "那些", "这批", "上一轮", "上轮", "上文", "刚才", "其中", "里面", "里", "主体", "它们", "他们");
         boolean asksConditionFilter = containsAny(lower,
                 "吊销", "注销", "存续", "在业", "有效", "失效", "作废", "生效", "到期", "未作废");
         return hasContextReference && asksConditionFilter;

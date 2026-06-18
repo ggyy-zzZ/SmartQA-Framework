@@ -112,7 +112,7 @@ public class CdcGraphSyncCatalog {
             }
             return new PersonIdBindingsDef(
                     node.path("mode").asText(""),
-                    node.path("catalog").asText("sql-role-columns"),
+                    node.path("catalog").asText("semantic-schema"),
                     node.path("exclusiveRoleLabel").asBoolean(true),
                     node.path("stampSourceColumn").asBoolean(false)
             );
@@ -221,7 +221,7 @@ public class CdcGraphSyncCatalog {
                     sections.add(VectorRoleSectionDef.fromJson(s));
                 }
                 map.put(entry.getKey().toLowerCase(Locale.ROOT), new VectorTableEnrichmentDef(
-                        n.path("roleBindingsRef").asText("sql-role-columns"),
+                        n.path("roleBindingsRef").asText("semantic-schema"),
                         List.copyOf(sections)
                 ));
             });

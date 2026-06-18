@@ -193,6 +193,70 @@ public class EmployeeBaseKnowledgeService {
         return idToRecord.size();
     }
 
+    /**
+     * 按姓名/花名前缀列出员工规范姓名，供人物消歧（替代图谱 listPersonNamesByHintAndRole）。
+     */
+    public List<String> listPersonNamesByHintPrefix(String personHint, int limit) {
+        if (personHint == null || personHint.isBlank() || limit <= 0) {
+            return List.of();
+        }
+        String hint = PersonNameParser.hasHonorificSuffix(personHint)
+                ? PersonNameParser.stripHonorific(personHint)
+                : personHint.trim();
+        if (hint.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        for (EmployeeRecord record : idToRecord.values()) {
+            if (record == null) {
+                continue;
+            }
+            String name = record.name() == null ? "" : record.name().trim();
+            String alias = record.anotherName() == null ? "" : record.anotherName().trim();
+            boolean hit = (!name.isBlank() && name.startsWith(hint))
+                    || (!alias.isBlank() && alias.startsWith(hint))
+                    || (!name.isBlank() && name.contains(hint))
+                    || (!alias.isBlank() && alias.contains(hint));
+            if (hit && !name.isBlank()) {
+                names.add(name);
+            }
+            if (names.size() >= limit) {
+                break;
+            }
+        }
+        return names.stream().limit(limit).toList();
+    }
+
+    public List<EmployeeRecord> findRecordsByHint(String personHint, int limit) {
+        if (personHint == null || personHint.isBlank() || limit <= 0) {
+            return List.of();
+        }
+        String hint = PersonNameParser.hasHonorificSuffix(personHint)
+                ? PersonNameParser.stripHonorific(personHint)
+                : personHint.trim();
+        if (hint.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<Integer> seen = new LinkedHashSet<>();
+        List<EmployeeRecord> matches = new ArrayList<>();
+        for (EmployeeRecord record : idToRecord.values()) {
+            if (record == null) {
+                continue;
+            }
+            String name = record.name() == null ? "" : record.name().trim();
+            String alias = record.anotherName() == null ? "" : record.anotherName().trim();
+            boolean hit = (!name.isBlank() && (name.equalsIgnoreCase(hint) || name.startsWith(hint) || name.contains(hint)))
+                    || (!alias.isBlank() && (alias.equalsIgnoreCase(hint) || alias.startsWith(hint) || alias.contains(hint)));
+            if (hit && seen.add(record.id())) {
+                matches.add(record);
+            }
+            if (matches.size() >= limit) {
+                break;
+            }
+        }
+        return List.copyOf(matches);
+    }
+
     private String buildEmployeeSelectSql() {
         if (hasEmployeeColumn("another_name")) {
             return "SELECT id, name, another_name FROM employee";

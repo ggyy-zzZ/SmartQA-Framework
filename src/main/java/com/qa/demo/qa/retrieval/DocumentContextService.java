@@ -144,10 +144,23 @@ public class DocumentContextService {
         return result;
     }
 
-    private List<ContextChunk> retrieveTopChunksFromDb(String question, int topK) {
-        String corpus = properties.getDocumentCorpusCode();
-        List<DocumentChunkRepository.ChunkRow> rows = documentChunkRepository.loadAll(properties.getConfigScope(), corpus);
-        if (rows.isEmpty()) {
+    /** 仅检索用户上传语料（corpus=user_uploads）。 */
+    public List<ContextChunk> retrieveUserUploadTopChunks(String question, int topK) {
+        if (!properties.isDocumentFromDb()) {
+            return List.of();
+        }
+        List<DocumentChunkRepository.ChunkRow> rows = documentChunkRepository.loadAll(
+                properties.getConfigScope(), "user_uploads");
+        return scoreChunkRows(question, rows, topK, "user-document-chunk");
+    }
+
+    private List<ContextChunk> scoreChunkRows(
+            String question,
+            List<DocumentChunkRepository.ChunkRow> rows,
+            int topK,
+            String sourceTag
+    ) {
+        if (rows == null || rows.isEmpty()) {
             return List.of();
         }
         Set<String> questionTokens = extractTokens(question);
@@ -174,10 +187,19 @@ public class DocumentContextService {
                     detectField(record.rawBlock(), question),
                     buildSnippet(record.rawBlock(), question),
                     item.score(),
-                    "document-chunk-db"
+                    sourceTag
             ));
         }
         return result;
+    }
+
+    private List<ContextChunk> retrieveTopChunksFromDb(String question, int topK) {
+        String scope = properties.getConfigScope();
+        List<DocumentChunkRepository.ChunkRow> rows = documentChunkRepository.loadAllActiveForScope(scope);
+        if (rows.isEmpty()) {
+            rows = documentChunkRepository.loadAll(scope, properties.getDocumentCorpusCode());
+        }
+        return scoreChunkRows(question, rows, topK, "document-chunk-db");
     }
 
     private String readFileBlock(Path file, String displayName) throws IOException {
@@ -278,15 +300,41 @@ public class DocumentContextService {
             }
         }
         score += Math.min(tokenHit, 8);
+        score += scoreCjkOverlap(question, block);
 
+        return score;
+    }
+
+    /** 中文问句与通用文档 chunk 的二字片段重合度。 */
+    private static double scoreCjkOverlap(String question, String blockLower) {
+        String q = question == null ? "" : question.replaceAll("\\s+", "");
+        if (q.length() < 2) {
+            return 0;
+        }
+        double score = 0;
+        int hits = 0;
+        for (int i = 0; i + 2 <= q.length(); i++) {
+            String bi = q.substring(i, i + 2).toLowerCase(Locale.ROOT);
+            if (bi.codePoints().anyMatch(cp -> cp > 127) && blockLower.contains(bi)) {
+                hits++;
+            }
+        }
+        score += Math.min(hits, 10);
         return score;
     }
 
     private Set<String> extractTokens(String question) {
         Set<String> tokens = new HashSet<>();
-        for (String part : question.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+        String lower = question.toLowerCase(Locale.ROOT);
+        for (String part : lower.split("[^\\p{L}\\p{N}]+")) {
             if (!part.isBlank()) {
                 tokens.add(part);
+            }
+        }
+        for (int i = 0; i + 2 <= lower.length(); i++) {
+            String bi = lower.substring(i, i + 2);
+            if (bi.codePoints().anyMatch(cp -> cp > 127)) {
+                tokens.add(bi);
             }
         }
         return tokens;

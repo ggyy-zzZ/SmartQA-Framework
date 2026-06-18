@@ -13,7 +13,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -112,6 +111,97 @@ public class DocumentChunkRepository extends AssistantStoreSupport {
             log.debug("[DocumentChunk] load failed: {}", e.getMessage());
         }
         return rows;
+    }
+
+    /** 加载 scope 下所有 active 语料的 chunk（含用户上传语料）。 */
+    public List<ChunkRow> loadAllActiveForScope(String scope) {
+        String sql = """
+                SELECT c.chunk_key, c.anchor_id, c.display_label, c.content_text
+                FROM qa_document_chunk c
+                JOIN qa_document_corpus d ON d.id = c.corpus_id
+                WHERE d.scope = ? AND d.is_active = 1
+                ORDER BY d.corpus_code, c.sort_order, c.id
+                """;
+        List<ChunkRow> rows = new ArrayList<>();
+        try (Connection conn = openConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, scopeOrDefault(scope));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    rows.add(new ChunkRow(
+                            rs.getString("chunk_key"),
+                            rs.getString("anchor_id"),
+                            rs.getString("display_label"),
+                            rs.getString("content_text")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            log.debug("[DocumentChunk] loadAllActiveForScope failed: {}", e.getMessage());
+        }
+        return rows;
+    }
+
+    /**
+     * 导入通用文本 chunk（Markdown/TXT 切块）；replace=true 时覆盖同 corpus 已有 chunk。
+     */
+    public int importGenericChunks(
+            String scope,
+            String corpusCode,
+            String title,
+            List<GenericChunkInput> chunks,
+            boolean replaceExisting
+    ) {
+        if (chunks == null || chunks.isEmpty()) {
+            return 0;
+        }
+        try {
+            long corpusId = ensureCorpus(scopeOrDefault(scope), corpusCode, title);
+            if (replaceExisting) {
+                clearChunks(corpusId);
+            }
+            int startOrder = nextSortOrder(corpusId);
+            String insert = """
+                    INSERT INTO qa_document_chunk
+                    (corpus_id, chunk_key, anchor_id, display_label, content_text, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """;
+            try (Connection conn = openConnection();
+                 PreparedStatement ps = conn.prepareStatement(insert)) {
+                int order = startOrder;
+                for (GenericChunkInput chunk : chunks) {
+                    ps.setLong(1, corpusId);
+                    ps.setString(2, chunk.chunkKey());
+                    ps.setString(3, chunk.anchorId());
+                    ps.setString(4, chunk.displayLabel());
+                    ps.setString(5, chunk.contentText());
+                    ps.setInt(6, order++);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+            log.info("[DocumentChunk] imported {} generic chunks into corpus={}", chunks.size(), corpusCode);
+            return chunks.size();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to import generic document chunks: " + corpusCode, e);
+        }
+    }
+
+    private int nextSortOrder(long corpusId) throws SQLException {
+        try (Connection conn = openConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM qa_document_chunk WHERE corpus_id = ?")) {
+            ps.setLong(1, corpusId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        }
+        return 0;
+    }
+
+    public record GenericChunkInput(String chunkKey, String anchorId, String displayLabel, String contentText) {
     }
 
     private long ensureCorpus(String scope, String corpusCode, String title) throws SQLException {

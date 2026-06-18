@@ -2,6 +2,7 @@ package com.qa.demo.qa.orchestration;
 
 import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.knowledge.KnowledgeAssistantPrompts;
+import com.qa.demo.qa.answer.EvidenceFieldCoverageAdvisor;
 import com.qa.demo.qa.answer.MiniMaxClient;
 import com.qa.demo.qa.answer.QaAnswerFallbackService;
 import com.qa.demo.qa.answer.QaAnswerGateService;
@@ -12,6 +13,7 @@ import com.qa.demo.qa.constraint.ConstraintSet;
 import com.qa.demo.qa.core.CompanyCandidate;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
+import com.qa.demo.qa.core.RetrievalStrategy;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.QaScopes;
 import com.qa.demo.qa.domain.EntityRef;
@@ -30,10 +32,18 @@ import com.qa.demo.qa.learning.ChatLearningCommandParser;
 import com.qa.demo.qa.learning.LearningResponseBuilder;
 import com.qa.demo.qa.response.QaConversationService;
 import com.qa.demo.qa.response.QaLogService;
-import com.qa.demo.qa.retrieval.GraphContextService;
+import com.qa.demo.qa.debug.GateMetricsWriter;
+import com.qa.demo.qa.execution.AgentStepResult;
+import com.qa.demo.qa.execution.QaExecutionService;
+import com.qa.demo.qa.execution.QaMultiStepExecutor;
+import com.qa.demo.qa.planning.AgentTaskPlan;
+import com.qa.demo.qa.planning.CompanyHintService;
+import com.qa.demo.qa.planning.QaTaskPlannerService;
+import com.qa.demo.qa.review.QaReviewService;
 import com.qa.demo.qa.retrieval.QaRetrievalOrchestrator;
 import com.qa.demo.qa.retrieval.QaRetrievalPipeline;
 import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
+import com.qa.demo.qa.retrieval.certificate.CertificateListQuestionSupport;
 import com.qa.demo.qa.sedimentation.SedimentationQueueService;
 import org.springframework.stereotype.Service;
 
@@ -61,7 +71,11 @@ public class QaAskFlowService {
 
     private final IntentRouterService intentRouterService;
     private final ActiveLearningService activeLearningService;
-    private final GraphContextService graphContextService;
+    private final QaTaskPlannerService taskPlannerService;
+    private final QaMultiStepExecutor multiStepExecutor;
+    private final CompanyHintService companyHintService;
+    private final QaExecutionService executionService;
+    private final QaReviewService reviewService;
     private final MiniMaxClient miniMaxClient;
     private final QaAssistantProperties properties;
     private final QaLogService qaLogService;
@@ -81,11 +95,17 @@ public class QaAskFlowService {
     private final NeedInferenceService needInferenceService;
     private final IntentScopeNormalizer intentScopeNormalizer;
     private final ConstraintResolver constraintResolver;
+    private final GateMetricsWriter gateMetricsWriter;
+    private final EvidenceFieldCoverageAdvisor fieldCoverageAdvisor;
 
     public QaAskFlowService(
             IntentRouterService intentRouterService,
             ActiveLearningService activeLearningService,
-            GraphContextService graphContextService,
+            QaTaskPlannerService taskPlannerService,
+            QaMultiStepExecutor multiStepExecutor,
+            CompanyHintService companyHintService,
+            QaExecutionService executionService,
+            QaReviewService reviewService,
             MiniMaxClient miniMaxClient,
             QaAssistantProperties properties,
             QaLogService qaLogService,
@@ -104,11 +124,17 @@ public class QaAskFlowService {
             EnterpriseCanonicalFactsRegistry canonicalFactsRegistry,
             NeedInferenceService needInferenceService,
             IntentScopeNormalizer intentScopeNormalizer,
-            ConstraintResolver constraintResolver
+            ConstraintResolver constraintResolver,
+            GateMetricsWriter gateMetricsWriter,
+            EvidenceFieldCoverageAdvisor fieldCoverageAdvisor
     ) {
         this.intentRouterService = intentRouterService;
         this.activeLearningService = activeLearningService;
-        this.graphContextService = graphContextService;
+        this.taskPlannerService = taskPlannerService;
+        this.multiStepExecutor = multiStepExecutor;
+        this.companyHintService = companyHintService;
+        this.executionService = executionService;
+        this.reviewService = reviewService;
         this.miniMaxClient = miniMaxClient;
         this.properties = properties;
         this.qaLogService = qaLogService;
@@ -128,6 +154,8 @@ public class QaAskFlowService {
         this.needInferenceService = needInferenceService;
         this.intentScopeNormalizer = intentScopeNormalizer;
         this.constraintResolver = constraintResolver;
+        this.gateMetricsWriter = gateMetricsWriter;
+        this.fieldCoverageAdvisor = fieldCoverageAdvisor;
     }
 
     /**
@@ -151,6 +179,8 @@ public class QaAskFlowService {
             Boolean followUpFlag,
             QaAskProgress progress
     ) throws IOException {
+        // P0-S6：闸门指标埋点计时起点
+        long startMs = System.currentTimeMillis();
         // --- 1. 会话与多轮上下文 ---
         progress.onThinking("prep", "正在初始化会话…", null);
         String turnId = qaLogService.nextTurnId();
@@ -162,8 +192,8 @@ public class QaAskFlowService {
         question = applyPersonFollowUpQuestion(question, prior);
 
         String sessionRetrievalSeed = conversationService.buildRetrievalQuestion(question, prior, followUpApplied);
-        boolean explicitCompanyHint = graphContextService.hasExplicitCompanyHint(question)
-                || graphContextService.hasExplicitCompanyHint(sessionRetrievalSeed);
+        boolean explicitCompanyHint = companyHintService.hasExplicitCompanyHint(question)
+                || companyHintService.hasExplicitCompanyHint(sessionRetrievalSeed);
         boolean skipCompanyClarify = followUpApplied && conversationService.priorHasCompanyFocus(convId);
         String modelContextBlock = conversationService.buildModelContextBlock(prior, followUpApplied, question);
 
@@ -234,7 +264,7 @@ public class QaAskFlowService {
                 && !retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             progress.onThinking("clarify", "公司指代不够具体，需要先确认对象。", null);
             return buildCompanyClarificationResponse(
-                    turnId, question, scope, convId, followUpApplied, graphContextService.suggestCompanyCandidates(question, 5));
+                    turnId, question, scope, convId, followUpApplied, companyHintService.suggestCompanyCandidates(question, 5));
         }
 
         // --- 5. 意图路由 + 信息需求（Need）推断 ---
@@ -245,7 +275,20 @@ public class QaAskFlowService {
         IntentRoutingOutcome routing = intentRouterService.decide(
                 intentQuestion, explicitCompanyHint, learnedFirst, followUpContext);
         IntentDecision intentDecision = intentScopeNormalizer.normalize(routing.decision(), question);
-        InformationNeed informationNeed = needInferenceService.infer(question, intentDecision);
+        InformationNeed informationNeed = resolveInformationNeed(question, intentDecision);
+        if (CertificateListQuestionSupport.isGlobalCertificateListNeed(informationNeed)) {
+            intentDecision = new IntentDecision(
+                    intentDecision.intent(),
+                    intentDecision.confidence(),
+                    intentDecision.reason(),
+                    "company_certificate",
+                    intentDecision.personName(),
+                    intentDecision.companyHints(),
+                    intentDecision.roleFocus(),
+                    intentDecision.personEmployeeId(),
+                    intentDecision.retrievalStrategy()
+            );
+        }
         progress.onThinking("intent_done", "意图识别完成。", null);
         progress.onThinking(
                 "route",
@@ -260,39 +303,91 @@ public class QaAskFlowService {
                     turnId, question, scope, convId, followUpApplied, intentDecision, routing.personResolution());
         }
 
-        // --- 7. 多路检索（enterprise 统一召回或按意图分路）---
+        // --- 6b. Planner：多步任务拆解（对比/跨源计算）---
+        AgentTaskPlan taskPlan = taskPlannerService.plan(question, intentDecision, informationNeed);
+        if (taskPlan.requiresMultiStepExecution()) {
+            progress.onThinking(
+                    "plan",
+                    "多步任务规划",
+                    Map.of("lines", taskPlannerService.planDigestLines(taskPlan))
+            );
+        }
+
+        // --- 7. Execution：单轮或多步检索 ---
+        boolean multiStepPath = taskPlan.requiresMultiStepExecution();
         progress.onThinking(
                 "retrieve",
-                informationNeed.isTypeCatalog()
+                multiStepPath
+                        ? "正在按子任务多步检索…"
+                        : informationNeed.isTypeCatalog()
                         ? "正在查询类型目录（枚举字典）…"
+                        : informationNeed.isAggregate()
+                        ? "正在执行统计查询（COUNT）…"
                         : intentDecision.isPersonRoleListQuery()
-                        ? "正在查询任职关系（业务库 + 图谱）…"
+                        ? "正在查询任职关系（业务库）…"
                         : intentDecision.isPersonCertificateListQuery()
                         ? "正在查询证照明细（业务库）…"
                         : "正在多路召回并重排证据…",
                 null
         );
-        QaRetrievalPipeline.RetrievalResult retrievalResult = retrieve(
-                scope, question, retrievalQuestion, learnedFirst, intentDecision, explicitCompanyHint, informationNeed);
-        String retrievalSource = retrievalResult.retrievalSource();
-        List<ContextChunk> evidence = new ArrayList<>(retrievalResult.evidence());
-        // 别名已改写为实名时，丢弃「员工未找到」预检片段，避免与改写后检索矛盾
-        if (QaScopes.ENTERPRISE.equals(scope) && retrievalPlan.appliedLearningRewrite()) {
-            evidence.removeIf(c ->
-                    "mysql-employee-precheck".equals(c.source())
-                            && "employee_not_found".equals(c.anchorId())
+        ConstraintSet constraint = QaScopes.ENTERPRISE.equals(scope)
+                ? constraintResolver.resolve(question, intentDecision)
+                : ConstraintSet.empty();
+        String retrievalSource;
+        List<ContextChunk> evidence;
+        QaRetrievalPipeline.RetrievalResult retrievalRaw;
+        List<AgentStepResult> agentStepResults = List.of();
+        if (multiStepPath) {
+            QaMultiStepExecutor.MultiStepOutcome multi = multiStepExecutor.execute(
+                    taskPlan,
+                    scope,
+                    question,
+                    learnedFirst,
+                    intentDecision,
+                    explicitCompanyHint,
+                    constraint,
+                    retrievalPlan.appliedLearningRewrite()
             );
+            retrievalSource = multi.retrievalSource();
+            evidence = multi.evidence();
+            agentStepResults = multi.stepResults();
+            retrievalRaw = new QaRetrievalPipeline.RetrievalResult(retrievalSource, evidence);
+        } else {
+            QaExecutionService.RetrievalOutcome retrievalOutcome = executionService.retrieve(
+                    scope,
+                    question,
+                    retrievalQuestion,
+                    learnedFirst,
+                    intentDecision,
+                    informationNeed,
+                    constraint,
+                    explicitCompanyHint,
+                    retrievalPlan.appliedLearningRewrite()
+            );
+            retrievalSource = retrievalOutcome.retrievalSource();
+            evidence = retrievalOutcome.evidence();
+            retrievalRaw = retrievalOutcome.raw();
         }
 
-        // --- 8. 证据闸门 → 生成 / 拒答 / 降级 / 闸门后人物澄清 ---
-        QaAnswerGateService.GateDecision gate = answerGateService.evaluate(
+        // --- 8. Review：证据闸门 → 生成 / 拒答 / 澄清 ---
+        QaAnswerGateService.GateDecision gate = reviewService.evaluateGate(
                 question, intentDecision, informationNeed, evidence);
-        boolean canAnswer = gate.canAnswer();
-        boolean allowGenerate = gate.allowGenerate();
         boolean unknownIntent = "unknown".equalsIgnoreCase(intentDecision.intent());
-        String route = resolveInitialRoute(unknownIntent, allowGenerate, gate.rejectReason(), retrievalSource);
+        QaReviewService.ReviewDecision review = reviewService.decideBeforeGeneration(
+                question,
+                intentDecision,
+                informationNeed,
+                evidence,
+                gate,
+                unknownIntent,
+                retrievalSource,
+                routing.personResolution()
+        );
+        boolean canAnswer = review.canAnswer();
+        boolean allowGenerate = review.allowGenerate();
+        String route = review.route();
         double confidence = allowGenerate ? answerFallbackService.calcConfidence(evidence) : 0.20;
-        String answer;
+        String answer = review.answer();
         boolean degraded = false;
         String fallbackReason = "";
 
@@ -307,37 +402,43 @@ public class QaAskFlowService {
                 QaThinkingDigest.gate(evidence.size(), allowGenerate, canAnswer, gate.rejectReason())
         );
 
-        if (unknownIntent && evidence.isEmpty()) {
-            progress.onThinking("decision", "超出知识库覆盖范围。", null);
-            answer = KnowledgeAssistantPrompts.unknownCoverageUserMessage();
-            route = "reject_unknown_intent";
-        } else if (!allowGenerate) {
-            if (personClarificationAdvisor.needsClarification(intentDecision, evidence, question)) {
-                progress.onThinking("clarify", "未能锁定具体人员，引导补充全名。", null);
-                return buildPersonClarificationResponse(
-                        turnId, question, scope, convId, followUpApplied, intentDecision, routing.personResolution());
-            }
-            progress.onThinking("decision", "证据不足，返回补充建议。", null);
-            answer = KnowledgeAssistantPrompts.insufficientEvidenceGeneralHint();
-            route = "reject_gate_" + nullToEmpty(gate.rejectReason());
-        } else {
+        if (review.kind() == QaReviewService.DecisionKind.CLARIFY_PERSON) {
+            progress.onThinking("clarify", "未能锁定具体人员，引导补充全名。", null);
+            return buildPersonClarificationResponse(
+                    turnId, question, scope, convId, followUpApplied, intentDecision, routing.personResolution());
+        }
+        if (review.kind() == QaReviewService.DecisionKind.GENERATE) {
             progress.onThinking("generate", "正在依据证据组织回答…", null);
-            try {
-                answer = miniMaxClient.askWithEvidence(modelContextBlock, question, evidence, intentDecision);
-                route = retrievalSource + "_generate_llm";
-            } catch (Exception ex) {
-                degraded = true;
-                fallbackReason = answerFallbackService.sanitizeError(ex.getMessage());
-                progress.onThinking("degrade", "模型生成失败，已切换保底回答。", null);
-                answer = answerFallbackService.buildFallbackAnswer(question, evidence);
-                route = retrievalSource + "_fallback_template";
+            QaExecutionService.GenerationOutcome generated;
+            if (multiStepPath) {
+                String stepBlock = multiStepExecutor.buildStepContextBlock(agentStepResults);
+                generated = executionService.generateMultiStep(
+                        modelContextBlock, stepBlock, question, evidence, intentDecision, retrievalSource);
+            } else {
+                generated = executionService.generate(
+                        modelContextBlock, question, evidence, intentDecision, retrievalSource, true);
             }
+            answer = generated.answer();
+            route = generated.route();
+            confidence = generated.confidence();
+            degraded = generated.degraded();
+            fallbackReason = generated.fallbackReason();
+            if (generated.degraded()) {
+                progress.onThinking("degrade", "模型生成失败，已切换保底回答。", null);
+            }
+        } else if (review.kind() == QaReviewService.DecisionKind.REJECT_UNKNOWN) {
+            progress.onThinking("decision", "超出知识库覆盖范围。", null);
+        } else if (review.kind() == QaReviewService.DecisionKind.CLARIFY_FIELD) {
+            progress.onThinking("clarify", "筛选字段未在证据中出现，引导补充问法。", null);
+        } else {
+            progress.onThinking("decision", "证据不足，返回补充建议。", null);
         }
 
         // --- 9. 响应组装、事件日志、知识沉淀队列与会话落盘 ---
         Map<String, Object> response = assembleResponse(
                 turnId, question, scope, convId, followUpApplied, intentDecision, informationNeed, evidence,
-                answer, canAnswer, confidence, route, retrievalSource, retrievalResult, gate, degraded, fallbackReason, unknownIntent
+                answer, canAnswer, confidence, route, retrievalSource, retrievalRaw, gate, degraded, fallbackReason,
+                unknownIntent, taskPlan, agentStepResults
         );
         qaLogService.appendAskEvent(response);
         if (Boolean.TRUE.equals(response.get("knowledgeDepositTriggered"))) {
@@ -351,6 +452,17 @@ public class QaAskFlowService {
         conversationService.appendTurn(
                 convId, scope, turnId, question, answer, evidence, List.of(), focusPerson,
                 intentDecision.intent(), intentDecision.queryType(), retrievedEntities);
+        // P0-S6：闸门指标埋点（主出口；type(record 完整版) 与 stage-4/8 的 recordRaw 互补）
+        gateMetricsWriter.record(
+                turnId,
+                intentDecision,
+                evidence,
+                gate,
+                route,
+                confidence,
+                canAnswer,
+                System.currentTimeMillis() - startMs
+        );
         return response;
     }
 
@@ -381,29 +493,13 @@ public class QaAskFlowService {
         return userQuestion == null ? "" : userQuestion.strip();
     }
 
-    private QaRetrievalPipeline.RetrievalResult retrieve(
-            String scope,
-            String question,
-            String retrievalQuestion,
-            List<ContextChunk> learnedFirst,
-            IntentDecision intentDecision,
-            boolean explicitCompanyHint,
-            InformationNeed need
-    ) throws IOException {
-        if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
-            // 解析结构化硬约束：region/status/industry/companyHints；闸门基于此做"合同"判定
-            ConstraintSet constraint = constraintResolver.resolve(retrievalQuestion, intentDecision);
-            return retrievalPipeline.retrieveUnifiedEnterprise(
-                    retrievalQuestion, learnedFirst, intentDecision, need, constraint);
-        }
-        if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
-            return new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
-        }
-        QaRetrievalPipeline.RetrievalResult result = retrievalPipeline.retrieveByIntent(intentDecision, retrievalQuestion);
-        if (QaScopes.ENTERPRISE.equals(scope)) {
-            result = retrievalPipeline.mergeEnterpriseActiveLearning(result, learnedFirst, explicitCompanyHint);
-        }
-        return result;
+    private InformationNeed resolveInformationNeed(String question, IntentDecision intentDecision) {
+        InformationNeed inferred = needInferenceService.infer(question, intentDecision);
+        RetrievalStrategy strategy = intentDecision != null
+                ? intentDecision.resolvedRetrievalStrategy()
+                : RetrievalStrategy.UNKNOWN;
+        double confidence = intentDecision != null ? intentDecision.confidence() : 0.0;
+        return InformationNeed.mergeWithLlmStrategy(strategy, confidence, inferred);
     }
 
     private String applyPersonFollowUpQuestion(String question, List<QaConversationService.ConversationTurn> prior) {
@@ -454,7 +550,7 @@ public class QaAskFlowService {
         response.put("conversationId", convId);
         response.put("followUpApplied", followUpApplied);
         response.put("knowledgeDepositTriggered", true);
-        putEvidenceAlignment(response, question, clarifyAnswer, List.of(), false);
+        reviewService.attachEvidenceAlignment(response, question, clarifyAnswer, List.of(), false);
         qaLogService.appendAskEvent(response);
         enqueueDeposit(turnId, question, "clarification", "none", "needs_company_clarification", List.of());
         conversationService.appendTurn(convId, scope, turnId, question, clarifyAnswer, List.of(), List.of(), "", "", "", Map.of());
@@ -500,7 +596,7 @@ public class QaAskFlowService {
         response.put("conversationId", convId);
         response.put("followUpApplied", followUpApplied);
         response.put("knowledgeDepositTriggered", true);
-        putEvidenceAlignment(response, question, clarifyAnswer, List.of(), false);
+        reviewService.attachEvidenceAlignment(response, question, clarifyAnswer, List.of(), false);
         qaLogService.appendAskEvent(response);
         enqueueDeposit(turnId, question, intentDecision.intent(), "none", "needs_person_clarification", List.of());
         conversationService.appendTurn(convId, scope, turnId, question, clarifyAnswer, List.of(), personCandidates, "", "", "", Map.of());
@@ -525,7 +621,9 @@ public class QaAskFlowService {
             QaAnswerGateService.GateDecision gate,
             boolean degraded,
             String fallbackReason,
-            boolean unknownIntent
+            boolean unknownIntent,
+            AgentTaskPlan taskPlan,
+            List<AgentStepResult> agentStepResults
     ) {
         Map<String, Object> response = new HashMap<>();
         response.put("turnId", turnId);
@@ -544,12 +642,12 @@ public class QaAskFlowService {
         response.put("scope", scope);
         response.put("conversationId", convId);
         response.put("followUpApplied", followUpApplied);
-        putRoutingTrace(response, intentDecision, informationNeed, followUpApplied, evidence);
+        putRoutingTrace(response, intentDecision, informationNeed, followUpApplied, evidence, taskPlan, agentStepResults);
         response.put("embeddingProvider", textEmbeddingService.activeProvider());
         response.put("unifiedRetrieval", properties.isUnifiedRetrievalEnabled());
         response.put("rerankProvider", retrievalSource.contains("rerank")
                 ? retrievalSource.replace("unified_rerank_", "")
-                : "unified_graph_person_role".equals(retrievalSource) ? "graph_person_role_skip" : "none");
+                : "none");
         if (gate.rejectReason() != null) {
             response.put("answerGateRejectReason", gate.rejectReason());
         }
@@ -558,7 +656,7 @@ public class QaAskFlowService {
         if (degraded) {
             response.put("fallbackReason", fallbackReason);
         }
-        putEvidenceAlignment(response, question, answer, evidence, canAnswer);
+        reviewService.attachEvidenceAlignment(response, question, answer, evidence, canAnswer);
         return response;
     }
 
@@ -577,21 +675,6 @@ public class QaAskFlowService {
                 turnId, question, intent, retrievalSource, depositReason, evidence);
     }
 
-    private static String resolveInitialRoute(
-            boolean unknownIntent,
-            boolean allowGenerate,
-            String gateRejectReason,
-            String retrievalSource
-    ) {
-        if (unknownIntent) {
-            return "reject_unknown_intent";
-        }
-        if (!allowGenerate) {
-            return "reject_gate_" + nullToEmpty(gateRejectReason);
-        }
-        return retrievalSource + "_retrieval_generate";
-    }
-
     private static String nullToEmpty(String value) {
         return value == null || value.isBlank() ? "unknown" : value;
     }
@@ -605,7 +688,9 @@ public class QaAskFlowService {
             IntentDecision intentDecision,
             InformationNeed informationNeed,
             boolean followUpApplied,
-            List<ContextChunk> evidence
+            List<ContextChunk> evidence,
+            AgentTaskPlan taskPlan,
+            List<AgentStepResult> agentStepResults
     ) {
         Map<String, Object> routing = new HashMap<>();
         routing.put("queryType", nullToEmpty(intentDecision.queryType(), ""));
@@ -623,6 +708,24 @@ public class QaAskFlowService {
         }
         if (intentDecision.hasCompanyHints()) {
             routing.put("companyHintCount", intentDecision.companyHints().size());
+        }
+        if (taskPlan != null && taskPlan.requiresMultiStepExecution()) {
+            routing.put("agentMultiStep", true);
+            routing.put("agentPlannerSource", taskPlan.plannerSource());
+            routing.put("agentStepCount", taskPlan.steps().size());
+            if (agentStepResults != null && !agentStepResults.isEmpty()) {
+                List<Map<String, Object>> stepSummaries = new ArrayList<>();
+                for (AgentStepResult step : agentStepResults) {
+                    Map<String, Object> summary = new HashMap<>();
+                    summary.put("id", step.stepId());
+                    summary.put("tool", step.tool().wireName());
+                    summary.put("question", step.question());
+                    summary.put("retrievalSource", step.retrievalSource());
+                    summary.put("evidenceCount", step.evidenceCount());
+                    stepSummaries.add(summary);
+                }
+                routing.put("agentSteps", stepSummaries);
+            }
         }
         response.put("routing", routing);
     }
@@ -657,6 +760,9 @@ public class QaAskFlowService {
         if (intentDecision.queryType() != null && !intentDecision.queryType().isBlank()) {
             response.put("queryType", intentDecision.queryType());
         }
+        if (intentDecision.hasRetrievalStrategy()) {
+            response.put("retrievalStrategy", intentDecision.retrievalStrategy());
+        }
         if (intentDecision.hasPersonFocus()) {
             response.put("personName", intentDecision.personName());
         }
@@ -667,22 +773,6 @@ public class QaAskFlowService {
         if (intentDecision.hasCompanyHints()) {
             response.put("companyHints", intentDecision.companyHints());
         }
-    }
-
-    private void putEvidenceAlignment(
-            Map<String, Object> response,
-            String question,
-            String answer,
-            List<ContextChunk> evidence,
-            boolean canAnswer
-    ) {
-        EvidenceAlignmentService.AlignmentInsight insight =
-                evidenceAlignmentService.analyze(question, answer, evidence, canAnswer);
-        response.put("evidenceAlignment", Map.of(
-                "keywordOverlap", insight.keywordOverlap(),
-                "lowOverlap", insight.lowOverlap(),
-                "warnings", insight.warnings()
-        ));
     }
 
     private static List<ContextChunk> mergeBootstrapKnowledge(

@@ -2,6 +2,7 @@ package com.qa.demo.qa.retrieval.catalog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.Set;
 
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
+import com.qa.demo.qa.core.RetrievalExecutionProfile;
 
 /**
  * 加载检索证据维度目录，提供维度匹配与闸门 schema 查询。
@@ -19,9 +21,14 @@ public class RetrievalCatalogRegistry {
 
     private final RetrievalCatalogConfig config;
 
-    public RetrievalCatalogRegistry(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader)
-            throws Exception {
-        this.config = objectMapper.treeToValue(configLoader.readTree("retrieval-catalog"), RetrievalCatalogConfig.class);
+    @Autowired
+    public RetrievalCatalogRegistry(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) {
+        try {
+            this.config = objectMapper.treeToValue(
+                    configLoader.readTree("retrieval-catalog"), RetrievalCatalogConfig.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load retrieval-catalog", e);
+        }
     }
 
     public RetrievalCatalogConfig config() {
@@ -148,6 +155,14 @@ public class RetrievalCatalogRegistry {
             return null;
         }
         return config.getQueryTypeMapping().get(queryType.trim());
+    }
+
+    public RetrievalExecutionProfile executionFor(String queryType) {
+        RetrievalCatalogConfig.NeedTemplate template = mapQueryType(queryType);
+        if (template == null || template.getExecution() == null) {
+            return RetrievalExecutionProfile.DEFAULT;
+        }
+        return RetrievalExecutionProfile.fromTemplate(template.getExecution());
     }
 
     private static boolean containsIgnoreCase(List<String> values, String token) {

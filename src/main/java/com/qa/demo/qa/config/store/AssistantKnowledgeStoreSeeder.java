@@ -101,8 +101,7 @@ public class AssistantKnowledgeStoreSeeder implements ApplicationRunner {
                 Map.entry("evidence-schemas", "qa/evidence-schemas.json"),
                 Map.entry("answer-output-contracts", "qa/answer-output-contracts.json"),
                 Map.entry("enterprise-lexicon", "qa/enterprise-lexicon.json"),
-                Map.entry("graph-company-facets", "qa/graph-company-facets.json"),
-                Map.entry("sql-role-columns", "qa/sql-role-columns.json"),
+                Map.entry("semantic-schema", "qa/semantic-schema.json"),
                 Map.entry("enterprise-canonical-facts", "qa/enterprise-canonical-facts.json")
         );
     }

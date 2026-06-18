@@ -8,6 +8,7 @@ import com.qa.demo.qa.constraint.RegionMatcher;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.core.RetrievalExecutionProfile;
 import com.qa.demo.qa.core.RetrievalPlan;
 import com.qa.demo.qa.domain.ConversationScopeSupport;
 import com.qa.demo.qa.domain.EntityRef;
@@ -19,10 +20,9 @@ import com.qa.demo.qa.retrieval.catalog.CatalogEvidenceRetriever;
 import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogConfig;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
-import com.qa.demo.qa.retrieval.certificate.CertificateRetrievalService;
-import com.qa.demo.qa.retrieval.RetrievalGapLlmAdvisor.GapDecision;
-import com.qa.demo.qa.retrieval.sql.SqlCompanyFacetEnricher;
-import com.qa.demo.qa.retrieval.sql.SqlPersonRoleDetailEnricher;
+import com.qa.demo.qa.retrieval.filter.FilterFieldQuestionSupport;
+import com.qa.demo.qa.retrieval.sql.AggregateCountQueryService;
+import com.qa.demo.qa.core.RetrievalStrategy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -36,13 +36,12 @@ import java.util.Set;
 /**
  * 按意图执行多路检索、融合与主动学习片段合并。
  * <p>
- * 企业 scope 且开启统一召回时走 {@link #retrieveUnifiedEnterprise}（并行图/向量/MySQL/SQL + 重排）；
+ * 企业 scope 且开启统一召回时走 {@link #retrieveUnifiedEnterprise}（并行向量/MySQL/SQL + 重排）；
  * 否则按 {@link IntentDecision#intent()} 选择单路或混合召回。
  */
 @Service
 public class QaRetrievalPipeline {
 
-    private final GraphContextService graphContextService;
     private final VectorContextService vectorContextService;
     private final MysqlContextService mysqlContextService;
     private final SqlQueryService sqlQueryService;
@@ -55,20 +54,15 @@ public class QaRetrievalPipeline {
     private final RetrievalPlanFactory retrievalPlanFactory;
     private final SqlTopKResolver sqlTopKResolver;
     private final ScenarioRuleEngine ruleEngine;
-    private final CertificateRetrievalService certificateRetrievalService;
     private final NeedInferenceService needInferenceService;
     private final RetrievalCatalogRegistry catalogRegistry;
     private final CatalogEvidenceRetriever catalogEvidenceRetriever;
-    private final SqlPersonRoleDetailEnricher personRoleDetailEnricher;
-    private final SqlCompanyFacetEnricher companyFacetEnricher;
-    private final GraphCompanyFullProfileQuery graphCompanyFullProfileQuery;
-    private final RetrievalGapLlmAdvisor gapLlmAdvisor;
     private final ConversationScopeSupport scopeSupport;
     private final ConstraintResolver constraintResolver;
     private final HardConstraintGate hardConstraintGate;
+    private final AggregateCountQueryService aggregateCountQueryService;
 
     public QaRetrievalPipeline(
-            GraphContextService graphContextService,
             VectorContextService vectorContextService,
             MysqlContextService mysqlContextService,
             SqlQueryService sqlQueryService,
@@ -81,19 +75,14 @@ public class QaRetrievalPipeline {
             RetrievalPlanFactory retrievalPlanFactory,
             SqlTopKResolver sqlTopKResolver,
             ScenarioRuleEngine ruleEngine,
-            CertificateRetrievalService certificateRetrievalService,
             NeedInferenceService needInferenceService,
             RetrievalCatalogRegistry catalogRegistry,
             CatalogEvidenceRetriever catalogEvidenceRetriever,
-            SqlPersonRoleDetailEnricher personRoleDetailEnricher,
-            SqlCompanyFacetEnricher companyFacetEnricher,
-            GraphCompanyFullProfileQuery graphCompanyFullProfileQuery,
-            RetrievalGapLlmAdvisor gapLlmAdvisor,
             ConversationScopeSupport scopeSupport,
             ConstraintResolver constraintResolver,
-            HardConstraintGate hardConstraintGate
+            HardConstraintGate hardConstraintGate,
+            AggregateCountQueryService aggregateCountQueryService
     ) {
-        this.graphContextService = graphContextService;
         this.vectorContextService = vectorContextService;
         this.mysqlContextService = mysqlContextService;
         this.sqlQueryService = sqlQueryService;
@@ -106,24 +95,20 @@ public class QaRetrievalPipeline {
         this.retrievalPlanFactory = retrievalPlanFactory;
         this.sqlTopKResolver = sqlTopKResolver;
         this.ruleEngine = ruleEngine;
-        this.certificateRetrievalService = certificateRetrievalService;
         this.needInferenceService = needInferenceService;
         this.catalogRegistry = catalogRegistry;
         this.catalogEvidenceRetriever = catalogEvidenceRetriever;
-        this.personRoleDetailEnricher = personRoleDetailEnricher;
-        this.companyFacetEnricher = companyFacetEnricher;
-        this.graphCompanyFullProfileQuery = graphCompanyFullProfileQuery;
-        this.gapLlmAdvisor = gapLlmAdvisor;
         this.scopeSupport = scopeSupport;
         this.constraintResolver = constraintResolver;
         this.hardConstraintGate = hardConstraintGate;
+        this.aggregateCountQueryService = aggregateCountQueryService;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
     }
 
     /**
-     * P0：企业问答统一召回（图 + 向量 + MySQL + SQL + 主动学习）后重排截断。
+     * P0：企业问答统一召回（向量 + MySQL + SQL + 主动学习）后重排截断。
      */
     public RetrievalResult retrieveUnifiedEnterprise(
             String question,
@@ -144,7 +129,7 @@ public class QaRetrievalPipeline {
     }
 
     /**
-     * P0：企业问答统一召回（图 + 向量 + MySQL + SQL + 主动学习）后两道硬约束闸门 + 重排截断。
+     * P0：企业问答统一召回（向量 + MySQL + SQL + 主动学习）后两道硬约束闸门 + 重排截断。
      * <p>
      * 闸门策略（D2/D4）：
      * <ul>
@@ -162,39 +147,74 @@ public class QaRetrievalPipeline {
             ConstraintSet constraint
     ) throws IOException {
         RetrievalPlan plan = retrievalPlanFactory.from(intent);
+        RetrievalStrategy strategy = intent != null ? intent.resolvedRetrievalStrategy() : RetrievalStrategy.UNKNOWN;
+
+        if (strategy == RetrievalStrategy.AGGREGATE_COUNT
+                || (need != null && need.isAggregate() && !FilterFieldQuestionSupport.isFilterThresholdNeed(need))) {
+            List<ContextChunk> countEvidence = aggregateCountQueryService.retrieve(question);
+            if (!countEvidence.isEmpty()) {
+                return new RetrievalResult("llm_aggregate_count", countEvidence);
+            }
+        }
+
+        if (strategy == RetrievalStrategy.TYPE_CATALOG || (need != null && need.isTypeCatalog())) {
+            RetrievalResult catalogOnly = retrieveTypeCatalogOnly(need, plan);
+            if (catalogOnly != null) {
+                return catalogOnly;
+            }
+        }
+
         List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan, need, constraint);
         merged = mergeLearnedUnconditionally(learned, merged);
         RetrievalResult base = new RetrievalResult("unified_hybrid", merged);
         base = appendSupplementalTables(base, question, plan);
         base = appendEmployeeBaseInfo(base, question, plan);
         base = appendPersonIdentityEvidence(base, question, intent);
-        if (need == null || !need.isTypeCatalog()) {
-            base = appendPersonCertificateIfNeeded(base, plan, question);
-        }
         base = appendCatalogEvidence(base, need);
 
         String queryType = intent != null ? intent.queryType() : "";
-        base = applyConfigDrivenTruncation(base, queryType);
+        base = applyConfigDrivenTruncation(base, plan);
 
         if (need != null && need.isTypeCatalog() && hasEvidenceSchema(base.evidence(), "catalog_v1")) {
             return trimTypeCatalogEvidence(base.evidence(), plan.finalEvidenceTopK());
         }
-        if (plan.personCertificateList() && (need == null || !need.isTypeCatalog())) {
-            return new RetrievalResult("unified_person_certificate", base.evidence());
+        RetrievalExecutionProfile execution = plan.execution();
+        if (execution.dedicatedCertificatePath() && (need == null || !need.isTypeCatalog()) && execution.hasRouteLabel()) {
+            return new RetrievalResult(execution.routeLabel(), base.evidence());
         }
-        if (plan.personRoleList()) {
-            return trimEvidence(base.evidence(), plan.finalEvidenceTopK(), "unified_person_role");
+        if (execution.dedicatedListPath() && execution.hasRouteLabel()) {
+            return trimEvidence(base.evidence(), plan.finalEvidenceTopK(), execution.routeLabel());
         }
 
         // Pre-rerank 闸门：rerank 前再过一道硬约束（防"召回源过滤 + 主动学习合并"引入违例）
         List<ContextChunk> preGateKept = hardConstraintGate.apply(base.evidence(), constraint).kept();
-        List<ContextChunk> forRerank = applyCorrectionNarrow(question, preGateKept, "company");
+        List<ContextChunk> forRerank = execution.shouldApplyCorrectionNarrow()
+                ? applyCorrectionNarrow(question, preGateKept, execution.correctionEntityKind())
+                : preGateKept;
         List<ContextChunk> reranked = evidenceRerankService.rerank(
                 question, forRerank, plan.finalEvidenceTopK());
         // Post-rerank 闸门：rerank 后兜底，避免 rerank 把上海分公司塞进"北京"问句
         List<ContextChunk> postGateKept = hardConstraintGate.apply(reranked, constraint).kept();
         String source = "unified_constrained_rerank_" + evidenceRerankService.activeProvider();
         return new RetrievalResult(source, postGateKept);
+    }
+
+    /**
+     * P3：type_catalog 专用通路 — 只拉枚举目录，不跑 hybrid + rerank。
+     */
+    private RetrievalResult retrieveTypeCatalogOnly(
+            InformationNeed need,
+            RetrievalPlan plan
+    ) {
+        List<RetrievalCatalogConfig.DimensionDef> dimensions = catalogRegistry.matchDimensions(need);
+        if (dimensions.isEmpty()) {
+            return null;
+        }
+        List<ContextChunk> catalog = catalogEvidenceRetriever.retrieve(dimensions);
+        if (catalog.isEmpty()) {
+            return null;
+        }
+        return trimTypeCatalogEvidence(catalog, plan.finalEvidenceTopK());
     }
 
     private RetrievalResult appendCatalogEvidence(RetrievalResult base, InformationNeed need) {
@@ -222,11 +242,11 @@ public class QaRetrievalPipeline {
         return evidence.stream().anyMatch(c -> c != null && schemaId.equals(c.evidenceSchema()));
     }
 
-    private RetrievalResult applyConfigDrivenTruncation(RetrievalResult base, String queryType) {
-        if ("person_role_list".equalsIgnoreCase(queryType)
-                || "person_certificate_list".equalsIgnoreCase(queryType)) {
+    private RetrievalResult applyConfigDrivenTruncation(RetrievalResult base, RetrievalPlan plan) {
+        if (plan != null && plan.execution() != null && plan.execution().skipTruncation()) {
             return base;
         }
+        String queryType = plan != null && plan.intent() != null ? plan.intent().queryType() : "";
         List<ContextChunk> evidence = base.evidence();
         int topK = 20; // default
 
@@ -261,22 +281,22 @@ public class QaRetrievalPipeline {
         RetrievalPlan plan = retrievalPlanFactory.from(intent);
         String normalized = intent.intent() == null ? "" : intent.intent().toLowerCase();
         RetrievalResult base = switch (normalized) {
-            case "graph" -> retrieveGraphFirst(question, plan);
+            case "graph", "hybrid" -> retrieveHybrid(question, plan);
             case "vector" -> retrieveVectorFirst(question);
             case "document" -> retrieveDocumentFirst(question);
             case "mysql" -> retrieveMysqlFirst(question);
             case "sql" -> retrieveSqlFirst(question);
-            case "hybrid" -> retrieveHybrid(question, plan);
             case "unknown" -> new RetrievalResult("unknown", List.of());
             default -> retrieveHybrid(question, plan);
         };
-        RetrievalResult withPersonCert = appendPersonCertificateIfNeeded(base, plan, question);
-        RetrievalResult withSupplemental = appendSupplementalTables(withPersonCert, question, plan);
+        RetrievalResult withSupplemental = appendSupplementalTables(base, question, plan);
         RetrievalResult withEmployee = appendEmployeeBaseInfo(withSupplemental, question, plan);
         RetrievalResult withIdentity = appendPersonIdentityEvidence(withEmployee, question, intent);
         InformationNeed need = needInferenceService.infer(question, intent);
         RetrievalResult withCatalog = appendCatalogEvidence(withIdentity, need);
-        List<ContextChunk> narrowed = applyCorrectionNarrow(question, withCatalog.evidence(), "company");
+        List<ContextChunk> narrowed = plan.execution().shouldApplyCorrectionNarrow()
+                ? applyCorrectionNarrow(question, withCatalog.evidence(), plan.execution().correctionEntityKind())
+                : withCatalog.evidence();
         if (narrowed == withCatalog.evidence()) {
             if (need.isTypeCatalog() && hasEvidenceSchema(withCatalog.evidence(), "catalog_v1")) {
                 return new RetrievalResult("type_catalog_" + withCatalog.retrievalSource(), withCatalog.evidence());
@@ -620,18 +640,10 @@ public class QaRetrievalPipeline {
         return sqlTopKResolver.resolve(question, retrievalPlanFactory.from(null));
     }
 
-    private RetrievalResult retrieveGraphFirst(String question) throws IOException {
-        return retrieveGraphFirst(question, retrievalPlanFactory.from(null));
-    }
-
     private RetrievalResult retrieveVectorFirst(String question) throws IOException {
         List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
         if (!vector.isEmpty()) {
             return new RetrievalResult("vector", vector);
-        }
-        List<ContextChunk> graph = safeGraphRetrieve(question);
-        if (!graph.isEmpty()) {
-            return new RetrievalResult("graph_fallback_after_vector", graph);
         }
         List<ContextChunk> mysql = safeMysqlRetrieve(question);
         if (!mysql.isEmpty()) {
@@ -654,10 +666,6 @@ public class QaRetrievalPipeline {
         if (!document.isEmpty()) {
             return new RetrievalResult("document", document);
         }
-        List<ContextChunk> graph = safeGraphRetrieve(question);
-        if (!graph.isEmpty()) {
-            return new RetrievalResult("graph_fallback_after_document", graph);
-        }
         List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
         if (!vector.isEmpty()) {
             return new RetrievalResult("vector_fallback_after_document", vector);
@@ -673,10 +681,6 @@ public class QaRetrievalPipeline {
         List<ContextChunk> mysql = safeMysqlRetrieve(question);
         if (!mysql.isEmpty()) {
             return new RetrievalResult("mysql", mysql);
-        }
-        List<ContextChunk> graph = safeGraphRetrieve(question);
-        if (!graph.isEmpty()) {
-            return new RetrievalResult("graph_fallback_after_mysql", graph);
         }
         List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
         if (!vector.isEmpty()) {
@@ -698,10 +702,6 @@ public class QaRetrievalPipeline {
         List<ContextChunk> mysql = safeMysqlRetrieve(question);
         if (!mysql.isEmpty()) {
             return new RetrievalResult("mysql_fallback_after_sql", mysql);
-        }
-        List<ContextChunk> graph = safeGraphRetrieve(question);
-        if (!graph.isEmpty()) {
-            return new RetrievalResult("graph_fallback_after_sql", graph);
         }
         List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
         if (!vector.isEmpty()) {
@@ -745,7 +745,7 @@ public class QaRetrievalPipeline {
     }
 
     /**
-     * 约束感知混合召回：把 {@link ConstraintSet} 透传给向量/图召回源；其他源（MySQL/SQL/证书）
+     * 约束感知混合召回：把 {@link ConstraintSet} 透传给向量召回源；其他源（MySQL/SQL/证书）
      * 由硬约束闸门在 rerank 前后两道闸门兜底（D2/D4 设计）。
      */
     private List<ContextChunk> collectHybridCandidatesExpanded(
@@ -755,26 +755,9 @@ public class QaRetrievalPipeline {
             ConstraintSet constraint
     ) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
-        appendUnique(merged, certificateRetrievalService.retrieve(plan, question, merged));
-        if (plan.personRoleList()) {
-            List<ContextChunk> boundaries = safeGraphRetrieve(question, plan);
-            appendUnique(merged, boundaries);
-            if (properties.isPersonRoleGraphPrimary()) {
-                if (!boundaries.isEmpty()) {
-                    appendUnique(merged, personRoleDetailEnricher.enrichFromBoundaries(
-                            question, plan, boundaries, plan.finalEvidenceTopK()));
-                } else {
-                    appendUnique(merged, safeSqlRetrieve(question, plan));
-                }
-            } else {
-                appendUnique(merged, safeSqlRetrieve(question, plan));
-            }
-            appendCompanyFacetEvidenceIfNeeded(merged, question, need, boundaries, plan.finalEvidenceTopK());
-            return merged;
-        }
-        List<ContextChunk> graph = safeGraphRetrieve(question, plan);
-        appendUnique(merged, graph);
-        if (plan.preferGraphOnly() && !graph.isEmpty()) {
+        RetrievalExecutionProfile execution = plan.execution();
+        if (execution.dedicatedListPath() || execution.dedicatedCertificatePath()) {
+            appendUnique(merged, safeSqlRetrieve(question, plan));
             return merged;
         }
         // 向量召回带 region/office 过滤（D3："在北京" = registered OR office）
@@ -784,172 +767,8 @@ public class QaRetrievalPipeline {
         appendUnique(merged, safeSqlRetrieve(question, plan));
         if (shouldIncludeCompiledDocs(plan, question)) {
             appendUnique(merged, safeDocumentRetrieve(question));
-        } else if (merged.isEmpty()) {
-            return safeDocumentRetrieve(question);
         }
         return merged;
-    }
-
-    /**
-     * 通用缺口补检索：当任职边界证据缺少用户问题需要的公司维度时，按 companyId 回补业务库字段。
-     */
-    private void appendCompanyFacetEvidenceIfNeeded(
-            List<ContextChunk> merged,
-            String question,
-            InformationNeed need,
-            List<ContextChunk> boundaries,
-            int topK
-    ) {
-        if (!requiresCompanyFacetSupplement(question, need, merged, boundaries)) {
-            return;
-        }
-        // 1) 图谱自身回补（富图 P0）：从 Neo4j 拉全 facet 字段
-        List<ContextChunk> graphChosen = graphCompanyFullProfileQuery.executeByCompanyIds(
-                extractCompanyIds(boundaries), null);
-        if (!graphChosen.isEmpty()) {
-            appendUnique(merged, graphChosen);
-            // 图谱自补命中则不再问 LLM / SQL 兜底
-            return;
-        }
-        // 2) SQL 兜底（MySQL 业务库）
-        appendUnique(merged, companyFacetEnricher.enrichFromBoundaries(question, boundaries, topK));
-    }
-
-    private static List<String> extractCompanyIds(List<ContextChunk> boundaries) {
-        if (boundaries == null || boundaries.isEmpty()) {
-            return List.of();
-        }
-        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
-        for (ContextChunk chunk : boundaries) {
-            if (chunk == null) {
-                continue;
-            }
-            String id = chunk.anchorId() == null ? "" : chunk.anchorId().trim();
-            if (!id.isBlank()) {
-                ids.add(id);
-            }
-        }
-        return new java.util.ArrayList<>(ids);
-    }
-
-    private boolean requiresCompanyFacetSupplement(
-            String question,
-            InformationNeed need,
-            List<ContextChunk> evidence,
-            List<ContextChunk> boundaries
-    ) {
-        String q = question == null ? "" : question.toLowerCase(Locale.ROOT);
-        boolean asksStatus = containsAny(q, "状态", "经营状态", "存续", "在业", "注销", "吊销", "撤销", "非存续");
-        boolean asksValidity = containsAny(q, "有效期", "有效时间", "到期", "截止", "失效", "起止", "开始", "结束");
-        boolean facetNotRole = need != null && need.hasFacet() && !"role".equalsIgnoreCase(need.facet());
-
-        boolean hasStatus = hasSnippetKeyword(evidence, "状态=", "status=");
-        boolean hasValidity = hasSnippetKeyword(
-                evidence, "有效期", "expiry", "expire", "deadline", "valid_from", "valid_to", "start", "end");
-
-        if (asksStatus && !hasStatus) {
-            return true;
-        }
-        if (asksValidity && !hasValidity) {
-            return true;
-        }
-        if (facetNotRole && !(hasStatus || hasValidity)) {
-            return true;
-        }
-        if (shouldAskLlmGapJudge(evidence, boundaries, hasStatus, hasValidity)) {
-            GapDecision llmDecision = gapLlmAdvisor.decideCompanyFacetGap(question, evidence);
-            if (llmDecision.confidence() >= 0.6) {
-                if (llmDecision.needStatus() && !hasStatus) {
-                    return true;
-                }
-                if (llmDecision.needValidity() && !hasValidity) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean hasSnippetKeyword(List<ContextChunk> evidence, String... keywords) {
-        if (evidence == null || evidence.isEmpty()) {
-            return false;
-        }
-        for (ContextChunk chunk : evidence) {
-            if (chunk == null || chunk.snippet() == null) {
-                continue;
-            }
-            String snippet = chunk.snippet().toLowerCase(Locale.ROOT);
-            for (String keyword : keywords) {
-                if (snippet.contains(keyword.toLowerCase(Locale.ROOT))) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean shouldAskLlmGapJudge(
-            List<ContextChunk> evidence,
-            List<ContextChunk> boundaries,
-            boolean hasStatus,
-            boolean hasValidity
-    ) {
-        if ((hasStatus && hasValidity) || evidence == null || evidence.isEmpty()) {
-            return false;
-        }
-        int boundaryCount = 0;
-        for (ContextChunk chunk : boundaries == null ? List.<ContextChunk>of() : boundaries) {
-            if (chunk == null || chunk.source() == null) {
-                continue;
-            }
-            if (chunk.source().toLowerCase(Locale.ROOT).contains("neo4j-boundary")) {
-                boundaryCount++;
-            }
-        }
-        int total = boundaries == null ? 0 : boundaries.size();
-        return total > 0 && boundaryCount >= Math.max(1, total / 2);
-    }
-
-    private static boolean containsAny(String text, String... markers) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-        for (String marker : markers) {
-            if (marker != null && text.contains(marker)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private RetrievalResult appendPersonCertificateIfNeeded(
-            RetrievalResult base,
-            RetrievalPlan plan,
-            String question
-    ) {
-        if (!plan.personCertificateList()) {
-            return base;
-        }
-        List<ContextChunk> merged = new ArrayList<>(base.evidence());
-        appendUnique(merged, certificateRetrievalService.retrieve(plan, question, merged));
-        long personCertRows = merged.stream()
-                .filter(c -> c != null && isCertificateEvidenceSource(c.source()))
-                .count();
-        if (personCertRows >= 1) {
-            return trimEvidence(merged, plan.finalEvidenceTopK(), "person_certificate_" + base.retrievalSource());
-        }
-        if (merged.size() == base.evidence().size()) {
-            return base;
-        }
-        return new RetrievalResult("person_certificate_partial_" + base.retrievalSource(), merged);
-    }
-
-    private static boolean isCertificateEvidenceSource(String source) {
-        if (source == null || source.isBlank()) {
-            return false;
-        }
-        return source.startsWith("mysql-structured-")
-                || "neo4j-certificate-instance".equals(source);
     }
 
     private static void appendUnique(List<ContextChunk> merged, List<ContextChunk> items) {
@@ -967,37 +786,12 @@ public class QaRetrievalPipeline {
         }
     }
 
-    private RetrievalResult retrieveGraphFirst(String question, RetrievalPlan plan) throws IOException {
-        List<ContextChunk> graph = safeGraphRetrieve(question, plan);
-        if (!graph.isEmpty()) {
-            return new RetrievalResult("graph", graph);
-        }
-        List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
-        if (!vector.isEmpty()) {
-            return new RetrievalResult("vector_fallback_after_graph", vector);
-        }
-        List<ContextChunk> mysql = safeMysqlRetrieve(question);
-        if (!mysql.isEmpty()) {
-            return new RetrievalResult("mysql_fallback_after_graph", mysql);
-        }
-        List<ContextChunk> sql = safeSqlRetrieve(question);
-        if (!sql.isEmpty()) {
-            return new RetrievalResult("sql_fallback_after_graph", sql);
-        }
-        return new RetrievalResult("document_fallback_after_graph",
-                documentContextService.retrieveTopChunks(question, properties.getDocsDir(), properties.getRetrievalTopK()));
-    }
-
     private RetrievalResult retrieveHybrid(String question) throws IOException {
         return retrieveHybrid(question, retrievalPlanFactory.from(null));
     }
 
     private RetrievalResult retrieveHybrid(String question, RetrievalPlan plan) throws IOException {
         List<ContextChunk> merged = new ArrayList<>();
-        List<ContextChunk> graph = safeGraphRetrieve(question, plan);
-        if (!graph.isEmpty()) {
-            merged.addAll(graph);
-        }
         List<ContextChunk> vector = vectorContextService.retrieveTopChunks(question);
         if (!vector.isEmpty()) {
             for (ContextChunk item : vector) {
@@ -1040,37 +834,24 @@ public class QaRetrievalPipeline {
             return new RetrievalResult("document_fallback_after_hybrid", merged);
         }
         int limited = Math.min(merged.size(), Math.max(1, properties.getRetrievalTopK()));
-        return new RetrievalResult("hybrid_graph_vector_mysql_sql", merged.subList(0, limited));
-    }
-
-    private List<ContextChunk> safeGraphRetrieve(String question) {
-        return safeGraphRetrieve(question, retrievalPlanFactory.from(null));
-    }
-
-    private List<ContextChunk> safeGraphRetrieve(String question, RetrievalPlan plan) {
-        try {
-            return graphContextService.retrieveTopChunks(question, plan);
-        } catch (Exception ignored) {
-            return List.of();
-        }
+        return new RetrievalResult("hybrid_vector_mysql_sql", merged.subList(0, limited));
     }
 
     private boolean shouldIncludeCompiledDocs(RetrievalPlan plan, String question) {
-        // 配置化判断：证照/印章相关查询时包含文档
-        if (plan.intent() != null && plan.intent().isPersonCertificateListQuery()) {
+        if (plan.execution() != null && plan.execution().includeCompiledDocs()) {
             return true;
         }
-        if (plan.intent() != null && plan.intent().isCompanyComplianceQuery()) {
+        if (ruleEngine.questionSuggestsCompiledDocs(question)) {
             return true;
         }
-        if (question == null || question.isBlank()) {
+        if (plan.intent() == null) {
             return false;
         }
-        // 使用配置化的规则引擎判断
-        return ruleEngine.isQueryType(question, null, "person_certificate_list") ||
-               ruleEngine.isQueryType(question, null, "company_certificate") ||
-               question.contains("证照") || question.contains("许可证") ||
-               question.contains("备案") || question.contains("印章") || question.contains("公章");
+        String queryType = plan.intent().queryType();
+        if (queryType == null || queryType.isBlank()) {
+            return false;
+        }
+        return catalogRegistry.executionFor(queryType).includeCompiledDocs();
     }
 
     private List<ContextChunk> safeDocumentRetrieve(String question) {
@@ -1080,6 +861,15 @@ public class QaRetrievalPipeline {
                     properties.getDocsDir(),
                     properties.getRetrievalTopK()
             );
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    /** P5：用户上传语料（user_uploads）始终作为补充证据源。 */
+    private List<ContextChunk> safeUserDocumentRetrieve(String question) {
+        try {
+            return documentContextService.retrieveUserUploadTopChunks(question, 3);
         } catch (Exception ignored) {
             return List.of();
         }

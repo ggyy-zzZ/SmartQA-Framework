@@ -93,11 +93,25 @@ public class VectorContextService {
             List<ContextChunk> chunks = new ArrayList<>();
             for (JsonNode point : points) {
                 JsonNode payload = point.path("payload");
+                String entityType = payload.path("entity_type_key").asText("");
+                String text = payload.path("text").asText("");
+                double score = point.path("score").asDouble(0.0) * 20.0;
+                if ("user_document".equalsIgnoreCase(entityType)) {
+                    String chunkKey = payload.path("chunk_key").asText(payload.path("entity_id").asText(""));
+                    String title = payload.path("title").asText("");
+                    chunks.add(ContextChunk.ofDocument(
+                            chunkKey,
+                            title,
+                            "用户文档",
+                            truncate(text, 360),
+                            score,
+                            "qdrant-user-document"
+                    ));
+                    continue;
+                }
                 String companyId = payload.path("company_id").asText("");
                 String companyName = payload.path("company_name").asText("");
                 String status = payload.path("status").asText("");
-                String text = payload.path("text").asText("");
-                double score = point.path("score").asDouble(0.0) * 20.0;
                 chunks.add(ContextChunk.ofCompany(
                         companyId,
                         companyName,

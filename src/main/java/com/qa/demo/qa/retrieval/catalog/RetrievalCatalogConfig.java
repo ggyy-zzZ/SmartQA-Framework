@@ -108,6 +108,7 @@ public class RetrievalCatalogConfig {
         private String facet = "";
         private String granularity = "";
         private boolean listExpected;
+        private ExecutionTemplate execution;
 
         public String getFacet() {
             return facet;
@@ -131,6 +132,84 @@ public class RetrievalCatalogConfig {
 
         public void setListExpected(boolean listExpected) {
             this.listExpected = listExpected;
+        }
+
+        public ExecutionTemplate getExecution() {
+            return execution;
+        }
+
+        public void setExecution(ExecutionTemplate execution) {
+            this.execution = execution;
+        }
+    }
+
+    /**
+     * queryType 对应的检索通路策略（早退 route、截断、纠偏实体、专用 list 路径等）。
+     */
+    public static class ExecutionTemplate {
+        /** default | dedicated_list | dedicated_certificate */
+        private String path = "default";
+        private String routeLabel = "";
+        private boolean skipTruncation;
+        private boolean includeCompiledDocs;
+        private String correctionEntityKind = "company";
+        private boolean expandRecallTopK;
+        private boolean skipEmployeeBaseAppend;
+
+        public String getPath() {
+            return path;
+        }
+
+        public void setPath(String path) {
+            this.path = path == null ? "default" : path;
+        }
+
+        public String getRouteLabel() {
+            return routeLabel;
+        }
+
+        public void setRouteLabel(String routeLabel) {
+            this.routeLabel = routeLabel;
+        }
+
+        public boolean isSkipTruncation() {
+            return skipTruncation;
+        }
+
+        public void setSkipTruncation(boolean skipTruncation) {
+            this.skipTruncation = skipTruncation;
+        }
+
+        public boolean isIncludeCompiledDocs() {
+            return includeCompiledDocs;
+        }
+
+        public void setIncludeCompiledDocs(boolean includeCompiledDocs) {
+            this.includeCompiledDocs = includeCompiledDocs;
+        }
+
+        public String getCorrectionEntityKind() {
+            return correctionEntityKind;
+        }
+
+        public void setCorrectionEntityKind(String correctionEntityKind) {
+            this.correctionEntityKind = correctionEntityKind;
+        }
+
+        public boolean isExpandRecallTopK() {
+            return expandRecallTopK;
+        }
+
+        public void setExpandRecallTopK(boolean expandRecallTopK) {
+            this.expandRecallTopK = expandRecallTopK;
+        }
+
+        public boolean isSkipEmployeeBaseAppend() {
+            return skipEmployeeBaseAppend;
+        }
+
+        public void setSkipEmployeeBaseAppend(boolean skipEmployeeBaseAppend) {
+            this.skipEmployeeBaseAppend = skipEmployeeBaseAppend;
         }
     }
 

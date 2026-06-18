@@ -4,7 +4,7 @@ import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.domain.PersonNameParser;
 import com.qa.demo.qa.domain.QuestionEntityExtractor;
-import com.qa.demo.qa.retrieval.GraphContextService;
+import com.qa.demo.qa.retrieval.EmployeeBaseKnowledgeService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -17,14 +17,14 @@ import java.util.List;
 public class PersonClarificationAdvisor {
 
     private final QuestionEntityExtractor entityExtractor;
-    private final GraphContextService graphContextService;
+    private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
 
     public PersonClarificationAdvisor(
             QuestionEntityExtractor entityExtractor,
-            GraphContextService graphContextService
+            EmployeeBaseKnowledgeService employeeBaseKnowledge
     ) {
         this.entityExtractor = entityExtractor;
-        this.graphContextService = graphContextService;
+        this.employeeBaseKnowledge = employeeBaseKnowledge;
     }
 
     public boolean needsClarification(IntentDecision intent, List<ContextChunk> evidence, String question) {
@@ -54,9 +54,8 @@ public class PersonClarificationAdvisor {
                     ? intent.personName()
                     : entityExtractor.extractPersonName(question);
             String role = intent == null || intent.roleFocus() == null ? "any" : intent.roleFocus();
-            candidates = graphContextService.listPersonNamesByHintAndRole(
+            candidates = employeeBaseKnowledge.listPersonNamesByHintPrefix(
                     hint == null ? "" : hint,
-                    role,
                     8
             );
         }

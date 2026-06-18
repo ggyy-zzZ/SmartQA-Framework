@@ -92,8 +92,15 @@
     },
     {
       "id": "operating_status_catalog",
+      "allKeywords": [
+        "经营状态"
+      ],
       "anyKeywords": [
-        "经营状态",
+        "种类",
+        "类型",
+        "哪些",
+        "包含",
+        "列举",
         "存续",
         "在业",
         "吊销",
@@ -306,27 +313,63 @@
     "person_role_list": {
       "facet": "role",
       "granularity": "list",
-      "listExpected": true
+      "listExpected": true,
+      "execution": {
+        "path": "dedicated_list",
+        "routeLabel": "unified_person_role",
+        "skipTruncation": true,
+        "skipEmployeeBaseAppend": true,
+        "expandRecallTopK": true,
+        "correctionEntityKind": ""
+      }
     },
     "person_certificate_list": {
       "facet": "certificate",
       "granularity": "instance",
-      "listExpected": true
+      "listExpected": true,
+      "execution": {
+        "path": "dedicated_certificate",
+        "routeLabel": "unified_person_certificate",
+        "skipTruncation": true,
+        "skipEmployeeBaseAppend": true,
+        "expandRecallTopK": true,
+        "includeCompiledDocs": true,
+        "correctionEntityKind": ""
+      }
     },
     "company_certificate": {
       "facet": "certificate",
       "granularity": "instance",
-      "listExpected": true
+      "listExpected": true,
+      "execution": {
+        "includeCompiledDocs": true,
+        "correctionEntityKind": "company"
+      }
+    },
+    "company_seal": {
+      "facet": "seal",
+      "granularity": "instance",
+      "listExpected": true,
+      "execution": {
+        "includeCompiledDocs": true,
+        "correctionEntityKind": "company"
+      }
     },
     "company_profile": {
       "facet": "profile",
       "granularity": "single_fact",
-      "listExpected": false
+      "listExpected": false,
+      "execution": {
+        "correctionEntityKind": "company"
+      }
     },
     "aggregate": {
       "facet": "aggregate",
       "granularity": "single_fact",
-      "listExpected": false
+      "listExpected": false,
+      "execution": {
+        "correctionEntityKind": "company"
+      }
     },
     "policy": {
       "facet": "policy",
@@ -424,7 +467,7 @@
       "retriever": {
         "type": "enum_labels",
         "resource": "classpath:qa/enterprise-enums.json",
-        "jsonField": "operatingStatus",
+        "jsonField": "operatingStatuses",
         "displayLabel": "经营状态目录",
         "anchorId": "catalog:operating_status"
       }
@@ -672,7 +715,9 @@
         "neo4j-certificate-instance",
         "catalog-enum",
         "enterprise_mysql_compiled.txt",
-        "document-chunk-db"
+        "document-chunk-db",
+        "mysql-company-certificate",
+        "mysql-person-certificate"
       ]
     }
   ],

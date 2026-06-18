@@ -172,126 +172,7 @@
     ]
   },
   "dataSources": {
-    "structuredQueries": [
-      {
-        "id": "person_stewardship",
-        "description": "人物职责查询 - 从业务库查询人员的监管/保管/执行角色",
-        "scopeKind": "employee_ids",
-        "boundQueryTypes": [
-          "person_certificate_list"
-        ],
-        "table": "certificate_management",
-        "deleteflagColumn": "deleteflag",
-        "entityIdColumn": "id",
-        "displayNameColumns": [
-          "company_name"
-        ],
-        "roleColumns": [
-          {
-            "column": "supervisors",
-            "label": "监管人",
-            "type": "comma_separated_ids"
-          },
-          {
-            "column": "certification_keepers",
-            "label": "保管人",
-            "type": "comma_separated_ids"
-          },
-          {
-            "column": "executors",
-            "label": "执行人",
-            "type": "comma_separated_ids"
-          }
-        ],
-        "enumMappings": {
-          "cert_type": "certificate_type"
-        },
-        "statusNormalization": {
-          "0": "有效",
-          "1": "失效",
-          "有效": "有效",
-          "无效": "失效",
-          "失效": "失效"
-        },
-        "supplementalTables": [
-          "company",
-          "employee"
-        ]
-      },
-      {
-        "id": "certificate_by_company",
-        "description": "企业证照实例 - 按公司主体查询",
-        "scopeKind": "company_ids",
-        "scopeColumn": "company_id",
-        "boundQueryTypes": [
-          "company_certificate"
-        ],
-        "table": "certificate_management",
-        "deleteflagColumn": "deleteflag",
-        "entityIdColumn": "id",
-        "projections": [
-          {
-            "column": "certificate_type",
-            "label": "证照类型",
-            "enumField": "certificateTypes"
-          },
-          {
-            "column": "status",
-            "label": "状态",
-            "enumField": "licenseStatus"
-          },
-          {
-            "column": "valid_to",
-            "label": "有效期止"
-          }
-        ],
-        "statusNormalization": {
-          "0": "有效",
-          "1": "失效",
-          "有效": "有效",
-          "无效": "失效",
-          "失效": "失效"
-        },
-        "statusActiveValues": [
-          "0",
-          "有效",
-          "生效中"
-        ],
-        "supplementalTables": [
-          "company"
-        ]
-      },
-      {
-        "id": "company_info",
-        "description": "公司信息查询",
-        "table": "company",
-        "deleteflagColumn": "deleteflag",
-        "entityIdColumn": "company_id",
-        "displayNameColumns": [
-          "company_name"
-        ],
-        "roleColumns": [],
-        "enumMappings": {},
-        "statusNormalization": {},
-        "supplementalTables": []
-      },
-      {
-        "id": "employee_info",
-        "description": "员工信息查询",
-        "table": "employee",
-        "deleteflagColumn": "deleteflag",
-        "entityIdColumn": "id",
-        "displayNameColumns": [
-          "name"
-        ],
-        "roleColumns": [],
-        "enumMappings": {},
-        "statusNormalization": {},
-        "supplementalTables": [
-          "company"
-        ]
-      }
-    ]
+    "structuredQueries": []
   },
   "correctionRules": [
     {
@@ -369,6 +250,17 @@
       "证书",
       "证",
       "主体"
+    ],
+    "catalogQuestionMarkers": [
+      "哪些种类",
+      "什么种类",
+      "包含哪些种类",
+      "包含哪些类型",
+      "有哪些类型",
+      "什么类型",
+      "有哪些种类",
+      "包含哪些状态",
+      "有哪些状态"
     ],
     "continuationMarkers": [
       "它",
@@ -493,6 +385,13 @@
       "不是存续",
       "不是在业"
     ],
+    "compiledDocumentKeywords": [
+      "证照",
+      "许可证",
+      "备案",
+      "印章",
+      "公章"
+    ],
     "queryTypeSlotRequirements": [
       {
         "queryType": "person_role_list",
@@ -554,27 +453,39 @@
       }
     ]
   },
+  "filterFieldCoverageRules": [
+    {
+      "id": "establishment_date",
+      "displayLabel": "成立日期",
+      "questionAnyKeywords": [
+        "成立时间",
+        "成立日期",
+        "设立日期"
+      ],
+      "filterIntentKeywords": [
+        "有哪些",
+        "超过",
+        "以上",
+        "以下",
+        "之前",
+        "之后",
+        "年"
+      ],
+      "snippetMarkers": [
+        "成立日期",
+        "成立时间",
+        "establishment_date",
+        "establishedDate"
+      ],
+      "sourceColumns": [
+        "establishment_date",
+        "established_date",
+        "setup_date"
+      ]
+    }
+  ],
   "retrievalThresholds": {
-    "sourceThresholds": [
-      {
-        "source": "mysql-structured-person_stewardship",
-        "queryType": "person_certificate_list",
-        "minCount": 1,
-        "description": "配置化结构化查询返回>=1时截断"
-      },
-      {
-        "source": "mysql-structured-certificate_by_company",
-        "queryType": "company_certificate",
-        "minCount": 1,
-        "description": "配置化企业证照实例>=1时截断"
-      },
-      {
-        "source": "neo4j-certificate-instance",
-        "queryType": "company_certificate",
-        "minCount": 1,
-        "description": "图谱证照实例>=1时截断"
-      }
-    ],
+    "sourceThresholds": [],
     "preferActiveLearning": {
       "maxLengthShort": 14,
       "minScoreStrongLearned": 2.5,

@@ -87,15 +87,10 @@ public class CatalogEvidenceRetriever {
                 try (InputStream in = resource.getInputStream()) {
                     JsonNode root = objectMapper.readTree(in);
                     JsonNode fieldNode = root.path(jsonField);
-                    if (!fieldNode.isObject()) {
+                    if (fieldNode.isMissingNode() || fieldNode.isNull()) {
                         return List.of();
                     }
-                    fieldNode.fields().forEachRemaining(entry -> {
-                        String label = entry.getValue().asText("").trim();
-                        if (!label.isBlank()) {
-                            uniqueLabels.add(label);
-                        }
-                    });
+                    collectEnumLabels(fieldNode, uniqueLabels);
                 }
             }
             if (!uniqueLabels.isEmpty()) {
@@ -125,6 +120,44 @@ public class CatalogEvidenceRetriever {
             return List.of();
         }
         return List.of();
+    }
+
+    /** 支持 code→label 平铺对象，以及 operatingStatuses 式分组数组。 */
+    private static void collectEnumLabels(JsonNode fieldNode, Set<String> uniqueLabels) {
+        if (fieldNode == null || fieldNode.isNull()) {
+            return;
+        }
+        if (fieldNode.isArray()) {
+            fieldNode.forEach(item -> {
+                String label = item.asText("").trim();
+                if (!label.isBlank()) {
+                    uniqueLabels.add(label);
+                }
+            });
+            return;
+        }
+        if (!fieldNode.isObject()) {
+            return;
+        }
+        fieldNode.fields().forEachRemaining(entry -> {
+            JsonNode value = entry.getValue();
+            if (value == null || value.isNull()) {
+                return;
+            }
+            if (value.isArray()) {
+                value.forEach(item -> {
+                    String label = item.asText("").trim();
+                    if (!label.isBlank()) {
+                        uniqueLabels.add(label);
+                    }
+                });
+            } else {
+                String label = value.asText("").trim();
+                if (!label.isBlank()) {
+                    uniqueLabels.add(label);
+                }
+            }
+        });
     }
 
     private String formatCatalogSnippet(String schemaId, String entryType, String entryName) {

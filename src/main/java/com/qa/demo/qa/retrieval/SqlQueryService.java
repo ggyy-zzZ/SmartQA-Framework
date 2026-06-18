@@ -3,10 +3,10 @@ package com.qa.demo.qa.retrieval;
 import com.qa.demo.knowledge.KnowledgeAssistantPrompts;
 import com.qa.demo.qa.config.CacheConfig;
 import com.qa.demo.qa.config.QaAssistantProperties;
+import com.qa.demo.qa.config.SemanticSchemaRegistry;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
-import com.qa.demo.qa.retrieval.sql.SqlPersonRoleRetriever;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -19,7 +19,6 @@ import org.springframework.web.client.RestClient;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
@@ -31,6 +30,9 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 结构化检索：语义 Schema 配置 + LLM 生成只读 SQL（业务库 tdcomp）。
+ */
 @Service
 public class SqlQueryService {
 
@@ -45,19 +47,19 @@ public class SqlQueryService {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final QaAssistantProperties properties;
-    private final SqlPersonRoleRetriever personRoleRetriever;
+    private final SemanticSchemaRegistry semanticSchemaRegistry;
     private final SqlTopKResolver sqlTopKResolver;
 
     public SqlQueryService(
             ObjectMapper objectMapper,
             QaAssistantProperties properties,
-            SqlPersonRoleRetriever personRoleRetriever,
+            SemanticSchemaRegistry semanticSchemaRegistry,
             SqlTopKResolver sqlTopKResolver
     ) {
         this.restClient = RestClient.builder().build();
         this.objectMapper = objectMapper;
         this.properties = properties;
-        this.personRoleRetriever = personRoleRetriever;
+        this.semanticSchemaRegistry = semanticSchemaRegistry;
         this.sqlTopKResolver = sqlTopKResolver;
     }
 
@@ -69,30 +71,10 @@ public class SqlQueryService {
         if (!properties.isMysqlEnabled()) {
             return List.of();
         }
-        if (personRoleRetriever.skipForPlan(plan)) {
-            return List.of();
-        }
         int limitedTopK = Math.max(1, sqlTopKResolver.resolve(question, plan));
         String cacheKey = question + ":" + limitedTopK + ":" + planKey(plan);
         IntentDecision intent = plan != null ? plan.intent() : null;
         return retrieveTopChunksCached(cacheKey, question, limitedTopK, intent);
-    }
-
-    private List<ContextChunk> retrievePersonRoleFromBusinessDb(
-            String question,
-            IntentDecision intent,
-            int topK
-    ) {
-        try (Connection connection = DriverManager.getConnection(
-                properties.getBusinessMysqlUrl(),
-                properties.getBusinessMysqlUsername(),
-                properties.getBusinessMysqlPassword())
-        ) {
-            return personRoleRetriever.retrieve(connection, question, intent, topK);
-        } catch (Exception e) {
-            log.debug("retrievePersonRoleFromBusinessDb failed: {}", e.getMessage());
-            return List.of();
-        }
     }
 
     private static String planKey(RetrievalPlan plan) {
@@ -105,21 +87,17 @@ public class SqlQueryService {
 
     @Cacheable(value = CacheConfig.RETRIEVAL_CACHE, key = "#root.method.name + ':' + #key")
     public List<ContextChunk> retrieveTopChunksCached(String key, String question, int topK, IntentDecision intent) {
-        int limitedTopK = Math.max(1, Math.min(topK, 64));
-        List<ContextChunk> roleChunks = retrievePersonRoleFromBusinessDb(question, intent, limitedTopK);
-        if (!roleChunks.isEmpty()) {
-            return roleChunks;
+        if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
+            return List.of();
         }
-        try (Connection connection = DriverManager.getConnection(
-                properties.getMysqlUrl(),
-                properties.getMysqlUsername(),
-                properties.getMysqlPassword())
-        ) {
-            String schemaSummary = loadSchemaSummary(connection, properties.getMysqlSchema(), 18);
-            if (schemaSummary.isBlank()) {
-                return List.of();
-            }
-            String generatedSql = generateSql(question, schemaSummary, limitedTopK);
+        int limitedTopK = Math.max(1, Math.min(topK, 64));
+        String schemaSummary = semanticSchemaRegistry.buildLlmSchemaSummary();
+        if (schemaSummary.isBlank()) {
+            return List.of();
+        }
+        try (Connection connection = openBusinessConnection()) {
+            String enrichedQuestion = enrichQuestion(question, intent);
+            String generatedSql = generateSql(enrichedQuestion, schemaSummary, limitedTopK);
             String normalizedSql = normalizeAndValidateSql(generatedSql, limitedTopK);
             if (normalizedSql == null) {
                 return List.of();
@@ -131,58 +109,37 @@ public class SqlQueryService {
         }
     }
 
-    private String loadSchemaSummary(Connection connection, String schema, int maxTables) {
-        String sql = """
-                SELECT table_name, column_name
-                FROM information_schema.columns
-                WHERE table_schema = '%s'
-                ORDER BY table_name, ordinal_position
-                """.formatted(schema.replace("'", "''"));
-        Map<String, List<String>> tableColumns = new LinkedHashMap<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet rs = statement.executeQuery(sql)) {
-            while (rs.next()) {
-                String tableName = safe(rs.getString("table_name"));
-                String columnName = safe(rs.getString("column_name"));
-                if (tableName.isBlank() || columnName.isBlank()) {
-                    continue;
-                }
-                if (tableName.startsWith("qa_")) {
-                    continue;
-                }
-                tableColumns.computeIfAbsent(tableName, k -> new ArrayList<>()).add(columnName);
-            }
-        } catch (Exception e) {
-            log.debug("loadSchemaSummary failed: {}", e.getMessage());
-            return "";
-        }
+    private Connection openBusinessConnection() throws Exception {
+        return DriverManager.getConnection(
+                properties.getBusinessMysqlUrl(),
+                properties.getBusinessMysqlUsername(),
+                properties.getBusinessMysqlPassword()
+        );
+    }
 
-        StringBuilder builder = new StringBuilder();
-        int count = 0;
-        for (Map.Entry<String, List<String>> entry : tableColumns.entrySet()) {
-            if (count >= maxTables) {
-                break;
-            }
-            List<String> cols = entry.getValue();
-            int colLimit = Math.min(cols.size(), 30);
-            builder.append("table=").append(entry.getKey()).append(", columns=");
-            for (int i = 0; i < colLimit; i++) {
-                if (i > 0) {
-                    builder.append(",");
-                }
-                builder.append(cols.get(i));
-            }
-            builder.append("\n");
-            count++;
+    private static String enrichQuestion(String question, IntentDecision intent) {
+        if (intent == null) {
+            return question;
         }
-        return builder.toString();
+        StringBuilder sb = new StringBuilder(question == null ? "" : question);
+        if (intent.hasCompanyHints()) {
+            sb.append("\n[实体提示] 公司=").append(String.join("、", intent.companyHints()));
+        }
+        if (intent.hasPersonFocus()) {
+            sb.append("\n[实体提示] 人员=").append(intent.personName());
+        }
+        if (intent.roleFocus() != null && !intent.roleFocus().isBlank() && !"any".equalsIgnoreCase(intent.roleFocus())) {
+            sb.append("\n[角色焦点] ").append(intent.roleFocus());
+        }
+        if (intent.queryType() != null && !intent.queryType().isBlank()) {
+            sb.append("\n[查询形态] ").append(intent.queryType());
+        }
+        return sb.toString();
     }
 
     private String generateSql(String question, String schemaSummary, int limit) throws Exception {
         String systemPrompt = KnowledgeAssistantPrompts.sqlGeneratorSystemPrompt(limit);
-        String userPrompt = "schema=" + properties.getMysqlSchema() + "\n"
-                + "question=" + question + "\n"
-                + "tables:\n" + schemaSummary;
+        String userPrompt = "semantic_schema:\n" + schemaSummary + "\nquestion:\n" + question;
         Map<String, Object> body = Map.of(
                 "model", properties.getModel(),
                 "messages", List.of(
@@ -268,15 +225,15 @@ public class SqlQueryService {
                     if (companyName.isBlank()) {
                         companyName = "unknown";
                     }
-                    String snippet = "row=" + flattenRow(row);
+                    String snippet = flattenRow(row);
                     double score = 20.0 - rowIndex * 0.5;
                     chunks.add(ContextChunk.ofCompany(
                             companyId,
                             companyName,
-                            "sql_query",
+                            "semantic_sql",
                             shorten(snippet, 360),
                             score,
-                            "mysql-sql"
+                            "mysql-semantic-sql"
                     ));
                 }
             }

@@ -11,18 +11,20 @@ public record FollowUpIntentContext(
         boolean active,
         String priorQuestion,
         String priorQueryType,
+        String priorRetrievalStrategy,
         String priorAnswer,
         String focusPersonName,
         List<EntityRef> priorCompanies,
         List<String> priorFocusCompanyNames
 ) {
     public static FollowUpIntentContext inactive() {
-        return new FollowUpIntentContext(false, "", "", "", "", List.of(), List.of());
+        return new FollowUpIntentContext(false, "", "", "", "", "", List.of(), List.of());
     }
 
     public static FollowUpIntentContext of(
             String priorQuestion,
             String priorQueryType,
+            String priorRetrievalStrategy,
             String priorAnswer,
             String focusPersonName,
             List<EntityRef> priorCompanies,
@@ -32,6 +34,7 @@ public record FollowUpIntentContext(
                 true,
                 priorQuestion == null ? "" : priorQuestion,
                 priorQueryType == null ? "" : priorQueryType,
+                priorRetrievalStrategy == null ? "" : priorRetrievalStrategy,
                 priorAnswer == null ? "" : priorAnswer,
                 focusPersonName == null ? "" : focusPersonName,
                 priorCompanies == null ? List.of() : List.copyOf(priorCompanies),

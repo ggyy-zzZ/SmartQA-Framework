@@ -20,6 +20,7 @@ public record ContextChunk(
     public static final String KIND_COMPANY = "company";
     public static final String KIND_EMPLOYEE = "employee";
     public static final String KIND_SYSTEM = "system";
+    public static final String KIND_DOCUMENT = "document";
 
     public static ContextChunk ofCompany(
             String anchorId,
@@ -99,6 +100,26 @@ public record ContextChunk(
                 score,
                 nullToEmpty(source),
                 ""
+        );
+    }
+
+    public static ContextChunk ofDocument(
+            String chunkKey,
+            String title,
+            String field,
+            String snippet,
+            double score,
+            String source
+    ) {
+        return new ContextChunk(
+                nullToEmpty(chunkKey),
+                nullToEmpty(title),
+                KIND_DOCUMENT,
+                nullToEmpty(field),
+                nullToEmpty(snippet),
+                score,
+                nullToEmpty(source),
+                "user_document_v1"
         );
     }
 

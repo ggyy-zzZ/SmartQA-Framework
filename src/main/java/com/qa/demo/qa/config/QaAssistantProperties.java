@@ -80,6 +80,9 @@ public class QaAssistantProperties {
     /** 是否用 MiniMax 做意图+实体抽取（无 API Key 时自动走规则） */
     private boolean intentLlmEnabled = true;
 
+    /** 复杂问句多步 Planner + 跨源 Executor（对比/计算类） */
+    private boolean agentMultiStepEnabled = true;
+
     /** 任职/证照等列表型问句槽位可由规则填满时，跳过意图 LLM（避免首包长时间无响应） */
     private boolean intentRuleFirstForStructured = true;
 
@@ -287,20 +290,14 @@ public class QaAssistantProperties {
     /** 文档召回优先读 qa_document_chunk */
     private boolean documentFromDb = true;
 
+    /** 用户上传文档切块后同步写入 Qdrant（P5） */
+    private boolean documentVectorIngestEnabled = true;
+
     /** 实体快照来源：jsonl | mysql | mysql_fallback */
     private String entitySnapshotSource = "mysql_fallback";
 
     /** 审计事件双写 qa_audit_event */
     private boolean auditMysqlEnabled = true;
-
-    /** person_role_list：图谱定界 + MySQL 明细（为 false 时恢复 SQL+图并行） */
-    private boolean personRoleGraphPrimary = true;
-
-    /** 图谱任职召回仅返回边界（companyId/role），明细由 enricher 拉取 */
-    private boolean personRoleSlimGraph = true;
-
-    /** 富图 P0：图谱「全 facet 字段」查询开关；false 时退回 SQL/旧图谱 */
-    private boolean graphFullProfileEnabled = true;
 
     /** 富图 P0：重建 Neo4j 时的批大小（仅作运维参考，本类不直接读取） */
     private int graphRebuildBatchSize = 200;
@@ -669,6 +666,14 @@ public class QaAssistantProperties {
 
     public void setIntentLlmEnabled(boolean intentLlmEnabled) {
         this.intentLlmEnabled = intentLlmEnabled;
+    }
+
+    public boolean isAgentMultiStepEnabled() {
+        return agentMultiStepEnabled;
+    }
+
+    public void setAgentMultiStepEnabled(boolean agentMultiStepEnabled) {
+        this.agentMultiStepEnabled = agentMultiStepEnabled;
     }
 
     public boolean isIntentRuleFirstForStructured() {
@@ -1103,6 +1108,14 @@ public class QaAssistantProperties {
         this.documentFromDb = documentFromDb;
     }
 
+    public boolean isDocumentVectorIngestEnabled() {
+        return documentVectorIngestEnabled;
+    }
+
+    public void setDocumentVectorIngestEnabled(boolean documentVectorIngestEnabled) {
+        this.documentVectorIngestEnabled = documentVectorIngestEnabled;
+    }
+
     public String getEntitySnapshotSource() {
         return entitySnapshotSource;
     }
@@ -1117,30 +1130,6 @@ public class QaAssistantProperties {
 
     public void setAuditMysqlEnabled(boolean auditMysqlEnabled) {
         this.auditMysqlEnabled = auditMysqlEnabled;
-    }
-
-    public boolean isPersonRoleGraphPrimary() {
-        return personRoleGraphPrimary;
-    }
-
-    public void setPersonRoleGraphPrimary(boolean personRoleGraphPrimary) {
-        this.personRoleGraphPrimary = personRoleGraphPrimary;
-    }
-
-    public boolean isPersonRoleSlimGraph() {
-        return personRoleSlimGraph;
-    }
-
-    public void setPersonRoleSlimGraph(boolean personRoleSlimGraph) {
-        this.personRoleSlimGraph = personRoleSlimGraph;
-    }
-
-    public boolean isGraphFullProfileEnabled() {
-        return graphFullProfileEnabled;
-    }
-
-    public void setGraphFullProfileEnabled(boolean graphFullProfileEnabled) {
-        this.graphFullProfileEnabled = graphFullProfileEnabled;
     }
 
     public int getGraphRebuildBatchSize() {

@@ -1,0 +1,406 @@
+{
+  "tables": {
+    "company": [
+      {
+        "name": "id",
+        "type": "int unsigned",
+        "comment": "主键，公司ID"
+      },
+      {
+        "name": "tenant",
+        "type": "tinyint",
+        "comment": "租户"
+      },
+      {
+        "name": "company_name",
+        "type": "varchar(100)",
+        "comment": "公司名称"
+      },
+      {
+        "name": "company_short_name",
+        "type": "varchar(100)",
+        "comment": "公司简称"
+      },
+      {
+        "name": "social_credit_code",
+        "type": "varchar(100)",
+        "comment": "统一社会信用代码"
+      },
+      {
+        "name": "company_code",
+        "type": "varchar(999)",
+        "comment": "公司编码"
+      },
+      {
+        "name": "main_type",
+        "type": "tinyint",
+        "comment": "主体类型"
+      },
+      {
+        "name": "main_class_type",
+        "type": "tinyint",
+        "comment": "主体分类"
+      },
+      {
+        "name": "operating_status",
+        "type": "tinyint",
+        "comment": "经营状态"
+      },
+      {
+        "name": "taxpayer_qualification",
+        "type": "tinyint",
+        "comment": "纳税人资质"
+      },
+      {
+        "name": "currency_type",
+        "type": "tinyint",
+        "comment": "币种"
+      },
+      {
+        "name": "has_social_sec_account",
+        "type": "tinyint",
+        "comment": "是否办理社保账号"
+      },
+      {
+        "name": "has_provident_account",
+        "type": "tinyint",
+        "comment": "是否办理公积金账号"
+      },
+      {
+        "name": "has_tax_registration",
+        "type": "tinyint",
+        "comment": "是否办理税务登记"
+      },
+      {
+        "name": "has_bank_account",
+        "type": "tinyint",
+        "comment": "是否办理银行账号"
+      },
+      {
+        "name": "establishment_date",
+        "type": "char(8)",
+        "comment": "成立日期 yyyyMMdd"
+      },
+      {
+        "name": "has_no_fixed_term",
+        "type": "tinyint",
+        "comment": "是否无固定期限"
+      },
+      {
+        "name": "operation_start_date",
+        "type": "char(8)",
+        "comment": "营业开始日期 yyyyMMdd"
+      },
+      {
+        "name": "operation_end_date",
+        "type": "char(8)",
+        "comment": "营业结束日期 yyyyMMdd"
+      },
+      {
+        "name": "annual_inspection_date",
+        "type": "char(8)",
+        "comment": "年检日期 yyyyMMdd"
+      },
+      {
+        "name": "renewal_time",
+        "type": "char(8)",
+        "comment": "续期时间 yyyyMMdd"
+      },
+      {
+        "name": "issue_date",
+        "type": "char(8)",
+        "comment": "发证日期 yyyyMMdd"
+      },
+      {
+        "name": "reg_province_region",
+        "type": "varchar(100)",
+        "comment": "注册省份地区"
+      },
+      {
+        "name": "registered_address",
+        "type": "varchar(300)",
+        "comment": "注册地址"
+      },
+      {
+        "name": "actual_office_address",
+        "type": "varchar(300)",
+        "comment": "实际办公地"
+      },
+      {
+        "name": "business_scope_info",
+        "type": "text",
+        "comment": "经营范围"
+      },
+      {
+        "name": "legal_rep_id",
+        "type": "int",
+        "comment": "法人ID"
+      },
+      {
+        "name": "legal_rep_mobile",
+        "type": "varchar(128)",
+        "comment": "法人手机号"
+      },
+      {
+        "name": "company_supervisor_id",
+        "type": "int",
+        "comment": "公司监管人ID"
+      },
+      {
+        "name": "assigned_accountant_id",
+        "type": "int",
+        "comment": "所属会计ID"
+      },
+      {
+        "name": "assigned_cashier_id",
+        "type": "int",
+        "comment": "所属出纳ID"
+      },
+      {
+        "name": "accounting_supervisor_id",
+        "type": "int",
+        "comment": "会计主管ID"
+      },
+      {
+        "name": "financial_manager_id",
+        "type": "int",
+        "comment": "财务负责人ID"
+      },
+      {
+        "name": "financial_manager_mobile",
+        "type": "varchar(128)",
+        "comment": "财务负责人手机号"
+      },
+      {
+        "name": "tax_handler_id",
+        "type": "int",
+        "comment": "税务办税人ID"
+      },
+      {
+        "name": "ticket_purchaser_id",
+        "type": "int",
+        "comment": "购票人ID"
+      },
+      {
+        "name": "manager_id",
+        "type": "int",
+        "comment": "经理ID"
+      },
+      {
+        "name": "manager_mobile",
+        "type": "varchar(128)",
+        "comment": "经理手机号"
+      },
+      {
+        "name": "company_contact_id",
+        "type": "int",
+        "comment": "企业联络人ID"
+      },
+      {
+        "name": "company_contact_mobile",
+        "type": "varchar(128)",
+        "comment": "企业联络人手机号"
+      },
+      {
+        "name": "chairman_exec_director_id",
+        "type": "int",
+        "comment": "董事长&执行董事ID"
+      },
+      {
+        "name": "chairman_exec_director_mobile",
+        "type": "varchar(128)",
+        "comment": "董事长&执行董事手机号"
+      },
+      {
+        "name": "ssc_payroll_manager_id",
+        "type": "int",
+        "comment": "所属SSC薪酬负责人ID"
+      },
+      {
+        "name": "assigned_it_ids",
+        "type": "varchar(512)",
+        "comment": "所属IT ID 列表，多个逗号分割"
+      },
+      {
+        "name": "limited_partner_id",
+        "type": "int",
+        "comment": "有限合伙人ID"
+      },
+      {
+        "name": "head_office_company_id",
+        "type": "int",
+        "comment": "总公司company_id"
+      },
+      {
+        "name": "esign_seal_id",
+        "type": "varchar(512)",
+        "comment": "e签宝印章id"
+      },
+      {
+        "name": "charter_partnership_file_ids",
+        "type": "varchar(1024)",
+        "comment": "章程/合伙协议的文件ID列表，逗号分割"
+      },
+      {
+        "name": "application_materials_file_ids",
+        "type": "varchar(1024)",
+        "comment": "申请资料的文件ID列表，逗号分割"
+      },
+      {
+        "name": "domicile_proof_file_ids",
+        "type": "varchar(1024)",
+        "comment": "住所证明的文件ID列表，逗号分割"
+      },
+      {
+        "name": "other_attachments_ids",
+        "type": "varchar(1024)",
+        "comment": "其他附件id列表，逗号分割"
+      },
+      {
+        "name": "remarks",
+        "type": "varchar(2048)",
+        "comment": "备注"
+      },
+      {
+        "name": "hidden_remarks",
+        "type": "varchar(2048)",
+        "comment": "隐藏备注"
+      },
+      {
+        "name": "entity_creating_request_id",
+        "type": "varchar(32)",
+        "comment": "对应主体新建流程ID"
+      },
+      {
+        "name": "createtime",
+        "type": "timestamp",
+        "comment": "创建时间"
+      },
+      {
+        "name": "modifytime",
+        "type": "timestamp",
+        "comment": "修改时间"
+      },
+      {
+        "name": "deleteflag",
+        "type": "tinyint",
+        "comment": ""
+      }
+    ],
+    "employee": [
+      {
+        "name": "id",
+        "type": "int unsigned",
+        "comment": ""
+      },
+      {
+        "name": "name",
+        "type": "varchar(64)",
+        "comment": ""
+      }
+    ],
+    "certificate_management": [
+      {
+        "name": "id",
+        "type": "int unsigned",
+        "comment": "主键"
+      },
+      {
+        "name": "certificate_type",
+        "type": "tinyint",
+        "comment": "证照类型"
+      },
+      {
+        "name": "company_id",
+        "type": "int",
+        "comment": "所属主体"
+      },
+      {
+        "name": "issue_date",
+        "type": "varchar(8)",
+        "comment": "发证日期"
+      },
+      {
+        "name": "valid_from",
+        "type": "varchar(8)",
+        "comment": "有效期起"
+      },
+      {
+        "name": "valid_to",
+        "type": "varchar(8)",
+        "comment": "有效期止"
+      },
+      {
+        "name": "annual_inspection_date",
+        "type": "varchar(8)",
+        "comment": "年检/监督审核日期"
+      },
+      {
+        "name": "supervisors",
+        "type": "varchar(256)",
+        "comment": "证照监管人"
+      },
+      {
+        "name": "certification_keepers",
+        "type": "varchar(256)",
+        "comment": "证照保管人"
+      },
+      {
+        "name": "executors",
+        "type": "varchar(256)",
+        "comment": "线下执行人"
+      },
+      {
+        "name": "status",
+        "type": "tinyint",
+        "comment": "状态：0生效中 1已失效"
+      },
+      {
+        "name": "external_ref_id",
+        "type": "int",
+        "comment": "外部引用id"
+      },
+      {
+        "name": "data_source",
+        "type": "tinyint",
+        "comment": "数据来源：0 OA流程同步 1 页面新增"
+      },
+      {
+        "name": "remark",
+        "type": "varchar(2048)",
+        "comment": "备注"
+      },
+      {
+        "name": "data_json",
+        "type": "text",
+        "comment": "类型特有业务字段（JSON格式）"
+      },
+      {
+        "name": "creator_id",
+        "type": "int unsigned",
+        "comment": "创建人ID"
+      },
+      {
+        "name": "modifier_id",
+        "type": "int unsigned",
+        "comment": "修改人ID"
+      },
+      {
+        "name": "createtime",
+        "type": "timestamp",
+        "comment": "创建时间"
+      },
+      {
+        "name": "modifytime",
+        "type": "timestamp",
+        "comment": "修改时间"
+      },
+      {
+        "name": "deleteflag",
+        "type": "tinyint",
+        "comment": "逻辑删除"
+      }
+    ]
+  },
+  "foreignKeys": []
+}

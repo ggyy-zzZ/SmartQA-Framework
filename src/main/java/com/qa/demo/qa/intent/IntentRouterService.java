@@ -145,7 +145,7 @@ public class IntentRouterService {
                 IntentDecision llmDecision = classifyFollowUpWithTimeout(
                         question,
                         followUp.priorQuestion(),
-                        followUp.priorQueryType(),
+                        followUp.priorRetrievalStrategy(),
                         followUp.priorAnswer(),
                         personName,
                         followUp.priorCompanies()
@@ -211,7 +211,8 @@ public class IntentRouterService {
                 person == null ? "" : person,
                 mergedHints,
                 llmDecision.roleFocus(),
-                employeeId
+                employeeId,
+                llmDecision.retrievalStrategy()
         );
     }
 
@@ -233,7 +234,7 @@ public class IntentRouterService {
     private IntentDecision classifyFollowUpWithTimeout(
             String currentQuestion,
             String priorQuestion,
-            String priorQueryType,
+            String priorRetrievalStrategy,
             String priorAnswer,
             String personName,
             List<EntityRef> priorCompanies
@@ -245,7 +246,7 @@ public class IntentRouterService {
                         return llmClassifier.classifyWithEntities(
                                 currentQuestion,
                                 priorQuestion,
-                                priorQueryType,
+                                priorRetrievalStrategy,
                                 priorAnswer,
                                 personName,
                                 priorCompanies

@@ -46,7 +46,7 @@ public class IntentRuleEngine {
                     queryType, personName, companyHints, roleFocus);
         }
         if (relationIntent || explicitCompanyHint) {
-            return decision("graph", reasonPrefix + "_graph_relation_or_entity",
+            return decision("hybrid", reasonPrefix + "_hybrid_relation_or_entity",
                     queryType, personName, companyHints, roleFocus);
         }
         if (docIntent) {

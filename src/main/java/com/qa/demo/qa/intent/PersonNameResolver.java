@@ -1,5 +1,6 @@
 package com.qa.demo.qa.intent;
 
+import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.qa.answer.MiniMaxClient;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.core.ContextChunk;
@@ -7,7 +8,6 @@ import com.qa.demo.qa.domain.PersonAliasIdentityParser;
 import com.qa.demo.qa.domain.PersonNameParser;
 import com.qa.demo.qa.learning.ActiveLearningService;
 import com.qa.demo.qa.retrieval.EmployeeBaseKnowledgeService;
-import com.qa.demo.qa.retrieval.GraphContextService;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -19,7 +19,7 @@ import java.util.List;
  * <ol>
  *   <li>主动学习记录中已知的别名映射</li>
  *   <li>员工基础表中精确匹配（花名/别名 → 规范姓名）</li>
- *   <li>规则匹配：敬称剥离 + 图谱前缀匹配</li>
+ *   <li>规则匹配：敬称剥离 + 员工表前缀匹配</li>
  *   <li>LLM 辅助解析（当规则匹配结果不唯一或为空时）</li>
  * </ol>
  */
@@ -53,21 +53,21 @@ public class PersonNameResolver {
             """;
 
     private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
+    private final EnterpriseCanonicalFactsRegistry canonicalFactsRegistry;
     private final ActiveLearningService activeLearningService;
-    private final GraphContextService graphContextService;
     private final MiniMaxClient miniMaxClient;
     private final QaAssistantProperties properties;
 
     public PersonNameResolver(
             EmployeeBaseKnowledgeService employeeBaseKnowledge,
+            EnterpriseCanonicalFactsRegistry canonicalFactsRegistry,
             ActiveLearningService activeLearningService,
-            GraphContextService graphContextService,
             MiniMaxClient miniMaxClient,
             QaAssistantProperties properties
     ) {
         this.employeeBaseKnowledge = employeeBaseKnowledge;
+        this.canonicalFactsRegistry = canonicalFactsRegistry;
         this.activeLearningService = activeLearningService;
-        this.graphContextService = graphContextService;
         this.miniMaxClient = miniMaxClient;
         this.properties = properties;
     }
@@ -101,13 +101,13 @@ public class PersonNameResolver {
         // 1. 主动学习别名映射
         String fromLearning = activeLearningService.resolvePersonAlias(trimmed, learned);
         if (!fromLearning.equals(trimmed)) {
-            return withEmployeeId(fromLearning);
+            return withEmployeeId(fromLearning, question);
         }
 
         // 2. 员工表精确匹配
         String fromEmployee = employeeBaseKnowledge.resolveCanonicalName(trimmed);
         if (!fromEmployee.equals(trimmed) && !PersonNameParser.hasHonorificSuffix(fromEmployee)) {
-            return withEmployeeId(fromEmployee);
+            return withEmployeeId(fromEmployee, question);
         }
 
         // 3. 规则匹配：敬称剥离 + 前缀匹配
@@ -117,34 +117,34 @@ public class PersonNameResolver {
         }
 
         String role = roleFocus == null || roleFocus.isBlank() ? "any" : roleFocus;
-        List<String> graphNames = graphContextService.listPersonNamesByHintAndRole(searchCore, role, 12);
+        List<String> nameCandidates = employeeBaseKnowledge.listPersonNamesByHintPrefix(searchCore, 12);
 
-        if (graphNames.size() == 1) {
+        if (nameCandidates.size() == 1) {
             // 唯一匹配
-            return withEmployeeId(graphNames.get(0));
+            return withEmployeeId(nameCandidates.get(0), question);
         }
 
-        if (graphNames.isEmpty()) {
+        if (nameCandidates.isEmpty()) {
             // 4. 规则无匹配，尝试 LLM 辅助
             if (question != null && !question.isBlank()) {
                 String llmResolved = resolveByLlm(trimmed, question);
                 if (!llmResolved.isBlank()) {
-                    return withEmployeeId(llmResolved);
+                    return withEmployeeId(llmResolved, question);
                 }
             }
-            return withEmployeeId(trimmed);
+            return withEmployeeId(trimmed, question);
         }
 
         // 多个候选人，尝试 LLM 消歧
         if (question != null && !question.isBlank()) {
             String llmResolved = resolveByLlm(trimmed, question);
-            if (!llmResolved.isBlank() && graphNames.contains(llmResolved)) {
-                return withEmployeeId(llmResolved);
+            if (!llmResolved.isBlank() && nameCandidates.contains(llmResolved)) {
+                return withEmployeeId(llmResolved, question);
             }
         }
 
         // LLM 无法消歧，返回多候选人
-        return PersonNameResolution.ambiguous(trimmed, graphNames);
+        return PersonNameResolution.ambiguous(trimmed, nameCandidates);
     }
 
     /**
@@ -180,12 +180,23 @@ public class PersonNameResolver {
         return "";
     }
 
-    private PersonNameResolution withEmployeeId(String canonicalName) {
+    private PersonNameResolution withEmployeeId(String canonicalName, String question) {
         if (canonicalName == null || canonicalName.isBlank()) {
             return PersonNameResolution.resolved("");
         }
         Integer id = employeeBaseKnowledge.resolveToEmployeeId(canonicalName);
+        if (id == null) {
+            id = canonicalFactsRegistry.resolveEmployeeAnchorId(canonicalName, question)
+                    .stream()
+                    .boxed()
+                    .findFirst()
+                    .orElse(null);
+        }
         return PersonNameResolution.resolved(canonicalName, id);
+    }
+
+    private PersonNameResolution withEmployeeId(String canonicalName) {
+        return withEmployeeId(canonicalName, canonicalName);
     }
 
     public boolean needsClarification(PersonNameResolution resolution) {

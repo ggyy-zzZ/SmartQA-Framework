@@ -1,6 +1,7 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.core.RetrievalStrategy;
 
 import java.util.Locale;
 import java.util.Set;
@@ -30,6 +31,10 @@ public final class IntentSlots {
     static final Set<String> VALID_ROLE_FOCUS = Set.of(
             "legal_rep", "director", "supervisor", "shareholder", "any"
     );
+    static final Set<String> VALID_RETRIEVAL_STRATEGIES = Set.of(
+            "aggregate_count", "structured_list", "type_catalog", "instance_fact",
+            "graph_relational", "semantic_rag", "clarify", "unknown"
+    );
 
     private IntentSlots() {
     }
@@ -38,8 +43,6 @@ public final class IntentSlots {
         if (raw == null) {
             return new IntentDecision("unknown", 0.0, "null_decision");
         }
-        String intent = normalizeToken(raw.intent(), VALID_INTENTS, "unknown");
-        String queryType = normalizeToken(raw.queryType(), VALID_QUERY_TYPES, "");
         String personName = sanitizePersonName(raw.personName());
         String roleFocus = normalizeToken(raw.roleFocus(), VALID_ROLE_FOCUS, "any");
         double confidence = clamp(raw.confidence());
@@ -53,16 +56,123 @@ public final class IntentSlots {
         if (personEmployeeId != null && personEmployeeId <= 0) {
             personEmployeeId = null;
         }
+        String queryTypeHint = normalizeToken(raw.queryType(), VALID_QUERY_TYPES, "");
+        String intentHint = normalizeToken(raw.intent(), VALID_INTENTS, "");
+        String retrievalStrategy = normalizeRetrievalStrategy(raw.retrievalStrategy(), queryTypeHint, intentHint);
+        DerivedChannels derived = deriveChannels(retrievalStrategy, personName, !companyHints.isEmpty(), roleFocus);
+        String intent = intentHint.isBlank() || "unknown".equals(intentHint)
+                ? derived.intent()
+                : intentHint;
+        String queryType = queryTypeHint.isBlank()
+                ? derived.queryType()
+                : queryTypeHint;
+        if (intent.isBlank()) {
+            intent = "unknown";
+        }
         return new IntentDecision(
-                intent, confidence, reason, queryType, personName, companyHints, roleFocus, personEmployeeId);
+                intent, confidence, reason, queryType, personName, companyHints, roleFocus, personEmployeeId,
+                retrievalStrategy);
+    }
+
+    private static String normalizeRetrievalStrategy(String strategy, String queryType, String intent) {
+        String token = normalizeToken(strategy, VALID_RETRIEVAL_STRATEGIES, "");
+        if (!token.isBlank()) {
+            return token;
+        }
+        if ("aggregate".equalsIgnoreCase(queryType)) {
+            return RetrievalStrategy.AGGREGATE_COUNT.token();
+        }
+        if ("sql".equalsIgnoreCase(intent) && "aggregate".equalsIgnoreCase(queryType)) {
+            return RetrievalStrategy.AGGREGATE_COUNT.token();
+        }
+        return "";
+    }
+
+    /** 由 LLM retrievalStrategy + 槽位推导内部 intent/queryType（规则引擎路径仍可直接传入）。 */
+    static DerivedChannels deriveChannels(
+            String strategyToken,
+            String personName,
+            boolean hasCompanyHints,
+            String roleFocus
+    ) {
+        RetrievalStrategy strategy = RetrievalStrategy.fromToken(strategyToken);
+        boolean hasPerson = personName != null && !personName.isBlank();
+        return switch (strategy) {
+            case AGGREGATE_COUNT -> new DerivedChannels("sql", "aggregate");
+            case TYPE_CATALOG -> new DerivedChannels("mysql", "semantic");
+            case STRUCTURED_LIST -> {
+                if (hasPerson) {
+                    if (hasRoleFocusValue(roleFocus)) {
+                        yield new DerivedChannels("hybrid", "person_role_list");
+                    }
+                    yield new DerivedChannels("mysql", "person_certificate_list");
+                }
+                if (hasCompanyHints) {
+                    yield new DerivedChannels("mysql", "company_profile");
+                }
+                yield new DerivedChannels("hybrid", "semantic");
+            }
+            case INSTANCE_FACT -> {
+                if (hasCompanyHints) {
+                    yield new DerivedChannels("mysql", "company_profile");
+                }
+                yield new DerivedChannels("vector", "semantic");
+            }
+            case GRAPH_RELATIONAL -> {
+                if (hasPerson) {
+                    if (hasRoleFocusValue(roleFocus)) {
+                        yield new DerivedChannels("hybrid", "person_role_list");
+                    }
+                    yield new DerivedChannels("hybrid", "person_certificate_list");
+                }
+                if (hasCompanyHints) {
+                    yield new DerivedChannels("hybrid", "relation");
+                }
+                yield new DerivedChannels("hybrid", "semantic");
+            }
+            case SEMANTIC_RAG -> new DerivedChannels("vector", "semantic");
+            case CLARIFY -> new DerivedChannels("unknown", "unknown");
+            case UNKNOWN -> new DerivedChannels("", "");
+        };
+    }
+
+    record DerivedChannels(String intent, String queryType) {
+    }
+
+    /** 会话遗留 queryType 转 retrievalStrategy，供多轮上下文传递。 */
+    public static String strategyHintFromQueryType(String queryType) {
+        if (queryType == null || queryType.isBlank()) {
+            return "";
+        }
+        return switch (queryType.trim().toLowerCase(Locale.ROOT)) {
+            case "aggregate" -> RetrievalStrategy.AGGREGATE_COUNT.token();
+            case "person_role_list", "person_certificate_list", "shareholder", "relation" ->
+                    RetrievalStrategy.GRAPH_RELATIONAL.token();
+            case "company_profile", "company_certificate", "company_seal" ->
+                    RetrievalStrategy.INSTANCE_FACT.token();
+            default -> "";
+        };
     }
 
     /**
      * 高置信 LLM 结果是否已具备检索所需槽位，可跳过规则 enrich。
      */
     public static boolean isRetrievalReady(IntentDecision d) {
-        if (d == null || "unknown".equalsIgnoreCase(d.intent())) {
+        if (d == null) {
             return false;
+        }
+        RetrievalStrategy strategy = d.resolvedRetrievalStrategy();
+        if (strategy == RetrievalStrategy.AGGREGATE_COUNT || strategy == RetrievalStrategy.TYPE_CATALOG) {
+            return true;
+        }
+        if (strategy == RetrievalStrategy.SEMANTIC_RAG) {
+            return d.confidence() >= 0.5;
+        }
+        if (strategy == RetrievalStrategy.CLARIFY) {
+            return false;
+        }
+        if ("unknown".equalsIgnoreCase(d.intent())) {
+            return strategy != RetrievalStrategy.UNKNOWN && d.confidence() >= 0.7;
         }
         if (d.isPersonRoleListQuery()) {
             return d.hasPersonFocus() && hasRoleFocus(d);
@@ -79,6 +189,9 @@ public final class IntentSlots {
             return d.hasCompanyHints() || d.hasPersonFocus();
         }
         if ("aggregate".equalsIgnoreCase(d.queryType()) || "sql".equalsIgnoreCase(d.intent())) {
+            return true;
+        }
+        if (RetrievalStrategy.AGGREGATE_COUNT.token().equalsIgnoreCase(d.retrievalStrategy())) {
             return true;
         }
         if ("policy".equalsIgnoreCase(d.queryType()) || "document".equalsIgnoreCase(d.intent())) {
@@ -131,8 +244,11 @@ public final class IntentSlots {
     }
 
     private static boolean hasRoleFocus(IntentDecision d) {
-        String rf = d.roleFocus();
-        return rf != null && !rf.isBlank() && !"any".equalsIgnoreCase(rf);
+        return hasRoleFocusValue(d.roleFocus());
+    }
+
+    private static boolean hasRoleFocusValue(String roleFocus) {
+        return roleFocus != null && !roleFocus.isBlank() && !"any".equalsIgnoreCase(roleFocus);
     }
 
     private static String normalizeToken(String value, Set<String> allowed, String fallback) {

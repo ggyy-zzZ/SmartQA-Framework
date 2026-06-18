@@ -25,7 +25,9 @@ public class IntentScopeNormalizer {
         if (!shouldResetSessionBinding(rawQuestion)) {
             return decision;
         }
-        String tag = scopeSupport.isUnscopedListQuestion(rawQuestion)
+        String tag = scopeSupport.isCatalogQuestion(rawQuestion)
+                ? "scope_reset_catalog_question"
+                : scopeSupport.isUnscopedListQuestion(rawQuestion)
                 ? "scope_reset_unscoped_list"
                 : "scope_reset_break_context";
         String reason = decision.reason() == null ? "" : decision.reason();
@@ -36,16 +38,18 @@ public class IntentScopeNormalizer {
                 decision.intent(),
                 decision.confidence(),
                 reason,
-                decision.queryType(),
+                "",
                 "",
                 List.of(),
                 decision.roleFocus(),
-                null
+                null,
+                decision.retrievalStrategy()
         );
     }
 
     private boolean shouldResetSessionBinding(String question) {
         return scopeSupport.explicitlyBreaksContext(question)
-                || scopeSupport.isUnscopedListQuestion(question);
+                || scopeSupport.isUnscopedListQuestion(question)
+                || scopeSupport.isCatalogQuestion(question);
     }
 }

@@ -44,6 +44,8 @@
     "neo4j-person-role": "enterprise_fact_v1",
     "mysql-detail": "enterprise_fact_v1",
     "mysql-sql-person-role": "enterprise_fact_v1",
+    "mysql-semantic-sql": "enterprise_fact_v1",
+    "semantic_sql": "enterprise_fact_v1",
     "document-chunk-db": "enterprise_fact_v1"
   }
 }

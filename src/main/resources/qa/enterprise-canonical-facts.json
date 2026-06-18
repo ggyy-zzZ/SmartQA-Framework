@@ -1,63 +1,6 @@
 {
   "facts": [
     {
-      "id": "enterprise_hq_parent",
-      "scope": "enterprise",
-      "triggers": ["总部", "母公司", "总公司", "集团总部", "同道精英（天津）", "同道精英"],
-      "entityKind": "company",
-      "anchorId": "11280",
-      "displayLabel": "同道精英（天津）信息技术有限公司",
-      "field": "enterprise_fact",
-      "values": {
-        "factType": "组织关系",
-        "subject": "集团总部/母公司",
-        "value": "同道精英（天津）信息技术有限公司"
-      }
-    },
-    {
-      "id": "leader_rick_daikabin",
-      "scope": "enterprise",
-      "triggers": ["rick", "戴科彬", "boss", "老板", "首席执行官", "ceo"],
-      "entityKind": "employee",
-      "anchorId": "29",
-      "displayLabel": "戴科彬",
-      "field": "enterprise_fact",
-      "values": {
-        "factType": "人物角色",
-        "legalName": "戴科彬",
-        "alias": "Rick",
-        "role": "集团负责人（BOSS）"
-      }
-    },
-    {
-      "id": "leader_song_yueting",
-      "scope": "enterprise",
-      "triggers": ["宋月婷", "总裁"],
-      "entityKind": "employee",
-      "anchorId": "1614",
-      "displayLabel": "宋月婷",
-      "field": "enterprise_fact",
-      "values": {
-        "factType": "人物角色",
-        "legalName": "宋月婷",
-        "role": "总裁、创始人"
-      }
-    },
-    {
-      "id": "leader_chen_xingmao",
-      "scope": "enterprise",
-      "triggers": ["陈兴茂", "cto"],
-      "entityKind": "employee",
-      "anchorId": "1",
-      "displayLabel": "陈兴茂",
-      "field": "enterprise_fact",
-      "values": {
-        "factType": "人物角色",
-        "legalName": "陈兴茂",
-        "role": "CTO、创始人"
-      }
-    },
-    {
       "id": "certificate_term_clarification",
       "scope": "enterprise",
       "triggers": ["证照类型", "类型和证照", "证照和类型", "证照实例", "同一类型多本证照"],
@@ -72,9 +15,5 @@
       }
     }
   ],
-  "retrievalAliases": [
-    { "alias": "rick", "canonical": "戴科彬" },
-    { "alias": "boss", "canonical": "戴科彬" },
-    { "alias": "cto", "canonical": "陈兴茂" }
-  ]
+  "retrievalAliases": []
 }
