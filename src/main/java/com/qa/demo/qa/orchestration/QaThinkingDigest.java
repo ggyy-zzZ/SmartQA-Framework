@@ -77,8 +77,8 @@ public final class QaThinkingDigest {
             return analysisPayload(List.of(section("2. 意图与实体", lines)));
         }
         lines.add("检索通道 intent=" + nullToDash(intent.intent()) + "（来源：" + nullToDash(routingSource) + "）");
-        if (intent.queryType() != null && !intent.queryType().isBlank()) {
-            lines.add("查询形态 queryType=" + intent.queryType());
+        if (intent.hasRetrievalStrategy()) {
+            lines.add("检索策略 retrievalStrategy=" + intent.retrievalStrategy());
         }
         if (intent.hasPersonFocus()) {
             String personLine = "人物 personName=" + intent.personName();

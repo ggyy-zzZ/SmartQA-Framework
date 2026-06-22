@@ -37,9 +37,34 @@ public class QaAskOrchestrator {
         this.sseStreamSupport = sseStreamSupport;
     }
 
+    public Map<String, Object> buildAskResponse(
+            String question,
+            String scope,
+            String conversationId,
+            Boolean followUpFlag,
+            String evidencePresentationMode
+    ) throws IOException {
+        return qaAskFlowService.run(
+                question, scope, conversationId, followUpFlag, evidencePresentationMode, QaAskProgress.NOOP);
+    }
+
     public Map<String, Object> buildAskResponse(String question, String scope, String conversationId, Boolean followUpFlag)
             throws IOException {
-        return qaAskFlowService.run(question, scope, conversationId, followUpFlag, QaAskProgress.NOOP);
+        return buildAskResponse(question, scope, conversationId, followUpFlag, null);
+    }
+
+    public SseEmitter startAskStream(
+            String question,
+            String scope,
+            String conversationId,
+            Boolean followUpFlag,
+            String evidencePresentationMode,
+            HttpServletResponse response
+    ) {
+        SseEmitter emitter = new SseEmitter(300_000L);
+        SSE_EXECUTOR.execute(() -> runStream(
+                emitter, response, question, scope, conversationId, followUpFlag, evidencePresentationMode));
+        return emitter;
     }
 
     public SseEmitter startAskStream(
@@ -49,9 +74,7 @@ public class QaAskOrchestrator {
             Boolean followUpFlag,
             HttpServletResponse response
     ) {
-        SseEmitter emitter = new SseEmitter(300_000L);
-        SSE_EXECUTOR.execute(() -> runStream(emitter, response, question, scope, conversationId, followUpFlag));
-        return emitter;
+        return startAskStream(question, scope, conversationId, followUpFlag, null, response);
     }
 
     private void runStream(
@@ -60,13 +83,15 @@ public class QaAskOrchestrator {
             String question,
             String scope,
             String conversationId,
-            Boolean followUpFlag
+            Boolean followUpFlag,
+            String evidencePresentationMode
     ) {
         try {
             emitThinkingFlush(emitter, response, "start", "已接收问题，开始分析。");
             QaAskProgress progress = (phase, message, details) ->
                     emitThinkingFlush(emitter, response, phase, message, details);
-            Map<String, Object> result = qaAskFlowService.run(question, scope, conversationId, followUpFlag, progress);
+            Map<String, Object> result = qaAskFlowService.run(
+                    question, scope, conversationId, followUpFlag, evidencePresentationMode, progress);
             boolean streamAnswer = !"ask_person_clarification".equals(result.get("route"))
                     && !"ask_company_clarification".equals(result.get("route"));
             sseStreamSupport.sendStreamResponse(emitter, result, streamAnswer);

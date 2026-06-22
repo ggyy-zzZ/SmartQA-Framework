@@ -68,13 +68,31 @@ public class QaAssistantProperties {
     /** 送入重排前的最大候选条数 */
     private int rerankCandidateMax = 32;
 
+    /** 默认证据呈现为尽量完整（full）；false 时为 compact 摘要模式 */
+    private boolean evidencePresentationDefaultFull = true;
+
+    /** full 模式下送入 LLM 的证据条数上限 */
+    private int evidenceFullTopK = 500;
+
+    /** 用户强调「完整展示」时的证据条数上限 */
+    private int evidenceEmphasisTopK = 500;
+
+    /** 结构化 SQL 查询结果行数硬上限 */
+    private int sqlQueryMaxRows = 500;
+
+    /** 证据被截断时是否在回答末尾追加说明 */
+    private boolean evidenceTruncationNoticeEnabled = true;
+
     /** 统一召回阶段向量路 TopK（可大于 retrieval-top-k） */
     private int recallVectorTopK = 12;
+
+    /** 向量召回硬上限（Qdrant limit）；与 recall-vector-top-k 取 min */
+    private int vectorRecallMax = 500;
 
     /** 统一召回阶段图谱路 TopK */
     private int recallGraphTopK = 10;
 
-    /** 人物任职列表类问题（person_role_list）图谱召回上限 */
+    /** 人物任职列表类问题图谱召回上限 */
     private int recallGraphPersonRoleTopK = 32;
 
     /** 是否用 MiniMax 做意图+实体抽取（无 API Key 时自动走规则） */
@@ -103,14 +121,14 @@ public class QaAssistantProperties {
     /** 证据不足时是否拦截 LLM 生成（本地验证建议开启） */
     private boolean answerGateEnabled = true;
 
-    private int answerGateMinEvidenceCount = 1;
+    private int answerGateMinEvidenceCount = 2;
 
-    private double answerGateMinTopScore = 3.0;
+    private double answerGateMinTopScore = 5.0;
 
     private boolean answerGateBlockOnUnknownIntent = true;
 
     /** 为 true 时，evidenceAlignment.lowOverlap 则不走 LLM，改模板答复 */
-    private boolean alignmentStrict = false;
+    private boolean alignmentStrict = true;
 
     private double alignmentLowOverlapThreshold = 0.08;
 
@@ -636,12 +654,60 @@ public class QaAssistantProperties {
         this.rerankCandidateMax = rerankCandidateMax;
     }
 
+    public boolean isEvidencePresentationDefaultFull() {
+        return evidencePresentationDefaultFull;
+    }
+
+    public void setEvidencePresentationDefaultFull(boolean evidencePresentationDefaultFull) {
+        this.evidencePresentationDefaultFull = evidencePresentationDefaultFull;
+    }
+
+    public int getEvidenceFullTopK() {
+        return evidenceFullTopK;
+    }
+
+    public void setEvidenceFullTopK(int evidenceFullTopK) {
+        this.evidenceFullTopK = evidenceFullTopK;
+    }
+
+    public int getEvidenceEmphasisTopK() {
+        return evidenceEmphasisTopK;
+    }
+
+    public void setEvidenceEmphasisTopK(int evidenceEmphasisTopK) {
+        this.evidenceEmphasisTopK = evidenceEmphasisTopK;
+    }
+
+    public int getSqlQueryMaxRows() {
+        return sqlQueryMaxRows;
+    }
+
+    public void setSqlQueryMaxRows(int sqlQueryMaxRows) {
+        this.sqlQueryMaxRows = sqlQueryMaxRows;
+    }
+
+    public boolean isEvidenceTruncationNoticeEnabled() {
+        return evidenceTruncationNoticeEnabled;
+    }
+
+    public void setEvidenceTruncationNoticeEnabled(boolean evidenceTruncationNoticeEnabled) {
+        this.evidenceTruncationNoticeEnabled = evidenceTruncationNoticeEnabled;
+    }
+
     public int getRecallVectorTopK() {
         return recallVectorTopK;
     }
 
     public void setRecallVectorTopK(int recallVectorTopK) {
         this.recallVectorTopK = recallVectorTopK;
+    }
+
+    public int getVectorRecallMax() {
+        return vectorRecallMax;
+    }
+
+    public void setVectorRecallMax(int vectorRecallMax) {
+        this.vectorRecallMax = vectorRecallMax;
     }
 
     public int getRecallGraphTopK() {

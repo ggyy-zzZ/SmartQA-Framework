@@ -61,9 +61,10 @@ public class QaReviewService {
             String question,
             IntentDecision intentDecision,
             InformationNeed informationNeed,
-            List<ContextChunk> evidence
+            List<ContextChunk> evidence,
+            String retrievalSource
     ) {
-        return answerGateService.evaluate(question, intentDecision, informationNeed, evidence);
+        return answerGateService.evaluate(question, intentDecision, informationNeed, evidence, retrievalSource);
     }
 
     public ReviewDecision decideBeforeGeneration(
@@ -104,7 +105,7 @@ public class QaReviewService {
             );
         }
         if (!allowGenerate) {
-            if (personClarificationAdvisor.needsClarification(intentDecision, evidence, question)) {
+            if (personClarificationAdvisor.needsClarification(intentDecision, informationNeed, evidence, question)) {
                 return new ReviewDecision(
                         DecisionKind.CLARIFY_PERSON,
                         gate,

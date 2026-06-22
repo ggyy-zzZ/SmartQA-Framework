@@ -1,6 +1,24 @@
 {
   "version": 2,
   "schemaVersion": "1.0",
+  "thinkingMessagesByGranularity": {
+    "type_catalog": "正在查询类型目录（枚举字典）…",
+    "aggregate": "正在执行统计查询（COUNT）…"
+  },
+  "llmMergePreserveReasonPrefixes": [
+    "inference_rule:",
+    "inference_forced:",
+    "intent_slots:",
+    "inference:filter_threshold:",
+    "inference:global_certificate_list",
+    "inference_rule:role_list",
+    "inference_rule:certificate_instance",
+    "inference_rule:pronoun_certificate_list",
+    "inference_rule:pronoun_role_list",
+    "inference:region_company_list",
+    "query_type_mapping:",
+    "legacy_query_type:"
+  ],
   "needInferenceRules": [
     {
       "id": "global_compliance_list",
@@ -307,81 +325,160 @@
         "granularity": "list",
         "listExpected": true
       }
+    },
+    {
+      "id": "legal_rep_subject_reverse",
+      "allKeywords": [
+        "法人"
+      ],
+      "anyKeywords": [
+        "哪些",
+        "主体",
+        "公司",
+        "企业",
+        "是"
+      ],
+      "need": {
+        "facet": "role",
+        "granularity": "list",
+        "listExpected": true
+      }
     }
   ],
-  "queryTypeMapping": {
-    "person_role_list": {
-      "facet": "role",
-      "granularity": "list",
-      "listExpected": true,
+  "needExecutionProfiles": [
+    {
+      "id": "role_list",
+      "match": {
+        "facets": ["role"],
+        "granularities": ["list"],
+        "listExpected": true
+      },
       "execution": {
         "path": "dedicated_list",
-        "routeLabel": "unified_person_role",
+        "routeLabel": "dedicated_list_sql",
         "skipTruncation": true,
         "skipEmployeeBaseAppend": true,
         "expandRecallTopK": true,
         "correctionEntityKind": ""
+      },
+      "behaviors": {
+        "preserveAgainstLlmSemantic": true,
+        "personClarification": true,
+        "thinkingMessage": "正在查询任职关系（业务库）…"
       }
     },
-    "person_certificate_list": {
-      "facet": "certificate",
-      "granularity": "instance",
-      "listExpected": true,
+    {
+      "id": "certificate_instance_list_with_person",
+      "match": {
+        "facets": ["certificate"],
+        "granularities": ["instance"],
+        "listExpected": true,
+        "requiresPerson": true
+      },
       "execution": {
         "path": "dedicated_certificate",
-        "routeLabel": "unified_person_certificate",
+        "routeLabel": "dedicated_certificate_sql",
         "skipTruncation": true,
         "skipEmployeeBaseAppend": true,
         "expandRecallTopK": true,
         "includeCompiledDocs": true,
         "correctionEntityKind": ""
+      },
+      "behaviors": {
+        "preserveAgainstLlmSemantic": true,
+        "thinkingMessage": "正在查询证照明细（业务库）…"
       }
     },
-    "company_certificate": {
-      "facet": "certificate",
-      "granularity": "instance",
-      "listExpected": true,
+    {
+      "id": "certificate_global_instance_list",
+      "match": {
+        "facets": ["certificate"],
+        "granularities": ["instance"],
+        "listExpected": true,
+        "requiresPerson": false
+      },
+      "execution": {
+        "path": "dedicated_certificate",
+        "routeLabel": "dedicated_certificate_global_sql",
+        "skipTruncation": true,
+        "skipEmployeeBaseAppend": true,
+        "expandRecallTopK": true,
+        "includeCompiledDocs": true,
+        "correctionEntityKind": ""
+      },
+      "behaviors": {
+        "preserveAgainstLlmSemantic": true,
+        "thinkingMessage": "正在查询全库证照明细…"
+      }
+    },
+    {
+      "id": "company_certificate_instance_list",
+      "match": {
+        "facets": ["certificate"],
+        "granularities": ["instance"],
+        "listExpected": true,
+        "requiresPerson": false
+      },
       "execution": {
         "includeCompiledDocs": true,
         "correctionEntityKind": "company"
       }
     },
-    "company_seal": {
-      "facet": "seal",
-      "granularity": "instance",
-      "listExpected": true,
+    {
+      "id": "seal_instance_list",
+      "match": {
+        "facets": ["seal"],
+        "granularities": ["instance"],
+        "listExpected": true
+      },
       "execution": {
         "includeCompiledDocs": true,
         "correctionEntityKind": "company"
       }
     },
-    "company_profile": {
-      "facet": "profile",
-      "granularity": "single_fact",
-      "listExpected": false,
+    {
+      "id": "profile_single_fact",
+      "match": {
+        "facets": ["profile"],
+        "granularities": ["single_fact", "instance"]
+      },
       "execution": {
         "correctionEntityKind": "company"
       }
     },
-    "aggregate": {
-      "facet": "aggregate",
-      "granularity": "single_fact",
-      "listExpected": false,
+    {
+      "id": "aggregate_single_fact",
+      "match": {
+        "facets": ["aggregate"],
+        "granularities": ["aggregate", "single_fact"]
+      },
       "execution": {
         "correctionEntityKind": "company"
       }
     },
-    "policy": {
-      "facet": "policy",
-      "granularity": "narrative",
-      "listExpected": false
+    {
+      "id": "policy_narrative",
+      "match": {
+        "facets": ["policy"],
+        "granularities": ["narrative"]
+      },
+      "execution": {},
+      "behaviors": {
+        "preferCompiledDocs": true
+      }
     },
-    "semantic": {
-      "facet": "semantic",
-      "granularity": "narrative",
-      "listExpected": false
+    {
+      "id": "semantic_narrative",
+      "match": {
+        "facets": ["semantic"],
+        "granularities": ["narrative"]
+      },
+      "execution": {},
+      "behaviors": {
+        "preferCompiledDocs": true
+      }
     }
-  },
+  ],
   "dimensions": [
     {
       "dimensionId": "certificate_type_catalog",

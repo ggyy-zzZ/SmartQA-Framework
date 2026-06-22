@@ -43,7 +43,6 @@ def ask(base_url: str, question: str, conversation_id: str | None, follow_up: bo
         with urllib.request.urlopen(req, timeout=120) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as ex:
-        # 4xx/5xx：把 body 读成 JSON 一起返回，方便 run_case 看到 errorMessage
         raw = ex.read().decode("utf-8", errors="replace") if ex.fp else ""
         try:
             body_json = json.loads(raw) if raw else {}
@@ -58,22 +57,26 @@ def ask(base_url: str, question: str, conversation_id: str | None, follow_up: bo
         }
 
 
+def routing_value(response: dict[str, Any], key: str) -> str:
+    routing = response.get("routing") or {}
+    return str(routing.get(key) or "")
+
+
 def check_expect(case: dict[str, Any], response: dict[str, Any]) -> tuple[bool, list[str]]:
     expect = case.get("expect") or {}
     failures: list[str] = []
-    routing = response.get("routing") or {}
 
-    if "queryType" in expect:
-        actual = response.get("queryType") or routing.get("queryType") or ""
-        if actual != expect["queryType"]:
-            failures.append(f"queryType: want={expect['queryType']} got={actual}")
+    if "retrievalStrategy" in expect:
+        actual = str(response.get("retrievalStrategy") or routing_value(response, "retrievalStrategy"))
+        if actual != expect["retrievalStrategy"]:
+            failures.append(f"retrievalStrategy: want={expect['retrievalStrategy']} got={actual}")
 
     for key, routing_key in (
         ("needGranularity", "needGranularity"),
         ("needFacet", "needFacet"),
     ):
         if key in expect:
-            actual = routing.get(routing_key, "")
+            actual = routing_value(response, routing_key)
             if actual != expect[key]:
                 failures.append(f"{routing_key}: want={expect[key]} got={actual}")
 
@@ -123,6 +126,23 @@ def check_expect(case: dict[str, Any], response: dict[str, Any]) -> tuple[bool, 
     return len(failures) == 0, failures
 
 
+def empty_row(case: dict[str, Any], failures: str, error_message: str = "") -> dict[str, Any]:
+    return {
+        "id": case.get("id", ""),
+        "question": case.get("question", ""),
+        "pass": False,
+        "failures": failures,
+        "route": "",
+        "retrievalSource": "",
+        "retrievalStrategy": "",
+        "needFacet": "",
+        "needGranularity": "",
+        "canAnswer": "",
+        "evidenceCount": 0,
+        "errorMessage": error_message,
+    }
+
+
 def run_case(base_url: str, case: dict[str, Any]) -> dict[str, Any]:
     conv_id: str | None = None
     prior = case.get("priorTurns") or []
@@ -130,52 +150,23 @@ def run_case(base_url: str, case: dict[str, Any]) -> dict[str, Any]:
         try:
             seed = ask(base_url, turn["question"], conv_id, follow_up=conv_id is not None)
         except urllib.error.URLError as ex:
-            return {
-                "id": case.get("id", ""),
-                "question": case.get("question", ""),
-                "pass": False,
-                "failures": f"prior turn network error: {ex}",
-                "route": "",
-                "retrievalSource": "",
-                "queryType": "",
-                "canAnswer": "",
-                "evidenceCount": 0,
-                "errorMessage": str(ex),
-            }
+            row = empty_row(case, f"prior turn network error: {ex}", str(ex))
+            return row
         conv_id = seed.get("conversationId") if not seed.get("_http_error") else None
     try:
         response = ask(base_url, case["question"], conv_id, follow_up=conv_id is not None)
     except urllib.error.URLError as ex:
-        return {
-            "id": case.get("id", ""),
-            "question": case.get("question", ""),
-            "pass": False,
-            "failures": f"network error: {ex}",
-            "route": "",
-            "retrievalSource": "",
-            "queryType": "",
-            "canAnswer": "",
-            "evidenceCount": 0,
-            "errorMessage": str(ex),
-        }
-    is_http_error = response.get("_http_error", False)
-    if is_http_error:
-        # 4xx/5xx：直接把异常信息当 failures
+        return empty_row(case, f"network error: {ex}", str(ex))
+
+    if response.get("_http_error", False):
         status = response.get("_http_status", 0)
         err_msg = response.get("message", "") or response.get("error", "")
         failures = [f"http_{status}: {err_msg}"]
-        return {
-            "id": case.get("id", ""),
-            "question": case.get("question", ""),
-            "pass": False,
-            "failures": "; ".join(failures),
-            "route": f"http_{status}",
-            "retrievalSource": "",
-            "queryType": "",
-            "canAnswer": False,
-            "evidenceCount": 0,
-            "errorMessage": err_msg,
-        }
+        row = empty_row(case, "; ".join(failures), err_msg)
+        row["route"] = f"http_{status}"
+        row["canAnswer"] = False
+        return row
+
     ok, failures = check_expect(case, response)
     return {
         "id": case.get("id", ""),
@@ -184,7 +175,9 @@ def run_case(base_url: str, case: dict[str, Any]) -> dict[str, Any]:
         "failures": "; ".join(failures),
         "route": response.get("route", ""),
         "retrievalSource": response.get("retrievalSource", ""),
-        "queryType": response.get("queryType", ""),
+        "retrievalStrategy": str(response.get("retrievalStrategy") or routing_value(response, "retrievalStrategy")),
+        "needFacet": routing_value(response, "needFacet"),
+        "needGranularity": routing_value(response, "needGranularity"),
         "canAnswer": response.get("canAnswer", ""),
         "evidenceCount": len(response.get("evidence") or []),
         "errorMessage": "",
@@ -192,7 +185,6 @@ def run_case(base_url: str, case: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_baseline(path: Path) -> dict[str, bool]:
-    """读取 baseline CSV，返回 {id: pass}。文件不存在或读失败返回空 dict。"""
     if not path.exists():
         return {}
     out: dict[str, bool] = {}
@@ -262,19 +254,7 @@ def main() -> int:
         try:
             row = run_case(args.base_url, case)
         except urllib.error.URLError as ex:
-            row = {
-                "id": case.get("id", ""),
-                "question": case.get("question", ""),
-                "pass": False,
-                "failures": str(ex),
-                "route": "",
-                "retrievalSource": "",
-                "queryType": "",
-                "canAnswer": "",
-                "evidenceCount": 0,
-                "errorMessage": str(ex),
-            }
-        # baseline diff
+            row = empty_row(case, str(ex), str(ex))
         rid = row.get("id", "")
         if rid in baseline:
             row["regressed"] = bool(baseline[rid] and not row["pass"])
@@ -295,9 +275,12 @@ def main() -> int:
 
     out_path = root / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["id", "question", "pass", "failures", "route", "retrievalSource",
-                  "queryType", "canAnswer", "evidenceCount", "errorMessage",
-                  "regressed", "improved"]
+    fieldnames = [
+        "id", "question", "pass", "failures", "route", "retrievalSource",
+        "retrievalStrategy", "needFacet", "needGranularity",
+        "canAnswer", "evidenceCount", "errorMessage",
+        "regressed", "improved",
+    ]
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
@@ -306,7 +289,6 @@ def main() -> int:
     rate = (passed / len(rows) * 100) if rows else 0.0
     print(f"\n{passed}/{len(rows)} passed ({rate:.1f}%) -> {out_path}")
 
-    # 退出码优先级：must-pass(4) > fail-under(3) > regressed(2) > all-pass(0)
     regressed_rows = [r for r in rows if r.get("regressed") is True]
     if regressed_rows:
         print(f"[baseline] regressed cases ({len(regressed_rows)}):")

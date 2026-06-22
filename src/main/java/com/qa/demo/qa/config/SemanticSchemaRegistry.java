@@ -7,10 +7,12 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 语义 Schema 注册表：从 {@code qa/semantic-schema.json} 加载实体/字段/角色引用/关系，
@@ -138,6 +140,88 @@ public class SemanticSchemaRegistry {
             notes.add(item.toString());
         }
         return List.copyOf(notes);
+    }
+
+    /**
+     * 从问句中匹配 semantic-schema 的可查询列（最长标签优先），供 type_catalog DISTINCT 检索。
+     */
+    public Optional<SemanticSchemaColumnRef> matchDistinctColumn(String question) {
+        if (question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+        String q = question.trim();
+        List<MatchCandidate> candidates = new ArrayList<>();
+        JsonNode entities = root().path("entities");
+        entities.fields().forEachRemaining(entry -> {
+            String entityId = entry.getKey();
+            JsonNode entity = entry.getValue();
+            String table = entity.path("table").asText("");
+            String softDelete = entity.path("softDeleteColumn").asText("");
+            if (table.isBlank()) {
+                return;
+            }
+            for (JsonNode attr : entity.path("attributes")) {
+                if (!attr.path("queryable").asBoolean(true)) {
+                    continue;
+                }
+                String column = attr.path("column").asText("");
+                String label = attr.path("label").asText("");
+                if (column.isBlank() || label.isBlank()) {
+                    continue;
+                }
+                int score = scoreColumnMatch(q, label);
+                if (score <= 0) {
+                    continue;
+                }
+                String enumField = attr.path("enumField").asText("");
+                candidates.add(new MatchCandidate(
+                        score,
+                        new SemanticSchemaColumnRef(
+                                entityId,
+                                table,
+                                column,
+                                label,
+                                enumField.isBlank() ? null : enumField,
+                                softDelete.isBlank() ? null : softDelete
+                        )
+                ));
+            }
+        });
+        return candidates.stream()
+                .max(Comparator.comparingInt(MatchCandidate::score))
+                .map(MatchCandidate::ref);
+    }
+
+    private static int scoreColumnMatch(String question, String label) {
+        if (question.contains(label)) {
+            return label.length();
+        }
+        if (label.endsWith("类型") && label.length() > 2) {
+            String base = label.substring(0, label.length() - 2);
+            if (base.length() >= 2 && question.contains(base) && hasTypeCatalogCue(question)) {
+                return base.length();
+            }
+        }
+        if (label.endsWith("种类") && label.length() > 2) {
+            String base = label.substring(0, label.length() - 2);
+            if (base.length() >= 2 && question.contains(base) && hasTypeCatalogCue(question)) {
+                return base.length();
+            }
+        }
+        return 0;
+    }
+
+    private static boolean hasTypeCatalogCue(String question) {
+        return question.contains("哪些")
+                || question.contains("种类")
+                || question.contains("类型")
+                || question.contains("包含")
+                || question.contains("有哪")
+                || question.contains("列表")
+                || question.contains("清单");
+    }
+
+    private record MatchCandidate(int score, SemanticSchemaColumnRef ref) {
     }
 
     private void appendEnumSamples(StringBuilder sb, String enumField) {

@@ -1,6 +1,7 @@
 package com.qa.demo.qa.domain;
 
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.InformationNeed;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,7 +17,7 @@ import java.util.regex.Pattern;
 public final class EvidenceToEntityExtractor {
 
     private static final Pattern PERSON_ROLE_SOURCE = Pattern.compile(
-            "neo4j-person-role|neo4j-boundary|mysql-sql-person-role|sql-person-role|person_role");
+            "neo4j-person-role|neo4j-boundary|mysql-sql-person-role|sql-person-role|person_role|mysql-structured-role|structured_role");
     private static final Pattern CERTIFICATE_SOURCE = Pattern.compile("mysql-.*-certificate|certificate");
     private static final Pattern PERSON_SOURCE = Pattern.compile("employee_identity|employee_base|neo4j-person");
 
@@ -25,19 +26,14 @@ public final class EvidenceToEntityExtractor {
 
     /**
      * 从证据列表中提取实体。
-     *
-     * @param evidence 检索返回的证据列表
-     * @param queryType 当前查询类型，用于判断优先提取哪些实体
-     * @return 按类型分组的实体列表
      */
-    public static Map<String, List<EntityRef>> extractFrom(List<ContextChunk> evidence, String queryType) {
+    public static Map<String, List<EntityRef>> extractFrom(List<ContextChunk> evidence) {
         Map<String, List<EntityRef>> result = new LinkedHashMap<>();
 
         if (evidence == null || evidence.isEmpty()) {
             return result;
         }
 
-        // 按来源分类提取
         List<EntityRef> companies = new ArrayList<>();
         List<EntityRef> persons = new ArrayList<>();
         List<EntityRef> certificates = new ArrayList<>();
@@ -47,24 +43,20 @@ public final class EvidenceToEntityExtractor {
             String anchorId = chunk.anchorId() != null ? chunk.anchorId() : "";
             String displayLabel = chunk.displayLabel() != null ? chunk.displayLabel() : "";
 
-            // 公司实体：从人物任职角色来源提取
             if (PERSON_ROLE_SOURCE.matcher(source).find() && !anchorId.isEmpty()) {
                 String status = extractStatus(chunk.snippet());
                 companies.add(EntityRef.company(anchorId, displayLabel, status));
             }
 
-            // 人物实体：从员工身份来源提取
             if (PERSON_SOURCE.matcher(source).find() && !anchorId.isEmpty()) {
                 persons.add(EntityRef.person(anchorId, displayLabel));
             }
 
-            // 证照实体：从证照来源提取
             if (CERTIFICATE_SOURCE.matcher(source).find() && !anchorId.isEmpty()) {
                 certificates.add(EntityRef.certificate(anchorId, displayLabel));
             }
         }
 
-        // 去重后放入结果
         if (!companies.isEmpty()) {
             result.put(EntityRef.TYPE_COMPANY, deduplicate(companies));
         }
@@ -79,36 +71,54 @@ public final class EvidenceToEntityExtractor {
     }
 
     /**
-     * 根据 queryType 决定提取哪些实体。
+     * 根据信息需求决定提取哪些实体。
      */
-    public static Map<String, List<EntityRef>> extractForQueryType(List<ContextChunk> evidence, String queryType) {
-        Map<String, List<EntityRef>> all = extractFrom(evidence, queryType);
+    public static Map<String, List<EntityRef>> extractForNeed(List<ContextChunk> evidence, InformationNeed need) {
+        Map<String, List<EntityRef>> all = extractFrom(evidence);
         Map<String, List<EntityRef>> filtered = new LinkedHashMap<>();
-
-        if ("person_role_list".equals(queryType) || "person_certificate_list".equals(queryType)) {
-            // 人物相关查询：提取公司和人物
+        if (need == null) {
+            return all;
+        }
+        String facet = need.facet() == null ? "" : need.facet().trim().toLowerCase();
+        String granularity = need.granularity() == null ? "" : need.granularity().trim().toLowerCase();
+        if ("role".equals(facet)) {
             if (all.containsKey(EntityRef.TYPE_COMPANY)) {
                 filtered.put(EntityRef.TYPE_COMPANY, all.get(EntityRef.TYPE_COMPANY));
             }
             if (all.containsKey(EntityRef.TYPE_PERSON)) {
                 filtered.put(EntityRef.TYPE_PERSON, all.get(EntityRef.TYPE_PERSON));
             }
-        } else if ("company_certificate".equals(queryType)) {
-            // 公司证照查询：提取公司
+            return filtered;
+        }
+        if ("certificate".equals(facet)) {
+            if ("list".equals(granularity)) {
+                if (all.containsKey(EntityRef.TYPE_COMPANY)) {
+                    filtered.put(EntityRef.TYPE_COMPANY, all.get(EntityRef.TYPE_COMPANY));
+                }
+                if (all.containsKey(EntityRef.TYPE_PERSON)) {
+                    filtered.put(EntityRef.TYPE_PERSON, all.get(EntityRef.TYPE_PERSON));
+                }
+                return filtered;
+            }
+            if (InformationNeed.GRANULARITY_INSTANCE.equals(granularity)) {
+                if (all.containsKey(EntityRef.TYPE_COMPANY)) {
+                    filtered.put(EntityRef.TYPE_COMPANY, all.get(EntityRef.TYPE_COMPANY));
+                }
+                if (all.containsKey(EntityRef.TYPE_CERTIFICATE)) {
+                    filtered.put(EntityRef.TYPE_CERTIFICATE, all.get(EntityRef.TYPE_CERTIFICATE));
+                }
+                return filtered;
+            }
+        }
+        if ("profile".equals(facet)) {
             if (all.containsKey(EntityRef.TYPE_COMPANY)) {
                 filtered.put(EntityRef.TYPE_COMPANY, all.get(EntityRef.TYPE_COMPANY));
             }
-        } else {
-            // 其他查询：返回所有提取的实体
-            filtered = all;
+            return filtered;
         }
-
-        return filtered;
+        return all;
     }
 
-    /**
-     * 从 snippet 中提取状态（如"存续"、"吊销"）。
-     */
     private static String extractStatus(String snippet) {
         if (snippet == null || snippet.isBlank()) {
             return null;
@@ -144,9 +154,6 @@ public final class EvidenceToEntityExtractor {
         return null;
     }
 
-    /**
-     * 去重（按 ID）。
-     */
     private static List<EntityRef> deduplicate(List<EntityRef> entities) {
         Map<String, EntityRef> seen = new LinkedHashMap<>();
         for (EntityRef e : entities) {

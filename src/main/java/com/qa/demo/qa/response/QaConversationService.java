@@ -50,7 +50,7 @@ public class QaConversationService {
             List<String> focusCompanyNames,
             List<String> personCandidates,
             String focusPersonName,
-            String lastQueryType,
+            String lastRetrievalStrategy,
             String lastIntent,
             Map<String, List<EntityRef>> retrievedEntities
     ) {
@@ -86,10 +86,10 @@ public class QaConversationService {
                 List<String> focusCompanyNames,
                 List<String> personCandidates,
                 String focusPersonName,
-                String lastQueryType,
+                String lastRetrievalStrategy,
                 String lastIntent
         ) {
-            this(turnId, question, answer, focusCompanyNames, personCandidates, focusPersonName, lastQueryType, lastIntent, Map.of());
+            this(turnId, question, answer, focusCompanyNames, personCandidates, focusPersonName, lastRetrievalStrategy, lastIntent, Map.of());
         }
 
         /**
@@ -215,8 +215,8 @@ public class QaConversationService {
         if (!person.isBlank()) {
             sb.append("会话关注人物：").append(person).append('\n');
         }
-        if (last.lastQueryType() != null && !last.lastQueryType().isBlank()) {
-            sb.append("上一轮查询形态：").append(last.lastQueryType()).append('\n');
+        if (last.lastRetrievalStrategy() != null && !last.lastRetrievalStrategy().isBlank()) {
+            sb.append("上一轮检索策略：").append(last.lastRetrievalStrategy()).append('\n');
         }
         if (ruleEngine.isCorrectionQuestion(currentQuestion)) {
             String correctedName = ruleEngine.extractCorrectedEntityName(currentQuestion, "company");
@@ -292,9 +292,9 @@ public class QaConversationService {
             List<String> personCandidates,
             String focusPersonName,
             String lastIntent,
-            String lastQueryType
+            String lastRetrievalStrategy
     ) {
-        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, focusPersonName, lastIntent, lastQueryType, Map.of());
+        appendTurn(conversationId, scope, turnId, question, answer, evidence, personCandidates, focusPersonName, lastIntent, lastRetrievalStrategy, Map.of());
     }
 
     public void appendTurn(
@@ -307,7 +307,7 @@ public class QaConversationService {
             List<String> personCandidates,
             String focusPersonName,
             String lastIntent,
-            String lastQueryType,
+            String lastRetrievalStrategy,
             Map<String, List<EntityRef>> retrievedEntities
     ) {
         Conversation c = store.get(conversationId);
@@ -330,7 +330,7 @@ public class QaConversationService {
                 names,
                 persons,
                 person,
-                lastQueryType == null ? "" : lastQueryType.trim(),
+                lastRetrievalStrategy == null ? "" : lastRetrievalStrategy.trim(),
                 lastIntent == null ? "" : lastIntent.trim(),
                 retrievedEntities != null ? retrievedEntities : Map.of()
         ));
@@ -461,11 +461,9 @@ public class QaConversationService {
                 : (resolveFocusPerson(last) != null ? resolveFocusPerson(last) : "");
         List<String> focusNames = last.focusCompanyNames() != null ? last.focusCompanyNames() : List.of();
         List<EntityRef> scopedPriorCompanies = scopePriorCompaniesByQuestion(last.getCompanies(), last.question());
-        String priorStrategy = IntentSlots.strategyHintFromQueryType(last.lastQueryType());
         return FollowUpIntentContext.of(
                 last.question(),
-                last.lastQueryType(),
-                priorStrategy,
+                last.lastRetrievalStrategy(),
                 last.answer(),
                 personName,
                 scopedPriorCompanies,

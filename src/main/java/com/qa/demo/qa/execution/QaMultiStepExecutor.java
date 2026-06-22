@@ -147,7 +147,8 @@ public class QaMultiStepExecutor {
                 need,
                 constraint,
                 explicitCompanyHint,
-                appliedLearningRewrite
+                appliedLearningRewrite,
+                null
         );
         return new AgentStepResult(
                 step.id(),
@@ -177,11 +178,10 @@ public class QaMultiStepExecutor {
                 0.6,
                 "agent_document_substep",
                 "",
-                "",
                 List.of(),
                 "any",
                 null,
-                ""
+                "semantic_rag"
         );
         QaRetrievalPipeline.RetrievalResult result = retrievalPipeline.retrieveByIntent(docIntent, step.question());
         return new AgentStepResult(

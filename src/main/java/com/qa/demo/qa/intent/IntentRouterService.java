@@ -24,7 +24,7 @@ public class IntentRouterService {
     private final IntentLlmClassifier llmClassifier;
     private final IntentRuleEngine ruleEngine;
     private final IntentDecisionEnricher enricher;
-    private final QueryTypeRoutingPolicy routingPolicy;
+    private final IntentRoutingPolicy routingPolicy;
     private final FollowUpSessionHintMerger sessionHintMerger;
 
     public IntentRouterService(
@@ -32,7 +32,7 @@ public class IntentRouterService {
             IntentLlmClassifier llmClassifier,
             IntentRuleEngine ruleEngine,
             IntentDecisionEnricher enricher,
-            QueryTypeRoutingPolicy routingPolicy,
+            IntentRoutingPolicy routingPolicy,
             FollowUpSessionHintMerger sessionHintMerger
     ) {
         this.properties = properties;
@@ -63,7 +63,6 @@ public class IntentRouterService {
         if (followUp == null || !followUp.active()) {
             return decideSingleTurn(question, explicitCompanyHint, learnedForAlias);
         }
-        // 追问：规则打底 + 专用 LLM 解析，避免与单轮 LLM 重复调用
         IntentRoutingOutcome ruleBase = enricher.enrich(
                 ruleEngine.classify(question, explicitCompanyHint, "rule_followup_seed"),
                 question,
@@ -89,7 +88,7 @@ public class IntentRouterService {
                         return enricher.enrich(llmDecision, question, explicitCompanyHint, "llm", learnedForAlias);
                     }
                 } catch (Exception ignored) {
-                    // structured 场景下 LLM 辅助失败时，回退规则结果，不影响可用性
+                    // structured 场景下 LLM 辅助失败时，回退规则结果
                 }
             }
             return enricher.enrich(ruleFirst, question, explicitCompanyHint, "rule", learnedForAlias);
@@ -180,8 +179,7 @@ public class IntentRouterService {
         IntentDecision inherited = ConversationSessionSupport.inheritIntentSlots(
                 base,
                 question,
-                followUp.priorQuestion(),
-                followUp.priorQueryType(),
+                followUp.priorRetrievalStrategy(),
                 followUp.focusPersonName()
         );
         return sessionHintMerger.merge(inherited, question, followUp);
@@ -207,10 +205,11 @@ public class IntentRouterService {
                 llmDecision.intent(),
                 llmDecision.confidence(),
                 reason,
-                llmDecision.queryType(),
                 person == null ? "" : person,
                 mergedHints,
-                llmDecision.roleFocus(),
+                llmDecision.roleFocus() != null && !"any".equalsIgnoreCase(llmDecision.roleFocus())
+                        ? llmDecision.roleFocus()
+                        : (base != null && base.roleFocus() != null ? base.roleFocus() : "any"),
                 employeeId,
                 llmDecision.retrievalStrategy()
         );
@@ -281,11 +280,7 @@ public class IntentRouterService {
     }
 
     private boolean isStructuredListReady(IntentDecision decision) {
-        if (decision == null) {
-            return false;
-        }
-        String queryType = decision.queryType();
-        if (!routingPolicy.isStructuredListQueryType(queryType)) {
+        if (decision == null || !routingPolicy.isStructuredListStrategy(decision)) {
             return false;
         }
         return routingPolicy.isRetrievalReady(decision);

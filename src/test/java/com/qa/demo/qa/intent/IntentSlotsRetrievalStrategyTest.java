@@ -13,28 +13,27 @@ class IntentSlotsRetrievalStrategyTest {
     @Test
     void normalizesLlmAggregateCountStrategy() {
         IntentDecision raw = new IntentDecision(
-                "sql", 0.9, "llm", "aggregate", "", java.util.List.of(), "any", null, "aggregate_count");
+                "sql", 0.9, "llm", "", java.util.List.of(), "any", null, "aggregate_count");
         IntentDecision normalized = IntentSlots.normalize(raw);
         assertEquals("aggregate_count", normalized.retrievalStrategy());
         assertEquals(RetrievalStrategy.AGGREGATE_COUNT, normalized.resolvedRetrievalStrategy());
     }
 
     @Test
-    void derivesIntentAndQueryTypeFromAggregateCountStrategy() {
+    void derivesIntentFromAggregateCountStrategy() {
         IntentDecision raw = new IntentDecision(
-                "", 0.9, "llm", "", "", java.util.List.of(), "any", null, "aggregate_count");
+                "", 0.9, "llm", "", java.util.List.of(), "any", null, "aggregate_count");
         IntentDecision normalized = IntentSlots.normalize(raw);
         assertEquals("aggregate_count", normalized.retrievalStrategy());
         assertEquals("sql", normalized.intent());
-        assertEquals("aggregate", normalized.queryType());
     }
 
     @Test
-    void infersAggregateStrategyFromQueryTypeWhenLlmOmitsField() {
+    void infersEmptyStrategyWhenLlmOmitsField() {
         IntentDecision raw = new IntentDecision(
-                "sql", 0.8, "rule", "aggregate", "", java.util.List.of(), "any", null, "");
+                "sql", 0.8, "rule", "", java.util.List.of(), "any", null, "");
         IntentDecision normalized = IntentSlots.normalize(raw);
-        assertEquals("aggregate_count", normalized.retrievalStrategy());
+        assertEquals("", normalized.retrievalStrategy());
     }
 
     @Test

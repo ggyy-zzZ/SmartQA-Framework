@@ -2,7 +2,7 @@ package com.qa.demo.qa.orchestration;
 
 import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.knowledge.KnowledgeAssistantPrompts;
-import com.qa.demo.qa.answer.EvidenceFieldCoverageAdvisor;
+import com.qa.demo.qa.answer.EvidenceTruncationAdvisor;
 import com.qa.demo.qa.answer.MiniMaxClient;
 import com.qa.demo.qa.answer.QaAnswerFallbackService;
 import com.qa.demo.qa.answer.QaAnswerGateService;
@@ -39,10 +39,17 @@ import com.qa.demo.qa.execution.QaMultiStepExecutor;
 import com.qa.demo.qa.planning.AgentTaskPlan;
 import com.qa.demo.qa.planning.CompanyHintService;
 import com.qa.demo.qa.planning.QaTaskPlannerService;
+import com.qa.demo.qa.review.PostGenerationReviewService;
 import com.qa.demo.qa.review.QaReviewService;
+import com.qa.demo.qa.answer.EvidenceFieldCoverageAdvisor;
+import com.qa.demo.qa.retrieval.EvidencePresentationContext;
+import com.qa.demo.qa.retrieval.EvidencePresentationPolicy;
+import com.qa.demo.qa.retrieval.EvidenceTruncationMeta;
 import com.qa.demo.qa.retrieval.QaRetrievalOrchestrator;
 import com.qa.demo.qa.retrieval.QaRetrievalPipeline;
+import com.qa.demo.qa.retrieval.catalog.InformationNeedMerger;
 import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
+import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
 import com.qa.demo.qa.retrieval.certificate.CertificateListQuestionSupport;
 import com.qa.demo.qa.sedimentation.SedimentationQueueService;
 import org.springframework.stereotype.Service;
@@ -93,10 +100,15 @@ public class QaAskFlowService {
     private final TextEmbeddingService textEmbeddingService;
     private final EnterpriseCanonicalFactsRegistry canonicalFactsRegistry;
     private final NeedInferenceService needInferenceService;
+    private final InformationNeedMerger informationNeedMerger;
+    private final RetrievalCatalogRegistry retrievalCatalogRegistry;
     private final IntentScopeNormalizer intentScopeNormalizer;
     private final ConstraintResolver constraintResolver;
     private final GateMetricsWriter gateMetricsWriter;
     private final EvidenceFieldCoverageAdvisor fieldCoverageAdvisor;
+    private final EvidencePresentationPolicy evidencePresentationPolicy;
+    private final EvidenceTruncationAdvisor truncationAdvisor;
+    private final PostGenerationReviewService postGenerationReviewService;
 
     public QaAskFlowService(
             IntentRouterService intentRouterService,
@@ -123,10 +135,15 @@ public class QaAskFlowService {
             TextEmbeddingService textEmbeddingService,
             EnterpriseCanonicalFactsRegistry canonicalFactsRegistry,
             NeedInferenceService needInferenceService,
+            InformationNeedMerger informationNeedMerger,
+            RetrievalCatalogRegistry retrievalCatalogRegistry,
             IntentScopeNormalizer intentScopeNormalizer,
             ConstraintResolver constraintResolver,
             GateMetricsWriter gateMetricsWriter,
-            EvidenceFieldCoverageAdvisor fieldCoverageAdvisor
+            EvidenceFieldCoverageAdvisor fieldCoverageAdvisor,
+            EvidencePresentationPolicy evidencePresentationPolicy,
+            EvidenceTruncationAdvisor truncationAdvisor,
+            PostGenerationReviewService postGenerationReviewService
     ) {
         this.intentRouterService = intentRouterService;
         this.activeLearningService = activeLearningService;
@@ -152,10 +169,15 @@ public class QaAskFlowService {
         this.textEmbeddingService = textEmbeddingService;
         this.canonicalFactsRegistry = canonicalFactsRegistry;
         this.needInferenceService = needInferenceService;
+        this.informationNeedMerger = informationNeedMerger;
+        this.retrievalCatalogRegistry = retrievalCatalogRegistry;
         this.intentScopeNormalizer = intentScopeNormalizer;
         this.constraintResolver = constraintResolver;
         this.gateMetricsWriter = gateMetricsWriter;
         this.fieldCoverageAdvisor = fieldCoverageAdvisor;
+        this.evidencePresentationPolicy = evidencePresentationPolicy;
+        this.truncationAdvisor = truncationAdvisor;
+        this.postGenerationReviewService = postGenerationReviewService;
     }
 
     /**
@@ -179,6 +201,17 @@ public class QaAskFlowService {
             Boolean followUpFlag,
             QaAskProgress progress
     ) throws IOException {
+        return run(question, scope, conversationId, followUpFlag, null, progress);
+    }
+
+    public Map<String, Object> run(
+            String question,
+            String scope,
+            String conversationId,
+            Boolean followUpFlag,
+            String evidencePresentationMode,
+            QaAskProgress progress
+    ) throws IOException {
         // P0-S6：闸门指标埋点计时起点
         long startMs = System.currentTimeMillis();
         // --- 1. 会话与多轮上下文 ---
@@ -187,6 +220,9 @@ public class QaAskFlowService {
         String convId = conversationService.resolveConversationId(conversationId);
         List<QaConversationService.ConversationTurn> prior = conversationService.recentTurns(convId, 4);
         boolean followUpApplied = conversationService.resolveFollowUp(followUpFlag, question, prior);
+
+        EvidencePresentationContext presentation = evidencePresentationPolicy.resolve(
+                question, evidencePresentationMode, prior);
 
         // 人物澄清后用户选序号/短名时，拼回上轮原问供检索与意图使用
         question = applyPersonFollowUpQuestion(question, prior);
@@ -280,13 +316,12 @@ public class QaAskFlowService {
             intentDecision = new IntentDecision(
                     intentDecision.intent(),
                     intentDecision.confidence(),
-                    intentDecision.reason(),
-                    "company_certificate",
+                    intentDecision.reason() + "; need_override:global_certificate_list",
                     intentDecision.personName(),
                     intentDecision.companyHints(),
                     intentDecision.roleFocus(),
                     intentDecision.personEmployeeId(),
-                    intentDecision.retrievalStrategy()
+                    com.qa.demo.qa.core.RetrievalStrategy.STRUCTURED_LIST.token()
             );
         }
         progress.onThinking("intent_done", "意图识别完成。", null);
@@ -319,15 +354,9 @@ public class QaAskFlowService {
                 "retrieve",
                 multiStepPath
                         ? "正在按子任务多步检索…"
-                        : informationNeed.isTypeCatalog()
-                        ? "正在查询类型目录（枚举字典）…"
-                        : informationNeed.isAggregate()
-                        ? "正在执行统计查询（COUNT）…"
-                        : intentDecision.isPersonRoleListQuery()
-                        ? "正在查询任职关系（业务库）…"
-                        : intentDecision.isPersonCertificateListQuery()
-                        ? "正在查询证照明细（业务库）…"
-                        : "正在多路召回并重排证据…",
+                        : nullToEmpty(
+                        retrievalCatalogRegistry.thinkingMessageFor(informationNeed, intentDecision),
+                        "正在多路召回并重排证据…"),
                 null
         );
         ConstraintSet constraint = QaScopes.ENTERPRISE.equals(scope)
@@ -362,7 +391,8 @@ public class QaAskFlowService {
                     informationNeed,
                     constraint,
                     explicitCompanyHint,
-                    retrievalPlan.appliedLearningRewrite()
+                    retrievalPlan.appliedLearningRewrite(),
+                    presentation
             );
             retrievalSource = retrievalOutcome.retrievalSource();
             evidence = retrievalOutcome.evidence();
@@ -371,7 +401,7 @@ public class QaAskFlowService {
 
         // --- 8. Review：证据闸门 → 生成 / 拒答 / 澄清 ---
         QaAnswerGateService.GateDecision gate = reviewService.evaluateGate(
-                question, intentDecision, informationNeed, evidence);
+                question, intentDecision, informationNeed, evidence, retrievalSource);
         boolean unknownIntent = "unknown".equalsIgnoreCase(intentDecision.intent());
         QaReviewService.ReviewDecision review = reviewService.decideBeforeGeneration(
                 question,
@@ -426,6 +456,10 @@ public class QaAskFlowService {
             if (generated.degraded()) {
                 progress.onThinking("degrade", "模型生成失败，已切换保底回答。", null);
             }
+            PostGenerationReviewService.Adjustment postGen = postGenerationReviewService.adjust(
+                    question, answer, evidence, canAnswer, confidence, degraded);
+            canAnswer = postGen.canAnswer();
+            confidence = postGen.confidence();
         } else if (review.kind() == QaReviewService.DecisionKind.REJECT_UNKNOWN) {
             progress.onThinking("decision", "超出知识库覆盖范围。", null);
         } else if (review.kind() == QaReviewService.DecisionKind.CLARIFY_FIELD) {
@@ -434,11 +468,19 @@ public class QaAskFlowService {
             progress.onThinking("decision", "证据不足，返回补充建议。", null);
         }
 
+        EvidenceTruncationMeta truncation = retrievalRaw != null ? retrievalRaw.truncation() : null;
+        if (review.kind() == QaReviewService.DecisionKind.GENERATE) {
+            String truncationNotice = truncationAdvisor.buildNotice(truncation);
+            if (!truncationNotice.isBlank()) {
+                answer = answer + truncationNotice;
+            }
+        }
+
         // --- 9. 响应组装、事件日志、知识沉淀队列与会话落盘 ---
         Map<String, Object> response = assembleResponse(
                 turnId, question, scope, convId, followUpApplied, intentDecision, informationNeed, evidence,
                 answer, canAnswer, confidence, route, retrievalSource, retrievalRaw, gate, degraded, fallbackReason,
-                unknownIntent, taskPlan, agentStepResults
+                unknownIntent, taskPlan, agentStepResults, presentation, truncation
         );
         qaLogService.appendAskEvent(response);
         if (Boolean.TRUE.equals(response.get("knowledgeDepositTriggered"))) {
@@ -447,11 +489,11 @@ public class QaAskFlowService {
         }
         String focusPerson = intentDecision.hasPersonFocus() ? intentDecision.personName().trim() : "";
         // 从证据中提取结构化实体，供后续轮次使用
-        Map<String, List<EntityRef>> retrievedEntities = EvidenceToEntityExtractor.extractForQueryType(
-                evidence, intentDecision.queryType());
+        Map<String, List<EntityRef>> retrievedEntities = EvidenceToEntityExtractor.extractForNeed(
+                evidence, informationNeed);
         conversationService.appendTurn(
                 convId, scope, turnId, question, answer, evidence, List.of(), focusPerson,
-                intentDecision.intent(), intentDecision.queryType(), retrievedEntities);
+                intentDecision.intent(), intentDecision.retrievalStrategy(), retrievedEntities);
         // P0-S6：闸门指标埋点（主出口；type(record 完整版) 与 stage-4/8 的 recordRaw 互补）
         gateMetricsWriter.record(
                 turnId,
@@ -499,7 +541,7 @@ public class QaAskFlowService {
                 ? intentDecision.resolvedRetrievalStrategy()
                 : RetrievalStrategy.UNKNOWN;
         double confidence = intentDecision != null ? intentDecision.confidence() : 0.0;
-        return InformationNeed.mergeWithLlmStrategy(strategy, confidence, inferred);
+        return informationNeedMerger.merge(strategy, confidence, inferred, intentDecision);
     }
 
     private String applyPersonFollowUpQuestion(String question, List<QaConversationService.ConversationTurn> prior) {
@@ -623,7 +665,9 @@ public class QaAskFlowService {
             String fallbackReason,
             boolean unknownIntent,
             AgentTaskPlan taskPlan,
-            List<AgentStepResult> agentStepResults
+            List<AgentStepResult> agentStepResults,
+            EvidencePresentationContext presentation,
+            EvidenceTruncationMeta truncation
     ) {
         Map<String, Object> response = new HashMap<>();
         response.put("turnId", turnId);
@@ -656,8 +700,32 @@ public class QaAskFlowService {
         if (degraded) {
             response.put("fallbackReason", fallbackReason);
         }
+        putEvidencePresentation(response, presentation, truncation);
         reviewService.attachEvidenceAlignment(response, question, answer, evidence, canAnswer);
         return response;
+    }
+
+    private void putEvidencePresentation(
+            Map<String, Object> response,
+            EvidencePresentationContext presentation,
+            EvidenceTruncationMeta truncation
+    ) {
+        if (presentation != null) {
+            response.put("evidencePresentationMode", presentation.mode().name().toLowerCase(Locale.ROOT));
+            response.put("userEmphasizedComplete", presentation.userEmphasizedComplete());
+            response.put("evidenceTopKApplied", presentation.evidenceTopK());
+        }
+        if (truncation != null) {
+            Map<String, Object> truncationMap = new HashMap<>();
+            truncationMap.put("truncated", truncation.truncated());
+            truncationMap.put("candidatesConsidered", truncation.candidatesConsidered());
+            truncationMap.put("presentedToModel", truncation.presentedToModel());
+            truncationMap.put("configuredCap", truncation.configuredCap());
+            truncationMap.put("omittedCount", truncation.omittedCount());
+            truncationMap.put("offerFullDetail", truncation.truncated());
+            truncationMap.put("suggestedFollowUp", "展示完整数据");
+            response.put("evidenceTruncation", truncationMap);
+        }
     }
 
     private void enqueueDeposit(
@@ -693,7 +761,7 @@ public class QaAskFlowService {
             List<AgentStepResult> agentStepResults
     ) {
         Map<String, Object> routing = new HashMap<>();
-        routing.put("queryType", nullToEmpty(intentDecision.queryType(), ""));
+        routing.put("retrievalStrategy", nullToEmpty(intentDecision.retrievalStrategy(), ""));
         if (informationNeed != null) {
             routing.put("needFacet", nullToEmpty(informationNeed.facet(), ""));
             routing.put("needGranularity", nullToEmpty(informationNeed.granularity(), ""));
@@ -757,9 +825,6 @@ public class QaAskFlowService {
         response.put("intent", intentDecision.intent());
         response.put("intentConfidence", intentDecision.confidence());
         response.put("routeReason", intentDecision.reason());
-        if (intentDecision.queryType() != null && !intentDecision.queryType().isBlank()) {
-            response.put("queryType", intentDecision.queryType());
-        }
         if (intentDecision.hasRetrievalStrategy()) {
             response.put("retrievalStrategy", intentDecision.retrievalStrategy());
         }

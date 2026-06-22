@@ -15,31 +15,47 @@
     "supervisor": ["监事"],
     "shareholder": ["股东", "股权", "持股"]
   },
-  "queryTypeRules": {
-    "person_certificate_list": {
+  "strategyInferenceRules": [
+    {
+      "strategy": "structured_list",
       "requiresPerson": true,
       "anyKeywords": ["证", "证照", "许可证", "执照", "资质", "备案", "证书"],
       "listKeywords": ["哪些", "负责", "管", "列出", "多少", "什么", "涉及"]
     },
-    "person_role_list": {
+    {
+      "strategy": "graph_relational",
       "requiresPerson": true,
       "anyKeywords": ["法人", "董事", "监事", "任职", "担任"],
       "listKeywords": ["哪些", "多少", "列出", "名单"]
     },
-    "shareholder": { "anyKeywords": ["股东", "股权", "持股"] },
-    "company_certificate": {
+    {
+      "strategy": "graph_relational",
+      "requiresPerson": false,
+      "anyKeywords": ["股东", "股权", "持股"]
+    },
+    {
+      "strategy": "instance_fact",
+      "requiresPerson": false,
       "anyKeywords": [
         "证", "证照", "许可证", "执照", "资质", "营业照", "营业执照", "备案",
         "人力资源服务许可", "人力资源服务备案", "劳务派遣", "增值电信", "高新",
         "icp", "iso9001", "iso27001", "iso14001", "iso45001", "cmmi", "网络安全等级保护"
       ]
     },
-    "company_seal": {
+    {
+      "strategy": "instance_fact",
+      "requiresPerson": false,
       "anyKeywords": ["印章", "公章", "合同章", "财务章", "印鉴", "用印"]
     },
-    "aggregate": { "anyKeywords": ["多少", "统计", "数量", "总数"] },
-    "policy": { "anyKeywords": ["流程", "制度", "规定"] }
-  },
+    {
+      "strategy": "aggregate_count",
+      "anyKeywords": ["多少", "统计", "数量", "总数"]
+    },
+    {
+      "strategy": "semantic_rag",
+      "anyKeywords": ["流程", "制度", "规定"]
+    }
+  ],
   "routingKeywords": {
     "relation": ["股东", "股权", "穿透", "关系", "关联", "总公司", "分公司", "法人", "董事", "监事", "任职", "担任", "证照", "许可证", "印章", "保管人", "监管人", "关键人", "人员"],
     "document": ["流程", "规定", "制度", "政策", "步骤", "怎么办"],

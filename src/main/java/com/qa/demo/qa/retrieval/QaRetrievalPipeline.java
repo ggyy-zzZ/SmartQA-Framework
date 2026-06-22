@@ -22,6 +22,8 @@ import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogConfig;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
 import com.qa.demo.qa.retrieval.filter.FilterFieldQuestionSupport;
 import com.qa.demo.qa.retrieval.sql.AggregateCountQueryService;
+import com.qa.demo.qa.retrieval.sql.DistinctColumnQueryService;
+import com.qa.demo.qa.retrieval.sql.FilterThresholdQueryService;
 import com.qa.demo.qa.core.RetrievalStrategy;
 import org.springframework.stereotype.Service;
 
@@ -61,6 +63,8 @@ public class QaRetrievalPipeline {
     private final ConstraintResolver constraintResolver;
     private final HardConstraintGate hardConstraintGate;
     private final AggregateCountQueryService aggregateCountQueryService;
+    private final FilterThresholdQueryService filterThresholdQueryService;
+    private final DistinctColumnQueryService distinctColumnQueryService;
 
     public QaRetrievalPipeline(
             VectorContextService vectorContextService,
@@ -81,7 +85,9 @@ public class QaRetrievalPipeline {
             ConversationScopeSupport scopeSupport,
             ConstraintResolver constraintResolver,
             HardConstraintGate hardConstraintGate,
-            AggregateCountQueryService aggregateCountQueryService
+            AggregateCountQueryService aggregateCountQueryService,
+            FilterThresholdQueryService filterThresholdQueryService,
+            DistinctColumnQueryService distinctColumnQueryService
     ) {
         this.vectorContextService = vectorContextService;
         this.mysqlContextService = mysqlContextService;
@@ -102,9 +108,14 @@ public class QaRetrievalPipeline {
         this.constraintResolver = constraintResolver;
         this.hardConstraintGate = hardConstraintGate;
         this.aggregateCountQueryService = aggregateCountQueryService;
+        this.filterThresholdQueryService = filterThresholdQueryService;
+        this.distinctColumnQueryService = distinctColumnQueryService;
     }
 
-    public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
+    public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence, EvidenceTruncationMeta truncation) {
+        public RetrievalResult(String retrievalSource, List<ContextChunk> evidence) {
+            this(retrievalSource, evidence, null);
+        }
     }
 
     /**
@@ -146,7 +157,18 @@ public class QaRetrievalPipeline {
             InformationNeed need,
             ConstraintSet constraint
     ) throws IOException {
-        RetrievalPlan plan = retrievalPlanFactory.from(intent);
+        return retrieveUnifiedEnterprise(question, learned, intent, need, constraint, null);
+    }
+
+    public RetrievalResult retrieveUnifiedEnterprise(
+            String question,
+            List<ContextChunk> learned,
+            IntentDecision intent,
+            InformationNeed need,
+            ConstraintSet constraint,
+            EvidencePresentationContext presentation
+    ) throws IOException {
+        RetrievalPlan plan = retrievalPlanFactory.from(intent, need, presentation);
         RetrievalStrategy strategy = intent != null ? intent.resolvedRetrievalStrategy() : RetrievalStrategy.UNKNOWN;
 
         if (strategy == RetrievalStrategy.AGGREGATE_COUNT
@@ -155,13 +177,30 @@ public class QaRetrievalPipeline {
             if (!countEvidence.isEmpty()) {
                 return new RetrievalResult("llm_aggregate_count", countEvidence);
             }
+            return dedicatedMiss("aggregate_count");
+        }
+
+        if (need != null && FilterFieldQuestionSupport.isFilterThresholdNeed(need)) {
+            List<ContextChunk> thresholdEvidence = filterThresholdQueryService.retrieve(
+                    question, need, plan.finalEvidenceTopK());
+            if (!thresholdEvidence.isEmpty()) {
+                return new RetrievalResult("filter_threshold", thresholdEvidence);
+            }
+            return dedicatedMiss("filter_threshold");
         }
 
         if (strategy == RetrievalStrategy.TYPE_CATALOG || (need != null && need.isTypeCatalog())) {
-            RetrievalResult catalogOnly = retrieveTypeCatalogOnly(need, plan);
+            RetrievalResult catalogOnly = retrieveTypeCatalogOnly(question, need, plan);
             if (catalogOnly != null) {
                 return catalogOnly;
             }
+            return dedicatedMiss("type_catalog");
+        }
+
+        RetrievalExecutionProfile execution = plan.execution();
+        if (execution.dedicatedListPath() || execution.dedicatedCertificatePath()) {
+            return retrieveDedicatedStructured(
+                    question, intent, plan, need, constraint, execution);
         }
 
         List<ContextChunk> merged = collectHybridCandidatesExpanded(question, plan, need, constraint);
@@ -170,21 +209,8 @@ public class QaRetrievalPipeline {
         base = appendSupplementalTables(base, question, plan);
         base = appendEmployeeBaseInfo(base, question, plan);
         base = appendPersonIdentityEvidence(base, question, intent);
-        base = appendCatalogEvidence(base, need);
 
-        String queryType = intent != null ? intent.queryType() : "";
         base = applyConfigDrivenTruncation(base, plan);
-
-        if (need != null && need.isTypeCatalog() && hasEvidenceSchema(base.evidence(), "catalog_v1")) {
-            return trimTypeCatalogEvidence(base.evidence(), plan.finalEvidenceTopK());
-        }
-        RetrievalExecutionProfile execution = plan.execution();
-        if (execution.dedicatedCertificatePath() && (need == null || !need.isTypeCatalog()) && execution.hasRouteLabel()) {
-            return new RetrievalResult(execution.routeLabel(), base.evidence());
-        }
-        if (execution.dedicatedListPath() && execution.hasRouteLabel()) {
-            return trimEvidence(base.evidence(), plan.finalEvidenceTopK(), execution.routeLabel());
-        }
 
         // Pre-rerank 闸门：rerank 前再过一道硬约束（防"召回源过滤 + 主动学习合并"引入违例）
         List<ContextChunk> preGateKept = hardConstraintGate.apply(base.evidence(), constraint).kept();
@@ -196,16 +222,26 @@ public class QaRetrievalPipeline {
         // Post-rerank 闸门：rerank 后兜底，避免 rerank 把上海分公司塞进"北京"问句
         List<ContextChunk> postGateKept = hardConstraintGate.apply(reranked, constraint).kept();
         String source = "unified_constrained_rerank_" + evidenceRerankService.activeProvider();
-        return new RetrievalResult(source, postGateKept);
+        EvidenceTruncationMeta truncation = EvidenceTruncationMeta.of(
+                forRerank.size(), postGateKept.size(), plan.finalEvidenceTopK());
+        return new RetrievalResult(source, postGateKept, truncation);
     }
 
     /**
-     * P3：type_catalog 专用通路 — 只拉枚举目录，不跑 hybrid + rerank。
+     * P3：type_catalog 专用通路 — schema 列匹配 + DISTINCT 查库；无法匹配列时回退 enum catalog。
      */
     private RetrievalResult retrieveTypeCatalogOnly(
+            String question,
             InformationNeed need,
             RetrievalPlan plan
     ) {
+        List<ContextChunk> distinct = distinctColumnQueryService.retrieve(question, plan.finalEvidenceTopK());
+        if (!distinct.isEmpty()) {
+            return trimTypeCatalogEvidence(distinct, plan.finalEvidenceTopK());
+        }
+        if (distinctColumnQueryService.resolveColumn(question).isPresent()) {
+            return null;
+        }
         List<RetrievalCatalogConfig.DimensionDef> dimensions = catalogRegistry.matchDimensions(need);
         if (dimensions.isEmpty()) {
             return null;
@@ -215,6 +251,51 @@ public class QaRetrievalPipeline {
             return null;
         }
         return trimTypeCatalogEvidence(catalog, plan.finalEvidenceTopK());
+    }
+
+    private static RetrievalResult dedicatedMiss(String reason) {
+        return new RetrievalResult("dedicated_miss:" + reason, List.of());
+    }
+
+    private RetrievalResult retrieveDedicatedStructured(
+            String question,
+            IntentDecision intent,
+            RetrievalPlan plan,
+            InformationNeed need,
+            ConstraintSet constraint,
+            RetrievalExecutionProfile execution
+    ) throws IOException {
+        List<ContextChunk> merged = collectDedicatedCandidates(question, plan);
+        if (merged.isEmpty()) {
+            String miss = execution.dedicatedListPath() ? "dedicated_list" : "dedicated_certificate";
+            return dedicatedMiss(miss);
+        }
+        RetrievalResult base = new RetrievalResult("dedicated_structured", merged);
+        if (!execution.skipEmployeeBaseAppend()) {
+            base = appendEmployeeBaseInfo(base, question, plan);
+        }
+        base = appendPersonIdentityEvidence(base, question, intent);
+        base = applyConfigDrivenTruncation(base, plan);
+        List<ContextChunk> kept = hardConstraintGate.apply(base.evidence(), constraint).kept();
+        if (kept.isEmpty()) {
+            String miss = execution.dedicatedListPath() ? "dedicated_list" : "dedicated_certificate";
+            return dedicatedMiss(miss);
+        }
+        String label = execution.hasRouteLabel() ? execution.routeLabel() : "dedicated_structured";
+        if (execution.skipTruncation()) {
+            return new RetrievalResult(label, kept);
+        }
+        return trimEvidence(kept, plan.finalEvidenceTopK(), label);
+    }
+
+    private List<ContextChunk> collectDedicatedCandidates(String question, RetrievalPlan plan) throws IOException {
+        List<ContextChunk> merged = new ArrayList<>();
+        RetrievalExecutionProfile execution = plan.execution();
+        appendUnique(merged, safeSqlRetrieve(question, plan));
+        if (execution.includeCompiledDocs()) {
+            appendUnique(merged, safeDocumentRetrieve(question));
+        }
+        return merged;
     }
 
     private RetrievalResult appendCatalogEvidence(RetrievalResult base, InformationNeed need) {
@@ -246,7 +327,10 @@ public class QaRetrievalPipeline {
         if (plan != null && plan.execution() != null && plan.execution().skipTruncation()) {
             return base;
         }
-        String queryType = plan != null && plan.intent() != null ? plan.intent().queryType() : "";
+        String truncationKey = "";
+        if (plan != null && plan.intent() != null) {
+            truncationKey = plan.intent().resolvedRetrievalStrategy().token();
+        }
         List<ContextChunk> evidence = base.evidence();
         int topK = 20; // default
 
@@ -261,8 +345,8 @@ public class QaRetrievalPipeline {
         for (java.util.Map.Entry<String, Long> entry : sourceCounts.entrySet()) {
             String source = entry.getKey();
             long count = entry.getValue();
-            if (ruleEngine.shouldTruncate(source, queryType, count)) {
-                int threshold = ruleEngine.getTruncationThreshold(source, queryType);
+            if (ruleEngine.shouldTruncate(source, truncationKey, count)) {
+                int threshold = ruleEngine.getTruncationThreshold(source, truncationKey);
                 if (evidence.size() > threshold) {
                     evidence = new ArrayList<>(evidence.subList(0, (int) threshold));
                     return new RetrievalResult("truncated_" + base.retrievalSource(), evidence);
@@ -278,7 +362,8 @@ public class QaRetrievalPipeline {
     }
 
     public RetrievalResult retrieveByIntent(IntentDecision intent, String question) throws IOException {
-        RetrievalPlan plan = retrievalPlanFactory.from(intent);
+        InformationNeed need = needInferenceService.infer(question, intent);
+        RetrievalPlan plan = retrievalPlanFactory.from(intent, need);
         String normalized = intent.intent() == null ? "" : intent.intent().toLowerCase();
         RetrievalResult base = switch (normalized) {
             case "graph", "hybrid" -> retrieveHybrid(question, plan);
@@ -292,7 +377,6 @@ public class QaRetrievalPipeline {
         RetrievalResult withSupplemental = appendSupplementalTables(base, question, plan);
         RetrievalResult withEmployee = appendEmployeeBaseInfo(withSupplemental, question, plan);
         RetrievalResult withIdentity = appendPersonIdentityEvidence(withEmployee, question, intent);
-        InformationNeed need = needInferenceService.infer(question, intent);
         RetrievalResult withCatalog = appendCatalogEvidence(withIdentity, need);
         List<ContextChunk> narrowed = plan.execution().shouldApplyCorrectionNarrow()
                 ? applyCorrectionNarrow(question, withCatalog.evidence(), plan.execution().correctionEntityKind())
@@ -526,10 +610,13 @@ public class QaRetrievalPipeline {
 
     private RetrievalResult trimEvidence(List<ContextChunk> merged, int cap, String retrievalSource) {
         int limit = Math.max(1, cap);
+        int before = merged.size();
+        List<ContextChunk> out = merged;
         if (merged.size() > limit) {
-            merged = new ArrayList<>(merged.subList(0, limit));
+            out = new ArrayList<>(merged.subList(0, limit));
         }
-        return new RetrievalResult(retrievalSource, merged);
+        EvidenceTruncationMeta truncation = EvidenceTruncationMeta.of(before, out.size(), limit);
+        return new RetrievalResult(retrievalSource, out, truncation);
     }
 
     private List<String> extractPotentialNames(String question) {
@@ -758,6 +845,9 @@ public class QaRetrievalPipeline {
         RetrievalExecutionProfile execution = plan.execution();
         if (execution.dedicatedListPath() || execution.dedicatedCertificatePath()) {
             appendUnique(merged, safeSqlRetrieve(question, plan));
+            if (execution.includeCompiledDocs()) {
+                appendUnique(merged, safeDocumentRetrieve(question));
+            }
             return merged;
         }
         // 向量召回带 region/office 过滤（D3："在北京" = registered OR office）
@@ -769,6 +859,22 @@ public class QaRetrievalPipeline {
             appendUnique(merged, safeDocumentRetrieve(question));
         }
         return merged;
+    }
+
+    private void appendHybridRecallFallback(
+            String question,
+            RetrievalPlan plan,
+            InformationNeed need,
+            ConstraintSet constraint,
+            List<ContextChunk> merged
+    ) throws IOException {
+        appendUnique(merged, vectorContextService.retrieveTopChunks(
+                question, properties.getRecallVectorTopK(), constraint));
+        appendUnique(merged, safeMysqlRetrieve(question));
+        appendUnique(merged, safeSqlRetrieve(question, plan));
+        if (shouldIncludeCompiledDocs(plan, question)) {
+            appendUnique(merged, safeDocumentRetrieve(question));
+        }
     }
 
     private static void appendUnique(List<ContextChunk> merged, List<ContextChunk> items) {
@@ -847,11 +953,10 @@ public class QaRetrievalPipeline {
         if (plan.intent() == null) {
             return false;
         }
-        String queryType = plan.intent().queryType();
-        if (queryType == null || queryType.isBlank()) {
-            return false;
+        if (plan.need() != null && catalogRegistry.preferCompiledDocsForNeed(plan.need(), plan.intent())) {
+            return true;
         }
-        return catalogRegistry.executionFor(queryType).includeCompiledDocs();
+        return false;
     }
 
     private List<ContextChunk> safeDocumentRetrieve(String question) {

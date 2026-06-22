@@ -10,17 +10,12 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 /**
  * 多轮追问时合并会话中的实体 hint（通用指代/接续检测，规则来自配置）。
  */
 @Component
 public class FollowUpSessionHintMerger {
-
-    private static final Set<String> PLACEHOLDER_QUERY_TYPES = Set.of(
-            "", "unknown", "semantic", "mixed"
-    );
 
     private final ConversationScopeSupport scopeSupport;
 
@@ -38,10 +33,16 @@ public class FollowUpSessionHintMerger {
                 || scopeSupport.isCatalogQuestion(q)) {
             return decision;
         }
-        decision = switchFollowUpQueryType(decision, q, context);
+        decision = switchFollowUpStrategy(decision, q, context);
         boolean continuation = scopeSupport.isContinuationUtterance(q) || scopeSupport.referencesPriorSubjects(q);
-        IntentDecision normalized = normalizeContinuationQueryType(decision, q, context, continuation);
+        IntentDecision normalized = normalizeContinuationStrategy(decision, q, context, continuation);
         if (!continuation) {
+            return normalized;
+        }
+
+        boolean inheritEntities = scopeSupport.referencesPriorSubjects(q)
+                || containsPronounReference(q);
+        if (!inheritEntities) {
             return normalized;
         }
 
@@ -84,7 +85,6 @@ public class FollowUpSessionHintMerger {
                 normalized.intent(),
                 normalized.confidence(),
                 reason,
-                normalized.queryType(),
                 normalized.personName(),
                 List.copyOf(filtered),
                 normalized.roleFocus(),
@@ -93,7 +93,15 @@ public class FollowUpSessionHintMerger {
         );
     }
 
-    private IntentDecision normalizeContinuationQueryType(
+    private static boolean containsPronounReference(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String q = question.strip();
+        return q.contains("他") || q.contains("她") || q.contains("其") || q.contains("它们") || q.contains("他们");
+    }
+
+    private IntentDecision normalizeContinuationStrategy(
             IntentDecision decision,
             String question,
             FollowUpIntentContext context,
@@ -102,44 +110,43 @@ public class FollowUpSessionHintMerger {
         if (!continuation || scopeSupport.isCatalogQuestion(question)) {
             return decision;
         }
-        String priorQt = context.priorQueryType() == null ? "" : context.priorQueryType().trim();
-        if (priorQt.isBlank()) {
+        String priorStrategy = context.priorRetrievalStrategy() == null ? "" : context.priorRetrievalStrategy().trim();
+        if (priorStrategy.isBlank()) {
             return decision;
         }
-        String currentQt = decision.queryType() == null ? "" : decision.queryType().trim();
-        if (!isPlaceholderQueryType(currentQt)) {
+        String currentStrategy = decision.retrievalStrategy() == null ? "" : decision.retrievalStrategy().trim();
+        if (!currentStrategy.isBlank() && !"unknown".equalsIgnoreCase(currentStrategy)) {
             return decision;
         }
         String reason = decision.reason() == null ? "" : decision.reason();
-        if (!reason.contains("followup_querytype_inherit")) {
-            reason = (reason.isBlank() ? "" : reason + "; ") + "followup_querytype_inherit";
+        if (!reason.contains("followup_strategy_inherit")) {
+            reason = (reason.isBlank() ? "" : reason + "; ") + "followup_strategy_inherit";
         }
         return new IntentDecision(
                 decision.intent(),
                 decision.confidence(),
                 reason,
-                priorQt,
                 decision.personName(),
                 decision.companyHints(),
                 decision.roleFocus(),
                 decision.personEmployeeId(),
-                decision.retrievalStrategy()
+                priorStrategy
         );
     }
 
     /**
-     * 上轮任职列表 + 本轮证照语义 → 切换为证照实例查询（Q-02）。
+     * 上轮任职列表 + 本轮证照语义 → 切换为证照结构化列表（Q-02）。
      */
-    private IntentDecision switchFollowUpQueryType(
+    private IntentDecision switchFollowUpStrategy(
             IntentDecision decision,
             String question,
             FollowUpIntentContext context
     ) {
-        String priorQt = context.priorQueryType() == null ? "" : context.priorQueryType().trim();
-        if (!"person_role_list".equalsIgnoreCase(priorQt)) {
+        String priorStrategy = context.priorRetrievalStrategy() == null ? "" : context.priorRetrievalStrategy().trim();
+        if (!RetrievalStrategy.GRAPH_RELATIONAL.token().equalsIgnoreCase(priorStrategy)) {
             return decision;
         }
-        if (decision.isPersonCertificateListQuery() || decision.isCompanyComplianceQuery()) {
+        if (RetrievalStrategy.STRUCTURED_LIST.token().equalsIgnoreCase(decision.retrievalStrategy())) {
             return decision;
         }
         if (!looksLikeCertificateInstanceFollowUp(question)) {
@@ -149,14 +156,13 @@ public class FollowUpSessionHintMerger {
                 ? decision.personName()
                 : context.focusPersonName();
         String reason = decision.reason() == null ? "" : decision.reason();
-        if (!reason.contains("followup_querytype_switch")) {
-            reason = (reason.isBlank() ? "" : reason + "; ") + "followup_querytype_switch:person_certificate_list";
+        if (!reason.contains("followup_strategy_switch")) {
+            reason = (reason.isBlank() ? "" : reason + "; ") + "followup_strategy_switch:structured_list";
         }
         return new IntentDecision(
                 "mysql",
                 Math.max(decision.confidence(), 0.85),
                 reason,
-                "person_certificate_list",
                 person == null ? "" : person,
                 decision.companyHints(),
                 decision.roleFocus() == null || decision.roleFocus().isBlank() ? "any" : decision.roleFocus(),
@@ -218,13 +224,6 @@ public class FollowUpSessionHintMerger {
             return new InheritedCompanyScope(List.copyOf(names), false);
         }
         return new InheritedCompanyScope(List.copyOf(names), scoped);
-    }
-
-    private static boolean isPlaceholderQueryType(String queryType) {
-        if (queryType == null || queryType.isBlank()) {
-            return true;
-        }
-        return PLACEHOLDER_QUERY_TYPES.contains(queryType.toLowerCase(Locale.ROOT));
     }
 
     private static void appendMissing(List<String> merged, List<String> extras) {

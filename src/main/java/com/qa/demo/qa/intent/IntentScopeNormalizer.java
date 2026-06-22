@@ -39,7 +39,6 @@ public class IntentScopeNormalizer {
                 decision.confidence(),
                 reason,
                 "",
-                "",
                 List.of(),
                 decision.roleFocus(),
                 null,

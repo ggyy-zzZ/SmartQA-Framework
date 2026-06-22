@@ -27,9 +27,6 @@ public final class ConversationSessionSupport {
                 "具体", "详细", "分别", "哪些", "什么", "谁", "不对", "不是", "错了");
     }
 
-    /**
-     * 显式公司名不应单独阻断多轮；长句独立新问题除外。
-     */
     public static boolean shouldTreatAsFollowUpDespiteCompanyHint(String question, boolean hasPriorTurn, boolean isCorrection) {
         if (!hasPriorTurn || question == null) {
             return false;
@@ -75,26 +72,25 @@ public final class ConversationSessionSupport {
     public static IntentDecision inheritIntentSlots(
             IntentDecision current,
             String question,
-            String priorQuestion,
-            String priorQueryType,
+            String priorRetrievalStrategy,
             String focusPersonName
     ) {
         if (current == null) {
             return null;
         }
         String person = current.personName() == null ? "" : current.personName().trim();
-        String queryType = current.queryType() == null ? "" : current.queryType().trim();
-        String priorQt = priorQueryType == null ? "" : priorQueryType.trim();
+        String strategy = current.retrievalStrategy() == null ? "" : current.retrievalStrategy().trim();
+        String priorStrategy = priorRetrievalStrategy == null ? "" : priorRetrievalStrategy.trim();
         String focus = focusPersonName == null ? "" : focusPersonName.trim();
 
         if (person.isBlank() && !focus.isBlank()) {
             person = focus;
         }
-        if (queryType.isBlank() && !priorQt.isBlank() && isContinuationUtterance(question)) {
-            queryType = priorQt;
+        if (strategy.isBlank() && !priorStrategy.isBlank() && isContinuationUtterance(question)) {
+            strategy = priorStrategy;
         }
 
-        if (person.equals(current.personName()) && queryType.equals(current.queryType())) {
+        if (person.equals(current.personName()) && strategy.equals(current.retrievalStrategy())) {
             return current;
         }
         String reason = current.reason() == null ? "" : current.reason();
@@ -105,12 +101,11 @@ public final class ConversationSessionSupport {
                 current.intent(),
                 current.confidence(),
                 reason,
-                queryType,
                 person,
                 current.companyHints(),
                 current.roleFocus(),
                 current.personEmployeeId(),
-                current.retrievalStrategy()
+                strategy
         );
     }
 
@@ -118,9 +113,8 @@ public final class ConversationSessionSupport {
         if (text == null) {
             return false;
         }
-        String lower = text.toLowerCase(Locale.ROOT);
-        for (String n : needles) {
-            if (n != null && (text.contains(n) || lower.contains(n.toLowerCase(Locale.ROOT)))) {
+        for (String needle : needles) {
+            if (needle != null && text.contains(needle)) {
                 return true;
             }
         }

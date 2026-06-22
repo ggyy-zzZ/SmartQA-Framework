@@ -3,6 +3,7 @@ package com.qa.demo.qa.retrieval.catalog;
 import com.qa.demo.qa.config.BusinessRulesConfig;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.core.RetrievalStrategy;
 import com.qa.demo.qa.domain.ConversationScopeSupport;
 import org.springframework.stereotype.Component;
 
@@ -46,6 +47,14 @@ public class NeedInferenceService {
             if (CertificateListQuestionSupport.isUnscopedGlobalCertificateList(q)) {
                 return CertificateListQuestionSupport.globalCertificateNeed();
             }
+            InformationNeed pronounCert = inferPronounCertificateList(q);
+            if (pronounCert != null) {
+                return pronounCert;
+            }
+            InformationNeed pronounRole = inferPronounRoleList(q);
+            if (pronounRole != null) {
+                return pronounRole;
+            }
             if (RegionListQuestionSupport.isRegionCompanyList(q, regionResolver)) {
                 return RegionListQuestionSupport.regionCompanyNeed();
             }
@@ -59,7 +68,7 @@ public class NeedInferenceService {
                 if (fromRules.isTypeCatalog()) {
                     return fromRules;
                 }
-                if (!shouldPreferQueryTypeNeed(q, intent, fromRules)) {
+                if (!shouldPreferIntentSlotsNeed(q, intent, fromRules)) {
                     return fromRules;
                 }
             }
@@ -71,16 +80,152 @@ public class NeedInferenceService {
                         0.88,
                         "inference_heuristic:type_catalog"
                 );
-                if (!shouldPreferQueryTypeNeed(q, intent, heuristic)) {
+                if (!shouldPreferIntentSlotsNeed(q, intent, heuristic)) {
                     return heuristic;
                 }
             }
         }
-        InformationNeed mapped = mapFromQueryType(intent);
+        InformationNeed mapped = inferFromIntentSlots(q, intent);
         if (mapped != null) {
             return mapped;
         }
         return InformationNeed.defaultSemantic();
+    }
+
+    /**
+     * 由检索策略与槽位推断 need，不再依赖 queryType 映射表。
+     */
+    private InformationNeed inferFromIntentSlots(String question, IntentDecision intent) {
+        if (intent == null) {
+            return null;
+        }
+        RetrievalStrategy strategy = intent.resolvedRetrievalStrategy();
+        double confidence = intent.confidence();
+        if (strategy == RetrievalStrategy.AGGREGATE_COUNT) {
+            return new InformationNeed(
+                    "aggregate",
+                    InformationNeed.GRANULARITY_AGGREGATE,
+                    false,
+                    confidence,
+                    "intent_slots:aggregate_count"
+            );
+        }
+        if (strategy == RetrievalStrategy.TYPE_CATALOG) {
+            return new InformationNeed(
+                    "catalog",
+                    InformationNeed.GRANULARITY_TYPE_CATALOG,
+                    true,
+                    confidence,
+                    "intent_slots:type_catalog"
+            );
+        }
+        if (intent.hasPersonFocus()) {
+            if (isRoleFocus(intent.roleFocus())
+                    || strategy == RetrievalStrategy.GRAPH_RELATIONAL
+                    || looksLikeRoleRelationQuestion(question)) {
+                return new InformationNeed(
+                        "role",
+                        "list",
+                        true,
+                        confidence,
+                        "inference_rule:role_list"
+                );
+            }
+            if (strategy == RetrievalStrategy.STRUCTURED_LIST && looksLikeCertificateListQuestion(question)) {
+                return new InformationNeed(
+                        "certificate",
+                        InformationNeed.GRANULARITY_INSTANCE,
+                        true,
+                        confidence,
+                        "inference_rule:certificate_instance"
+                );
+            }
+        }
+        if (intent.hasCompanyHints() && !intent.hasPersonFocus()) {
+            if (strategy == RetrievalStrategy.INSTANCE_FACT
+                    || strategy == RetrievalStrategy.STRUCTURED_LIST) {
+                return new InformationNeed(
+                        "profile",
+                        InformationNeed.GRANULARITY_INSTANCE,
+                        false,
+                        confidence,
+                        "intent_slots:company_profile"
+                );
+            }
+        }
+        if (strategy == RetrievalStrategy.SEMANTIC_RAG) {
+            return InformationNeed.defaultSemantic();
+        }
+        return null;
+    }
+
+    private static boolean isRoleFocus(String roleFocus) {
+        if (roleFocus == null || roleFocus.isBlank() || "any".equalsIgnoreCase(roleFocus)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean looksLikeRoleRelationQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String q = question.toLowerCase(Locale.ROOT);
+        return q.contains("法人") || q.contains("法定代表人")
+                || q.contains("董事") || q.contains("监事")
+                || q.contains("任职") || q.contains("担任")
+                || q.contains("股东") || q.contains("股权");
+    }
+
+    private static InformationNeed inferPronounCertificateList(String question) {
+        if (question == null || question.isBlank()) {
+            return null;
+        }
+        String lower = question.toLowerCase(Locale.ROOT);
+        if (!containsAny(lower, "他有哪些", "她有哪些", "它有哪些", "其有哪些")) {
+            return null;
+        }
+        if (!looksLikeCertificateListQuestion(question)) {
+            return null;
+        }
+        return new InformationNeed(
+                "certificate",
+                InformationNeed.GRANULARITY_INSTANCE,
+                true,
+                0.86,
+                "inference_rule:pronoun_certificate_list"
+        );
+    }
+
+    private static InformationNeed inferPronounRoleList(String question) {
+        if (question == null || question.isBlank()) {
+            return null;
+        }
+        String lower = question.toLowerCase(Locale.ROOT);
+        if (!containsAny(lower, "他", "她", "其")) {
+            return null;
+        }
+        if (!looksLikeRoleRelationQuestion(question)) {
+            return null;
+        }
+        return new InformationNeed(
+                "role",
+                "list",
+                true,
+                0.86,
+                "inference_rule:pronoun_role_list"
+        );
+    }
+
+    private static boolean looksLikeCertificateListQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String q = question.toLowerCase(Locale.ROOT);
+        boolean cert = q.contains("证照") || q.contains("资质") || q.contains("许可证")
+                || q.contains("执照") || q.contains("备案");
+        boolean list = q.contains("哪些") || q.contains("列出") || q.contains("多少");
+        return cert && list;
     }
 
     /** catalog 问法优先于 queryType 映射，避免「公司经营状态有哪些种类」被 semantic 覆盖。 */
@@ -92,7 +237,7 @@ public class NeedInferenceService {
                     InformationNeed.GRANULARITY_TYPE_CATALOG,
                     true,
                     0.92,
-                    "inference_forced:operating_status_catalog"
+                    "inference_heuristic:type_catalog"
             );
         }
         if (!scopeSupport.isCatalogQuestion(question)) {
@@ -104,7 +249,7 @@ public class NeedInferenceService {
                     InformationNeed.GRANULARITY_TYPE_CATALOG,
                     true,
                     0.92,
-                    "inference_forced:operating_status_catalog"
+                    "inference_heuristic:type_catalog"
             );
         }
         if (looksLikeTypeCatalogQuestion(question)) {
@@ -135,7 +280,7 @@ public class NeedInferenceService {
             if (rule == null || rule.getNeed() == null) {
                 continue;
             }
-            if (keywordsMatch(lower, rule.getExcludeKeywords(), true)) {
+            if (!rule.getExcludeKeywords().isEmpty() && keywordsMatch(lower, rule.getExcludeKeywords(), true)) {
                 continue;
             }
             if (!rule.getAllKeywords().isEmpty() && !keywordsMatch(lower, rule.getAllKeywords(), false)) {
@@ -205,31 +350,14 @@ public class NeedInferenceService {
         return typeIntent && certContext;
     }
 
-    private InformationNeed mapFromQueryType(IntentDecision intent) {
-        if (intent == null || intent.queryType() == null || intent.queryType().isBlank()) {
-            return null;
-        }
-        RetrievalCatalogConfig.NeedTemplate mapped = catalogRegistry.mapQueryType(intent.queryType());
-        if (mapped == null || mapped.getFacet() == null || mapped.getFacet().isBlank()) {
-            return null;
-        }
-        return new InformationNeed(
-                mapped.getFacet(),
-                mapped.getGranularity(),
-                mapped.isListExpected(),
-                intent.confidence(),
-                "query_type_mapping:" + intent.queryType()
-        );
-    }
-
-    private boolean shouldPreferQueryTypeNeed(String question, IntentDecision intent, InformationNeed candidate) {
+    private boolean shouldPreferIntentSlotsNeed(String question, IntentDecision intent, InformationNeed candidate) {
         if (candidate == null || !candidate.isTypeCatalog() || intent == null) {
             return false;
         }
         if (scopeSupport.isCatalogQuestion(question)) {
             return false;
         }
-        InformationNeed mapped = mapFromQueryType(intent);
+        InformationNeed mapped = inferFromIntentSlots(question, intent);
         if (mapped == null || mapped.granularity() == null
                 || InformationNeed.GRANULARITY_TYPE_CATALOG.equalsIgnoreCase(mapped.granularity())) {
             return false;

@@ -18,7 +18,8 @@ public final class CertificateListQuestionSupport {
                 && "certificate".equalsIgnoreCase(need.facet())
                 && InformationNeed.GRANULARITY_INSTANCE.equalsIgnoreCase(need.granularity())
                 && need.reason() != null
-                && need.reason().startsWith("inference:global_certificate_list");
+                && (need.reason().startsWith("inference:global_certificate_list")
+                || need.reason().startsWith("inference_rule:global_certificate_list"));
     }
 
     public static InformationNeed globalCertificateNeed() {
@@ -27,7 +28,7 @@ public final class CertificateListQuestionSupport {
                 InformationNeed.GRANULARITY_INSTANCE,
                 true,
                 0.88,
-                "inference:global_certificate_list"
+                "inference_rule:global_certificate_list"
         );
     }
 

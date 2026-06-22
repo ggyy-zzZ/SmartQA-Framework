@@ -1,10 +1,12 @@
 package com.qa.demo.qa.intent;
 
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.domain.PersonNameParser;
 import com.qa.demo.qa.domain.QuestionEntityExtractor;
 import com.qa.demo.qa.retrieval.EmployeeBaseKnowledgeService;
+import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -18,17 +20,23 @@ public class PersonClarificationAdvisor {
 
     private final QuestionEntityExtractor entityExtractor;
     private final EmployeeBaseKnowledgeService employeeBaseKnowledge;
+    private final RetrievalCatalogRegistry catalogRegistry;
 
     public PersonClarificationAdvisor(
             QuestionEntityExtractor entityExtractor,
-            EmployeeBaseKnowledgeService employeeBaseKnowledge
+            EmployeeBaseKnowledgeService employeeBaseKnowledge,
+            RetrievalCatalogRegistry catalogRegistry
     ) {
         this.entityExtractor = entityExtractor;
         this.employeeBaseKnowledge = employeeBaseKnowledge;
+        this.catalogRegistry = catalogRegistry;
     }
 
-    public boolean needsClarification(IntentDecision intent, List<ContextChunk> evidence, String question) {
-        if (intent == null || !intent.isPersonRoleListQuery()) {
+    public boolean needsClarification(IntentDecision intent, InformationNeed need, List<ContextChunk> evidence, String question) {
+        if (!catalogRegistry.requiresPersonClarification(need, intent)) {
+            return false;
+        }
+        if (intent == null) {
             return false;
         }
         String person = intent.personName();

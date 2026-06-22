@@ -8,6 +8,7 @@ import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.QaScopes;
+import com.qa.demo.qa.retrieval.EvidencePresentationContext;
 import com.qa.demo.qa.retrieval.QaRetrievalPipeline;
 import org.springframework.stereotype.Service;
 
@@ -63,12 +64,13 @@ public class QaExecutionService {
             InformationNeed informationNeed,
             ConstraintSet constraint,
             boolean explicitCompanyHint,
-            boolean appliedLearningRewrite
+            boolean appliedLearningRewrite,
+            EvidencePresentationContext presentation
     ) throws IOException {
         QaRetrievalPipeline.RetrievalResult result;
         if (QaScopes.ENTERPRISE.equals(scope) && properties.isUnifiedRetrievalEnabled()) {
             result = retrievalPipeline.retrieveUnifiedEnterprise(
-                    retrievalQuestion, learnedFirst, intentDecision, informationNeed, constraint);
+                    retrievalQuestion, learnedFirst, intentDecision, informationNeed, constraint, presentation);
         } else if (retrievalPipeline.preferActiveLearning(question, explicitCompanyHint, learnedFirst)) {
             result = new QaRetrievalPipeline.RetrievalResult("active_learning_priority", learnedFirst);
         } else {

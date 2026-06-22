@@ -1,7 +1,6 @@
 package com.qa.demo.qa.domain;
 
 import com.qa.demo.qa.config.BusinessRulesConfig;
-import com.qa.demo.qa.config.BusinessRulesConfig.QueryTypeCondition;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -80,37 +79,27 @@ public class ScenarioRuleEngine {
     }
 
     /**
-     * 判断是否为某类查询。
-     * 查询类型从 business-rules.json 的 intentRules.queryTypeConditions 读取。
-     *
-     * @param question 原始问句
-     * @param personName 已提取的人名（可为null）
-     * @param queryTypeId 查询类型ID (e.g., "person_certificate_list")
+     * 根据数据源和检索策略获取截断阈值。
      */
-    public boolean isQueryType(String question, String personName, String queryTypeId) {
-        if (question == null || question.isBlank() || queryTypeId == null || queryTypeId.isBlank()) {
-            return false;
+    public int getTruncationThreshold(String source, String retrievalStrategy) {
+        if (source == null || retrievalStrategy == null) {
+            return Integer.MAX_VALUE;
         }
-        String t = question.strip().toLowerCase();
+        for (BusinessRulesConfig.SourceThreshold threshold : config.getRetrievalThresholds().getSourceThresholds()) {
+            if (source.equals(threshold.getSource())
+                    && retrievalStrategy.equalsIgnoreCase(threshold.getRetrievalStrategy())) {
+                return threshold.getMinCount();
+            }
+        }
+        return Integer.MAX_VALUE;
+    }
 
-        for (QueryTypeCondition condition : config.getIntentRules().getQueryTypeConditions()) {
-            if (!queryTypeId.equals(condition.getId())) {
-                continue;
-            }
-            // 检查关键词
-            if (!containsAny(t, condition.getKeywords())) {
-                return false;
-            }
-            // 检查是否需要人名
-            if (condition.isRequiresPerson()) {
-                String person = personName == null ? extractPersonName(question) : personName;
-                if (person == null || person.isBlank()) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        return false;
+    /**
+     * 检查是否需要触发截断。
+     */
+    public boolean shouldTruncate(String source, String retrievalStrategy, long currentCount) {
+        int threshold = getTruncationThreshold(source, retrievalStrategy);
+        return currentCount >= threshold;
     }
 
     public boolean questionSuggestsCompiledDocs(String question) {
@@ -121,72 +110,6 @@ public class ScenarioRuleEngine {
             if (keyword != null && !keyword.isBlank() && question.contains(keyword.trim())) {
                 return true;
             }
-        }
-        return false;
-    }
-
-    /**
-     * 推断查询类型：在全部匹配条件中取关键词命中数最高者；同分时优先需要人名且问句已有人名的条件。
-     */
-    public String inferQueryType(String question, String personName) {
-        if (question == null || question.isBlank()) {
-            return "";
-        }
-        if (looksLikeFilterRuleStatement(question)) {
-            return "";
-        }
-        String t = question.strip().toLowerCase();
-        String resolvedPerson = personName == null ? extractPersonName(question) : personName;
-        boolean hasPerson = resolvedPerson != null && !resolvedPerson.isBlank();
-
-        String bestQueryType = "";
-        int bestScore = 0;
-        boolean bestRequiresPerson = false;
-
-        for (QueryTypeCondition condition : config.getIntentRules().getQueryTypeConditions()) {
-            int score = countKeywordHits(t, condition.getKeywords());
-            if (score <= 0) {
-                continue;
-            }
-            if (condition.isRequiresPerson() && !hasPerson) {
-                continue;
-            }
-            boolean requiresPerson = condition.isRequiresPerson();
-            if (score > bestScore
-                    || (score == bestScore && requiresPerson && !bestRequiresPerson && hasPerson)) {
-                bestScore = score;
-                bestQueryType = condition.getQueryType();
-                bestRequiresPerson = requiresPerson;
-            }
-        }
-        return bestQueryType == null ? "" : bestQueryType;
-    }
-
-    private static int countKeywordHits(String text, List<String> keywords) {
-        if (text == null || text.isBlank() || keywords == null || keywords.isEmpty()) {
-            return 0;
-        }
-        int hits = 0;
-        for (String keyword : keywords) {
-            if (keyword != null && !keyword.isBlank() && text.contains(keyword.toLowerCase())) {
-                hits++;
-            }
-        }
-        return hits;
-    }
-
-    /**
-     * 检查是否为弱查询类型。
-     */
-    public boolean isWeakQueryType(String queryType, String targetQueryTypeId) {
-        if (queryType == null || queryType.isBlank() || targetQueryTypeId == null) {
-            return false;
-        }
-        for (QueryTypeCondition condition : config.getIntentRules().getQueryTypeConditions()) {
-            if (!targetQueryTypeId.equals(condition.getId())) {
-                continue;
-            }
-            return condition.getWeakQueryTypes().contains(queryType.toLowerCase());
         }
         return false;
     }
@@ -296,37 +219,6 @@ public class ScenarioRuleEngine {
             return config.getOutputContracts().getOrDefault("default", "");
         }
         return config.getOutputContracts().getOrDefault(contractKey, "");
-    }
-
-    /**
-     * 根据数据源和查询类型获取截断阈值。
-     *
-     * @param source 数据源标识 (e.g., "neo4j-person-role")
-     * @param queryType 查询类型 (e.g., "person_role_list")
-     * @return 截断阈值（返回 Integer.MAX_VALUE 表示不截断）
-     */
-    public int getTruncationThreshold(String source, String queryType) {
-        if (source == null || queryType == null) {
-            return Integer.MAX_VALUE;
-        }
-        for (BusinessRulesConfig.SourceThreshold threshold : config.getRetrievalThresholds().getSourceThresholds()) {
-            if (source.equals(threshold.getSource()) && queryType.equals(threshold.getQueryType())) {
-                return threshold.getMinCount();
-            }
-        }
-        return Integer.MAX_VALUE;
-    }
-
-    /**
-     * 检查是否需要触发截断。
-     *
-     * @param source 数据源标识
-     * @param queryType 查询类型
-     * @param currentCount 当前条数
-     */
-    public boolean shouldTruncate(String source, String queryType, long currentCount) {
-        int threshold = getTruncationThreshold(source, queryType);
-        return currentCount >= threshold;
     }
 
     private boolean isBlocklisted(String name, BusinessRulesConfig.PersonNamePatterns patterns) {

@@ -117,8 +117,8 @@ public class QuestionEntityExtractor {
         return lexicon.inferRoleFocus(question);
     }
 
-    public String inferQueryType(String question, String personName) {
-        return lexicon.inferQueryType(question, personName == null ? "" : personName);
+    public String inferRetrievalStrategy(String question, String personName) {
+        return lexicon.inferRetrievalStrategy(question, personName == null ? "" : personName);
     }
 
     private String personNameBefore(String q, int markerStart) {

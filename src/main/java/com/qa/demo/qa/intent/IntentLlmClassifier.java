@@ -31,7 +31,7 @@ public class IntentLlmClassifier {
     }
 
     /**
-     * 追问场景的意图解析：带会话上下文，让 LLM 判断本轮 queryType。
+     * 追问场景的意图解析：带会话上下文，让 LLM 判断本轮 retrievalStrategy。
      */
     public IntentDecision classifyWithContext(String currentQuestion, String priorQuestion,
             String priorRetrievalStrategy, String priorAnswer, String personName,
@@ -47,7 +47,6 @@ public class IntentLlmClassifier {
         String reason = node.path("reason").asText("followup_llm");
         String retrievalStrategy = node.path("retrievalStrategy").asText("").trim().toLowerCase(Locale.ROOT);
         String extractedPerson = node.path("personName").asText("").trim();
-        String roleFocus = node.path("roleFocus").asText("any").trim().toLowerCase(Locale.ROOT);
         List<String> extractedCompanyHints = parseCompanyHints(node.path("companyHints"));
 
         if (extractedPerson.isBlank() && personName != null && !personName.isBlank()) {
@@ -62,8 +61,8 @@ public class IntentLlmClassifier {
             }
         }
 
-        IntentDecision raw = new IntentDecision("", confidence, reason, "", extractedPerson,
-                mergedHints, roleFocus, null, retrievalStrategy);
+        IntentDecision raw = new IntentDecision("", confidence, reason, extractedPerson,
+                mergedHints, "any", null, retrievalStrategy);
         IntentDecision normalized = IntentSlots.normalize(raw);
         validateLlmRetrievalStrategy(normalized);
         return normalized;
@@ -123,10 +122,9 @@ public class IntentLlmClassifier {
         String reason = node.path("reason").asText("llm_route");
         String retrievalStrategy = node.path("retrievalStrategy").asText("").trim().toLowerCase(Locale.ROOT);
         String personName = node.path("personName").asText("").trim();
-        String roleFocus = node.path("roleFocus").asText("any").trim().toLowerCase(Locale.ROOT);
         List<String> companyHints = parseCompanyHints(node.path("companyHints"));
-        IntentDecision raw = new IntentDecision("", confidence, reason, "", personName, companyHints,
-                roleFocus, null, retrievalStrategy);
+        IntentDecision raw = new IntentDecision("", confidence, reason, personName, companyHints,
+                "any", null, retrievalStrategy);
         IntentDecision normalized = IntentSlots.normalize(raw);
         validateLlmRetrievalStrategy(normalized);
         return normalized;

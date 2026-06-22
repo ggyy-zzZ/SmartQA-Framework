@@ -17,6 +17,19 @@ public record ContextChunk(
         /** 证据形态标识，对应 qa/evidence-schemas.json */
         String evidenceSchema
 ) {
+    public ContextChunk withEvidenceSchema(String schema) {
+        return new ContextChunk(
+                anchorId,
+                displayLabel,
+                entityKind,
+                field,
+                snippet,
+                score,
+                source,
+                nullToEmpty(schema)
+        );
+    }
+
     public static final String KIND_COMPANY = "company";
     public static final String KIND_EMPLOYEE = "employee";
     public static final String KIND_SYSTEM = "system";

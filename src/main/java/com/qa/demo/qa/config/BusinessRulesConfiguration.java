@@ -131,25 +131,6 @@ public class BusinessRulesConfiguration {
                 personNamePatternsNode.get("honorificSuffixes").forEach(p -> patterns.getHonorificSuffixes().add(p.asText()));
             }
         }
-
-        JsonNode queryTypeConditionsNode = node.get("queryTypeConditions");
-        if (queryTypeConditionsNode != null && queryTypeConditionsNode.isArray()) {
-            for (JsonNode conditionNode : queryTypeConditionsNode) {
-                BusinessRulesConfig.QueryTypeCondition condition = new BusinessRulesConfig.QueryTypeCondition();
-                condition.setId(conditionNode.get("id") != null ? conditionNode.get("id").asText() : "");
-                condition.setDescription(conditionNode.get("description") != null ? conditionNode.get("description").asText() : "");
-                condition.setQueryType(conditionNode.get("queryType") != null ? conditionNode.get("queryType").asText() : "");
-                condition.setRequiresPerson(conditionNode.get("requiresPerson") != null && conditionNode.get("requiresPerson").asBoolean());
-
-                if (conditionNode.get("keywords") != null && conditionNode.get("keywords").isArray()) {
-                    conditionNode.get("keywords").forEach(k -> condition.getKeywords().add(k.asText()));
-                }
-                if (conditionNode.get("weakQueryTypes") != null && conditionNode.get("weakQueryTypes").isArray()) {
-                    conditionNode.get("weakQueryTypes").forEach(w -> condition.getWeakQueryTypes().add(w.asText()));
-                }
-                config.getIntentRules().getQueryTypeConditions().add(condition);
-            }
-        }
     }
 
     private void loadDataSources(BusinessRulesConfig config, JsonNode node) {
@@ -168,7 +149,7 @@ public class BusinessRulesConfiguration {
                 if (queryNode.has("scopeColumn")) {
                     queryConfig.setScopeColumn(queryNode.get("scopeColumn").asText());
                 }
-                copyStringArray(queryNode, "boundQueryTypes", queryConfig.getBoundQueryTypes());
+                copyStringArray(queryNode, "boundStrategies", queryConfig.getBoundStrategies());
                 copyStringArray(queryNode, "statusActiveValues", queryConfig.getStatusActiveValues());
                 if (queryNode.get("projections") != null && queryNode.get("projections").isArray()) {
                     for (JsonNode projNode : queryNode.get("projections")) {
@@ -265,44 +246,46 @@ public class BusinessRulesConfiguration {
         if (node.get("filterRulePrefixes") != null && node.get("filterRulePrefixes").isArray()) {
             node.get("filterRulePrefixes").forEach(p -> routing.getFilterRulePrefixes().add(p.asText()));
         }
-        if (node.get("structuredListQueryTypes") != null && node.get("structuredListQueryTypes").isArray()) {
-            node.get("structuredListQueryTypes").forEach(t -> routing.getStructuredListQueryTypes().add(t.asText()));
+        if (node.get("structuredListStrategies") != null && node.get("structuredListStrategies").isArray()) {
+            node.get("structuredListStrategies").forEach(t -> routing.getStructuredListStrategies().add(t.asText()));
         }
-        if (node.get("certificateQueryTypes") != null && node.get("certificateQueryTypes").isArray()) {
-            node.get("certificateQueryTypes").forEach(t -> routing.getCertificateQueryTypes().add(t.asText()));
-        }
-        if (node.get("defaultIntentByQueryType") != null && node.get("defaultIntentByQueryType").isObject()) {
-            node.get("defaultIntentByQueryType").fields().forEachRemaining(e ->
-                    routing.getDefaultIntentByQueryType().put(e.getKey(), e.getValue().asText())
+        if (node.get("defaultIntentByStrategy") != null && node.get("defaultIntentByStrategy").isObject()) {
+            node.get("defaultIntentByStrategy").fields().forEachRemaining(e ->
+                    routing.getDefaultIntentByStrategy().put(e.getKey(), e.getValue().asText())
             );
+        }
+        if (node.get("compiledDocumentKeywords") != null && node.get("compiledDocumentKeywords").isArray()) {
+            node.get("compiledDocumentKeywords").forEach(k -> routing.getCompiledDocumentKeywords().add(k.asText()));
         }
         if (node.get("followUpReferenceMarkers") != null && node.get("followUpReferenceMarkers").isArray()) {
             node.get("followUpReferenceMarkers").forEach(m -> routing.getFollowUpReferenceMarkers().add(m.asText()));
         }
-        if (node.get("queryTypeSlotRequirements") != null && node.get("queryTypeSlotRequirements").isArray()) {
-            for (JsonNode reqNode : node.get("queryTypeSlotRequirements")) {
-                BusinessRulesConfig.QueryTypeSlotRequirement req = new BusinessRulesConfig.QueryTypeSlotRequirement();
-                req.setQueryType(reqNode.path("queryType").asText(""));
+        if (node.get("strategySlotRequirements") != null && node.get("strategySlotRequirements").isArray()) {
+            for (JsonNode reqNode : node.get("strategySlotRequirements")) {
+                BusinessRulesConfig.StrategySlotRequirement req = new BusinessRulesConfig.StrategySlotRequirement();
+                req.setRetrievalStrategy(reqNode.path("retrievalStrategy").asText(""));
                 req.setRequiresPerson(reqNode.path("requiresPerson").asBoolean(false));
                 req.setRequiresCompany(reqNode.path("requiresCompany").asBoolean(false));
                 req.setRequiresRoleFocus(reqNode.path("requiresRoleFocus").asBoolean(false));
-                routing.getQueryTypeSlotRequirements().add(req);
+                routing.getStrategySlotRequirements().add(req);
             }
         }
     }
 
     private void loadAnswerGate(BusinessRulesConfig config, JsonNode node) {
-        JsonNode rulesNode = node.get("requiredEvidenceByQueryType");
+        JsonNode rulesNode = node.get("requiredEvidenceByNeed");
         if (rulesNode == null || !rulesNode.isArray()) {
             return;
         }
         for (JsonNode ruleNode : rulesNode) {
-            BusinessRulesConfig.AnswerGateQueryTypeRule rule = new BusinessRulesConfig.AnswerGateQueryTypeRule();
-            rule.setQueryType(ruleNode.path("queryType").asText(""));
+            BusinessRulesConfig.AnswerGateNeedRule rule = new BusinessRulesConfig.AnswerGateNeedRule();
+            rule.setFacet(ruleNode.path("facet").asText(""));
+            rule.setGranularity(ruleNode.path("granularity").asText(""));
+            rule.setRequiresPerson(ruleNode.path("requiresPerson").asBoolean(false));
             if (ruleNode.get("schemaIds") != null && ruleNode.get("schemaIds").isArray()) {
                 ruleNode.get("schemaIds").forEach(s -> rule.getSchemaIds().add(s.asText()));
             }
-            config.getAnswerGate().getRequiredEvidenceByQueryType().add(rule);
+            config.getAnswerGate().getRequiredEvidenceByNeed().add(rule);
         }
     }
 
@@ -312,7 +295,9 @@ public class BusinessRulesConfiguration {
             for (JsonNode thresholdNode : sourceThresholdsNode) {
                 BusinessRulesConfig.SourceThreshold threshold = new BusinessRulesConfig.SourceThreshold();
                 threshold.setSource(thresholdNode.get("source") != null ? thresholdNode.get("source").asText() : "");
-                threshold.setQueryType(thresholdNode.get("queryType") != null ? thresholdNode.get("queryType").asText() : "");
+                threshold.setRetrievalStrategy(thresholdNode.get("retrievalStrategy") != null
+                        ? thresholdNode.get("retrievalStrategy").asText()
+                        : thresholdNode.path("queryType").asText(""));
                 threshold.setMinCount(thresholdNode.has("minCount") ? thresholdNode.get("minCount").asInt() : Integer.MAX_VALUE);
                 threshold.setDescription(thresholdNode.get("description") != null ? thresholdNode.get("description").asText() : "");
                 config.getRetrievalThresholds().getSourceThresholds().add(threshold);

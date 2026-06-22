@@ -45,12 +45,9 @@ public class BusinessRulesConfig {
 
     public static class IntentRules {
         private PersonNamePatterns personNamePatterns = new PersonNamePatterns();
-        private List<QueryTypeCondition> queryTypeConditions = new ArrayList<>();
 
         public PersonNamePatterns getPersonNamePatterns() { return personNamePatterns; }
         public void setPersonNamePatterns(PersonNamePatterns p) { this.personNamePatterns = p; }
-        public List<QueryTypeCondition> getQueryTypeConditions() { return queryTypeConditions; }
-        public void setQueryTypeConditions(List<QueryTypeCondition> c) { this.queryTypeConditions = c; }
     }
 
     public static class PersonNamePatterns {
@@ -95,28 +92,6 @@ public class BusinessRulesConfig {
             }
             return compiled;
         }
-    }
-
-    public static class QueryTypeCondition {
-        private String id;
-        private String description;
-        private List<String> keywords = new ArrayList<>();
-        private String queryType;
-        private boolean requiresPerson;
-        private List<String> weakQueryTypes = new ArrayList<>();
-
-        public String getId() { return id; }
-        public void setId(String id) { this.id = id; }
-        public String getDescription() { return description; }
-        public void setDescription(String d) { this.description = d; }
-        public List<String> getKeywords() { return keywords; }
-        public void setKeywords(List<String> k) { this.keywords = k; }
-        public String getQueryType() { return queryType; }
-        public void setQueryType(String q) { this.queryType = q; }
-        public boolean isRequiresPerson() { return requiresPerson; }
-        public void setRequiresPerson(boolean r) { this.requiresPerson = r; }
-        public List<String> getWeakQueryTypes() { return weakQueryTypes; }
-        public void setWeakQueryTypes(List<String> w) { this.weakQueryTypes = w; }
     }
 
     // ============= Conversation scope (断链 / 全局列表 / 经营状态推断) =============
@@ -187,28 +162,22 @@ public class BusinessRulesConfig {
         }
     }
 
-    // ============= Intent routing (queryType 槽位 / 追问 / 结构化列表) =============
+    // ============= Intent routing (strategy 槽位 / 追问) =============
 
     public static class IntentRouting {
-        private List<String> structuredListQueryTypes = new ArrayList<>();
-        private List<String> certificateQueryTypes = new ArrayList<>();
-        private Map<String, String> defaultIntentByQueryType = new HashMap<>();
-        private List<QueryTypeSlotRequirement> queryTypeSlotRequirements = new ArrayList<>();
+        private List<String> structuredListStrategies = new ArrayList<>();
+        private Map<String, String> defaultIntentByStrategy = new HashMap<>();
+        private List<StrategySlotRequirement> strategySlotRequirements = new ArrayList<>();
         private List<String> followUpReferenceMarkers = new ArrayList<>();
-        /**
-         * 规则补充语句前缀（这类语句不应被判为实体纠偏）。
-         */
         private List<String> filterRulePrefixes = new ArrayList<>();
         private List<String> compiledDocumentKeywords = new ArrayList<>();
 
-        public List<String> getStructuredListQueryTypes() { return structuredListQueryTypes; }
-        public void setStructuredListQueryTypes(List<String> s) { this.structuredListQueryTypes = s; }
-        public List<String> getCertificateQueryTypes() { return certificateQueryTypes; }
-        public void setCertificateQueryTypes(List<String> c) { this.certificateQueryTypes = c; }
-        public Map<String, String> getDefaultIntentByQueryType() { return defaultIntentByQueryType; }
-        public void setDefaultIntentByQueryType(Map<String, String> m) { this.defaultIntentByQueryType = m; }
-        public List<QueryTypeSlotRequirement> getQueryTypeSlotRequirements() { return queryTypeSlotRequirements; }
-        public void setQueryTypeSlotRequirements(List<QueryTypeSlotRequirement> r) { this.queryTypeSlotRequirements = r; }
+        public List<String> getStructuredListStrategies() { return structuredListStrategies; }
+        public void setStructuredListStrategies(List<String> s) { this.structuredListStrategies = s; }
+        public Map<String, String> getDefaultIntentByStrategy() { return defaultIntentByStrategy; }
+        public void setDefaultIntentByStrategy(Map<String, String> m) { this.defaultIntentByStrategy = m; }
+        public List<StrategySlotRequirement> getStrategySlotRequirements() { return strategySlotRequirements; }
+        public void setStrategySlotRequirements(List<StrategySlotRequirement> r) { this.strategySlotRequirements = r; }
         public List<String> getFollowUpReferenceMarkers() { return followUpReferenceMarkers; }
         public void setFollowUpReferenceMarkers(List<String> f) { this.followUpReferenceMarkers = f; }
         public List<String> getFilterRulePrefixes() { return filterRulePrefixes; }
@@ -219,14 +188,14 @@ public class BusinessRulesConfig {
         }
     }
 
-    public static class QueryTypeSlotRequirement {
-        private String queryType;
+    public static class StrategySlotRequirement {
+        private String retrievalStrategy;
         private boolean requiresPerson;
         private boolean requiresCompany;
         private boolean requiresRoleFocus;
 
-        public String getQueryType() { return queryType; }
-        public void setQueryType(String q) { this.queryType = q; }
+        public String getRetrievalStrategy() { return retrievalStrategy; }
+        public void setRetrievalStrategy(String s) { this.retrievalStrategy = s; }
         public boolean isRequiresPerson() { return requiresPerson; }
         public void setRequiresPerson(boolean r) { this.requiresPerson = r; }
         public boolean isRequiresCompany() { return requiresCompany; }
@@ -236,20 +205,26 @@ public class BusinessRulesConfig {
     }
 
     public static class AnswerGate {
-        private List<AnswerGateQueryTypeRule> requiredEvidenceByQueryType = new ArrayList<>();
+        private List<AnswerGateNeedRule> requiredEvidenceByNeed = new ArrayList<>();
 
-        public List<AnswerGateQueryTypeRule> getRequiredEvidenceByQueryType() { return requiredEvidenceByQueryType; }
-        public void setRequiredEvidenceByQueryType(List<AnswerGateQueryTypeRule> r) {
-            this.requiredEvidenceByQueryType = r;
+        public List<AnswerGateNeedRule> getRequiredEvidenceByNeed() { return requiredEvidenceByNeed; }
+        public void setRequiredEvidenceByNeed(List<AnswerGateNeedRule> r) {
+            this.requiredEvidenceByNeed = r;
         }
     }
 
-    public static class AnswerGateQueryTypeRule {
-        private String queryType;
+    public static class AnswerGateNeedRule {
+        private String facet;
+        private String granularity;
+        private boolean requiresPerson;
         private List<String> schemaIds = new ArrayList<>();
 
-        public String getQueryType() { return queryType; }
-        public void setQueryType(String q) { this.queryType = q; }
+        public String getFacet() { return facet; }
+        public void setFacet(String f) { this.facet = f; }
+        public String getGranularity() { return granularity; }
+        public void setGranularity(String g) { this.granularity = g; }
+        public boolean isRequiresPerson() { return requiresPerson; }
+        public void setRequiresPerson(boolean r) { this.requiresPerson = r; }
         public List<String> getSchemaIds() { return schemaIds; }
         public void setSchemaIds(List<String> s) { this.schemaIds = s; }
     }
@@ -302,7 +277,7 @@ public class BusinessRulesConfig {
         /** employee_ids（角色列匹配）| company_ids（scopeColumn IN 过滤） */
         private String scopeKind = "employee_ids";
         private String scopeColumn = "company_id";
-        private List<String> boundQueryTypes = new ArrayList<>();
+        private List<String> boundStrategies = new ArrayList<>();
         private List<ProjectionColumnConfig> projections = new ArrayList<>();
         private List<String> displayNameColumns = new ArrayList<>();
         private List<RoleColumnConfig> roleColumns = new ArrayList<>();
@@ -335,22 +310,22 @@ public class BusinessRulesConfig {
         public void setScopeKind(String s) { this.scopeKind = s; }
         public String getScopeColumn() { return scopeColumn; }
         public void setScopeColumn(String c) { this.scopeColumn = c; }
-        public List<String> getBoundQueryTypes() { return boundQueryTypes; }
-        public void setBoundQueryTypes(List<String> t) { this.boundQueryTypes = t; }
+        public List<String> getBoundStrategies() { return boundStrategies; }
+        public void setBoundStrategies(List<String> t) { this.boundStrategies = t; }
         public List<ProjectionColumnConfig> getProjections() { return projections; }
         public void setProjections(List<ProjectionColumnConfig> p) { this.projections = p; }
         public List<String> getStatusActiveValues() { return statusActiveValues; }
         public void setStatusActiveValues(List<String> v) { this.statusActiveValues = v; }
 
-        public boolean appliesToQueryType(String queryType) {
-            if (queryType == null || queryType.isBlank()) {
+        public boolean appliesToStrategy(String strategyToken) {
+            if (strategyToken == null || strategyToken.isBlank()) {
                 return false;
             }
-            if (id != null && queryType.equalsIgnoreCase(id)) {
+            if (id != null && strategyToken.equalsIgnoreCase(id)) {
                 return true;
             }
-            for (String bound : boundQueryTypes) {
-                if (bound != null && queryType.equalsIgnoreCase(bound)) {
+            for (String bound : boundStrategies) {
+                if (bound != null && strategyToken.equalsIgnoreCase(bound)) {
                     return true;
                 }
             }
@@ -450,14 +425,14 @@ public class BusinessRulesConfig {
 
     public static class SourceThreshold {
         private String source;
-        private String queryType;
+        private String retrievalStrategy;
         private int minCount;
         private String description;
 
         public String getSource() { return source; }
         public void setSource(String s) { this.source = s; }
-        public String getQueryType() { return queryType; }
-        public void setQueryType(String q) { this.queryType = q; }
+        public String getRetrievalStrategy() { return retrievalStrategy; }
+        public void setRetrievalStrategy(String s) { this.retrievalStrategy = s; }
         public int getMinCount() { return minCount; }
         public void setMinCount(int m) { this.minCount = m; }
         public String getDescription() { return description; }

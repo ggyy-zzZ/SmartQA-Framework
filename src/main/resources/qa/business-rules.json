@@ -37,124 +37,7 @@
         "工"
       ]
     },
-    "queryTypeConditions": [
-      {
-        "id": "person_role_list",
-        "description": "人物角色列表查询",
-        "keywords": [
-          "任职",
-          "担任",
-          "职位",
-          "角色",
-          "负责",
-          "管",
-          "监管",
-          "法人",
-          "法定代表人",
-          "董事",
-          "监事",
-          "股东",
-          "哪些主体",
-          "主体"
-        ],
-        "queryType": "person_role_list",
-        "requiresPerson": true,
-        "weakQueryTypes": [
-          "semantic",
-          "unknown",
-          "mixed"
-        ]
-      },
-      {
-        "id": "person_certificate_list",
-        "description": "人物证照列表查询",
-        "keywords": [
-          "证照",
-          "许可证",
-          "执照",
-          "资质",
-          "备案",
-          "证书",
-          "证",
-          "负责",
-          "管",
-          "列出",
-          "多少",
-          "什么",
-          "啥",
-          "涉及"
-        ],
-        "queryType": "person_certificate_list",
-        "requiresPerson": true,
-        "weakQueryTypes": [
-          "company_certificate",
-          "company_profile",
-          "semantic",
-          "unknown",
-          "mixed"
-        ]
-      },
-      {
-        "id": "company_certificate",
-        "description": "企业证照查询",
-        "keywords": [
-          "证照",
-          "许可证",
-          "执照",
-          "资质",
-          "备案",
-          "证书",
-          "证"
-        ],
-        "queryType": "company_certificate",
-        "requiresPerson": false,
-        "weakQueryTypes": [
-          "semantic",
-          "unknown",
-          "mixed"
-        ]
-      },
-      {
-        "id": "company_profile",
-        "description": "企业概况查询",
-        "keywords": [
-          "总部",
-          "母公司",
-          "总公司",
-          "简介",
-          "概况",
-          "基本情况"
-        ],
-        "queryType": "company_profile",
-        "requiresPerson": false,
-        "weakQueryTypes": [
-          "semantic",
-          "unknown",
-          "mixed"
-        ]
-      },
-      {
-        "id": "entity_correction",
-        "description": "实体纠偏查询",
-        "keywords": [
-          "不对",
-          "不是",
-          "错了",
-          "错啦",
-          "说错了",
-          "你搞错了",
-          "搞错了",
-          "纠正一下",
-          "更正",
-          "应该是",
-          "其实是",
-          "正确是",
-          "应当是"
-        ],
-        "queryType": "entity_correction",
-        "requiresPerson": false
-      }
-    ]
+    "strategyInferenceConditions": []
   },
   "certificateRetrieval": {
     "personQueryConfigId": "person_stewardship",
@@ -352,16 +235,12 @@
     }
   },
   "intentRouting": {
-    "structuredListQueryTypes": [
-      "person_role_list",
-      "person_certificate_list"
+    "structuredListStrategies": [
+      "structured_list",
+      "graph_relational"
     ],
-    "certificateQueryTypes": [
-      "person_certificate_list",
-      "company_certificate"
-    ],
-    "defaultIntentByQueryType": {
-      "person_certificate_list": "hybrid"
+    "defaultIntentByStrategy": {
+      "structured_list": "hybrid"
     },
     "followUpReferenceMarkers": [
       "这些",
@@ -392,45 +271,33 @@
       "印章",
       "公章"
     ],
-    "queryTypeSlotRequirements": [
+    "strategySlotRequirements": [
       {
-        "queryType": "person_role_list",
+        "retrievalStrategy": "graph_relational",
         "requiresPerson": true,
         "requiresCompany": false,
         "requiresRoleFocus": true
       },
       {
-        "queryType": "person_certificate_list",
+        "retrievalStrategy": "structured_list",
         "requiresPerson": true,
         "requiresCompany": false,
         "requiresRoleFocus": false
       },
       {
-        "queryType": "company_certificate",
+        "retrievalStrategy": "structured_list",
         "requiresPerson": false,
         "requiresCompany": true,
         "requiresRoleFocus": false
       },
       {
-        "queryType": "company_profile",
+        "retrievalStrategy": "instance_fact",
         "requiresPerson": false,
         "requiresCompany": true,
         "requiresRoleFocus": false
       },
       {
-        "queryType": "company_seal",
-        "requiresPerson": false,
-        "requiresCompany": true,
-        "requiresRoleFocus": false
-      },
-      {
-        "queryType": "shareholder",
-        "requiresPerson": false,
-        "requiresCompany": false,
-        "requiresRoleFocus": false
-      },
-      {
-        "queryType": "relation",
+        "retrievalStrategy": "graph_relational",
         "requiresPerson": false,
         "requiresCompany": false,
         "requiresRoleFocus": false
@@ -438,15 +305,19 @@
     ]
   },
   "answerGate": {
-    "requiredEvidenceByQueryType": [
+    "requiredEvidenceByNeed": [
       {
-        "queryType": "person_certificate_list",
+        "facet": "certificate",
+        "granularity": "instance",
+        "requiresPerson": true,
         "schemaIds": [
           "person_certificate_v1"
         ]
       },
       {
-        "queryType": "company_certificate",
+        "facet": "certificate",
+        "granularity": "instance",
+        "requiresPerson": false,
         "schemaIds": [
           "person_certificate_v1"
         ]
@@ -514,9 +385,9 @@
         "neo4j-certificate-instance": 50,
         "mysql-structured-certificate": 50
       },
-      "byQueryType": {
-        "person_role_list": 30,
-        "person_certificate_list": 50
+      "byStrategy": {
+        "graph_relational": 30,
+        "structured_list": 50
       }
     }
   },
@@ -527,15 +398,17 @@
     "identity_resolution": "【输出契约 identity_resolution】当证据片段呈现同一实体的身份属性对照时，可据该片段回答不同称呼是否指同一实体；已有对照时勿称「证据未包含」。",
     "entity_correction": "【输出契约 entity_correction】用户在否定上一轮并给出正确主体/事实时：先简短确认纠偏（勿用「是的」附和错误前提）；仅回答用户本轮关心的维度；未明确要求时不要罗列关联主体；不得从分支状态推断主体状态。",
     "canonical_fact": "【输出契约 canonical_fact】证据来源为 canonical 时：可据片段中的属性直接作答；勿与结构化库字段矛盾；若仅有常识而无其它明细，说明「常识层已确认，详细字段需另查」。",
-    "person_certificate_list": "【输出契约 person_certificate_list】证据为结构化键值行时：按行逐条列出片段中的各属性（如类型、所属组织、职责角色、状态等）；不得用证据未出现的维度作答；若用户追问「类型」且上下文为证照主题，仅列类型名称（可去重）。术语约束：证照类型是类别标签，证照是该企业在该类型下的一条实例记录；未见多条实例证据时，不要把同一企业同一类型拆成多本证照。",
-    "person_role_list": "【输出契约 person_role_list】证据为多条任职/角色记录时：须列全全部主体或角色归属，可先给总数再列清单；结论条数与证据条数一致。",
-    "company_certificate": "【输出契约 company_certificate】证据为公司证照记录时：须列全全部证照类型及状态；结论条数与证据条数一致。术语约束：默认按“企业+证照类型”对应一条证照实例汇总，除非证据明确显示同类型存在多条不同记录（如编号/有效期/状态不同）。",
-    "company_profile": "【输出契约 company_profile】证据为公司概况时：按问句关心的维度回答；不得罗列无关属性。"
+    "role_list": "【输出契约 role_list】证据为多条任职/角色记录时：须列全全部主体或角色归属，可先给总数再列清单；结论条数与证据条数一致。",
+    "certificate_instance": "【输出契约 certificate_instance】证据为结构化键值行时：按行逐条列出片段中的各属性（如类型、所属组织、职责角色、状态等）；不得用证据未出现的维度作答；若用户追问「类型」且上下文为证照主题，仅列类型名称（可去重）。术语约束：证照类型是类别标签，证照是该企业在该类型下的一条实例记录；未见多条实例证据时，不要把同一企业同一类型拆成多本证照。",
+    "certificate_instance_company": "【输出契约 certificate_instance_company】证据为公司证照记录时：须列全全部证照类型及状态；结论条数与证据条数一致。术语约束：默认按“企业+证照类型”对应一条证照实例汇总，除非证据明确显示同类型存在多条不同记录（如编号/有效期/状态不同）。",
+    "profile_instance": "【输出契约 profile_instance】证据为公司概况时：按问句关心的维度回答；不得罗列无关属性。",
+    "type_catalog": "【输出契约 type_catalog】证据为类型/枚举目录时：仅列类型名称（可去重），不展开实例明细。",
+    "aggregate": "【输出契约 aggregate】证据为聚合统计时：给出统计结论并说明依据字段。"
   },
   "evidenceMergeRules": {
     "activeLearningRetention": "lexicon_above_threshold",
     "foreignCertificateDrop": true,
     "aliasRewriteDropsPrecheck": true,
-    "queryTypeOffScopeDemote": true
+    "queryTypeOffScopeDemote": false
   }
 }

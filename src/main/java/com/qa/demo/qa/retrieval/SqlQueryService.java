@@ -4,6 +4,7 @@ import com.qa.demo.knowledge.KnowledgeAssistantPrompts;
 import com.qa.demo.qa.config.CacheConfig;
 import com.qa.demo.qa.config.QaAssistantProperties;
 import com.qa.demo.qa.config.SemanticSchemaRegistry;
+import com.qa.demo.qa.retrieval.sql.RoleListSqlQueryService;
 import com.qa.demo.qa.core.ContextChunk;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.core.RetrievalPlan;
@@ -49,18 +50,21 @@ public class SqlQueryService {
     private final QaAssistantProperties properties;
     private final SemanticSchemaRegistry semanticSchemaRegistry;
     private final SqlTopKResolver sqlTopKResolver;
+    private final RoleListSqlQueryService roleListSqlQueryService;
 
     public SqlQueryService(
             ObjectMapper objectMapper,
             QaAssistantProperties properties,
             SemanticSchemaRegistry semanticSchemaRegistry,
-            SqlTopKResolver sqlTopKResolver
+            SqlTopKResolver sqlTopKResolver,
+            RoleListSqlQueryService roleListSqlQueryService
     ) {
         this.restClient = RestClient.builder().build();
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.semanticSchemaRegistry = semanticSchemaRegistry;
         this.sqlTopKResolver = sqlTopKResolver;
+        this.roleListSqlQueryService = roleListSqlQueryService;
     }
 
     public List<ContextChunk> retrieveTopChunks(String question, int topK) {
@@ -72,9 +76,15 @@ public class SqlQueryService {
             return List.of();
         }
         int limitedTopK = Math.max(1, sqlTopKResolver.resolve(question, plan));
-        String cacheKey = question + ":" + limitedTopK + ":" + planKey(plan);
         IntentDecision intent = plan != null ? plan.intent() : null;
-        return retrieveTopChunksCached(cacheKey, question, limitedTopK, intent);
+        if (plan != null && plan.execution().dedicatedListPath() && intent != null) {
+            List<ContextChunk> ruleChunks = roleListSqlQueryService.tryRetrieve(intent, limitedTopK);
+            if (!ruleChunks.isEmpty()) {
+                return ruleChunks;
+            }
+        }
+        String cacheKey = question + ":" + limitedTopK + ":" + planKey(plan);
+        return retrieveTopChunksCached(cacheKey, question, limitedTopK, intent, plan);
     }
 
     private static String planKey(RetrievalPlan plan) {
@@ -82,15 +92,22 @@ public class SqlQueryService {
             return "none";
         }
         IntentDecision i = plan.intent();
-        return i.queryType() + "|" + i.personName() + "|" + i.roleFocus();
+        return i.retrievalStrategy() + "|" + i.personName() + "|" + i.roleFocus();
     }
 
     @Cacheable(value = CacheConfig.RETRIEVAL_CACHE, key = "#root.method.name + ':' + #key")
-    public List<ContextChunk> retrieveTopChunksCached(String key, String question, int topK, IntentDecision intent) {
+    public List<ContextChunk> retrieveTopChunksCached(
+            String key,
+            String question,
+            int topK,
+            IntentDecision intent,
+            RetrievalPlan plan
+    ) {
         if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
             return List.of();
         }
-        int limitedTopK = Math.max(1, Math.min(topK, 64));
+        int sqlCap = Math.max(1, properties.getSqlQueryMaxRows());
+        int limitedTopK = Math.max(1, Math.min(topK, sqlCap));
         String schemaSummary = semanticSchemaRegistry.buildLlmSchemaSummary();
         if (schemaSummary.isBlank()) {
             return List.of();
@@ -128,11 +145,11 @@ public class SqlQueryService {
         if (intent.hasPersonFocus()) {
             sb.append("\n[实体提示] 人员=").append(intent.personName());
         }
+        if (intent.hasRetrievalStrategy()) {
+            sb.append("\n[检索策略] ").append(intent.retrievalStrategy());
+        }
         if (intent.roleFocus() != null && !intent.roleFocus().isBlank() && !"any".equalsIgnoreCase(intent.roleFocus())) {
             sb.append("\n[角色焦点] ").append(intent.roleFocus());
-        }
-        if (intent.queryType() != null && !intent.queryType().isBlank()) {
-            sb.append("\n[查询形态] ").append(intent.queryType());
         }
         return sb.toString();
     }

@@ -3,6 +3,8 @@ package com.qa.demo.qa.domain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
+import com.qa.demo.qa.core.RetrievalStrategy;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,7 +23,7 @@ public class EnterpriseLexicon {
     private final List<String> companySuffixes;
     private final int companyHintWindowChars;
     private final Map<String, List<String>> roleFocusKeywords;
-    private final Map<String, QueryTypeRule> queryTypeRules;
+    private final List<StrategyInferenceRule> strategyInferenceRules;
     private final Map<String, List<String>> routingKeywords;
     private final Map<String, Double> routingScores;
     private final Map<String, List<String>> graphFieldKeywords;
@@ -42,7 +44,7 @@ public class EnterpriseLexicon {
             List<String> companySuffixes,
             int companyHintWindowChars,
             Map<String, List<String>> roleFocusKeywords,
-            Map<String, QueryTypeRule> queryTypeRules,
+            List<StrategyInferenceRule> strategyInferenceRules,
             Map<String, List<String>> routingKeywords,
             Map<String, Double> routingScores,
             Map<String, List<String>> graphFieldKeywords,
@@ -62,7 +64,7 @@ public class EnterpriseLexicon {
         this.companySuffixes = List.copyOf(companySuffixes);
         this.companyHintWindowChars = companyHintWindowChars;
         this.roleFocusKeywords = Map.copyOf(roleFocusKeywords);
-        this.queryTypeRules = Map.copyOf(queryTypeRules);
+        this.strategyInferenceRules = List.copyOf(strategyInferenceRules);
         this.routingKeywords = Map.copyOf(routingKeywords);
         this.routingScores = Map.copyOf(routingScores);
         this.graphFieldKeywords = Map.copyOf(graphFieldKeywords);
@@ -79,16 +81,18 @@ public class EnterpriseLexicon {
     public static EnterpriseLexicon loadDefault(ObjectMapper objectMapper, AssistantConfigJsonLoader configLoader) {
         try {
             JsonNode root = configLoader.readTree("enterprise-lexicon");
-            Map<String, QueryTypeRule> queryRules = new LinkedHashMap<>();
-            JsonNode qtr = root.path("queryTypeRules");
-            qtr.fieldNames().forEachRemaining(name -> {
-                JsonNode rule = qtr.path(name);
-                queryRules.put(name, new QueryTypeRule(
-                        rule.path("requiresPerson").asBoolean(false),
-                        readStringList(rule.path("anyKeywords")),
-                        readStringList(rule.path("listKeywords"))
-                ));
-            });
+            List<StrategyInferenceRule> strategyRules = new ArrayList<>();
+            JsonNode sir = root.path("strategyInferenceRules");
+            if (sir.isArray()) {
+                for (JsonNode ruleNode : sir) {
+                    strategyRules.add(new StrategyInferenceRule(
+                            ruleNode.path("strategy").asText(""),
+                            ruleNode.path("requiresPerson").asBoolean(false),
+                            readStringList(ruleNode.path("anyKeywords")),
+                            readStringList(ruleNode.path("listKeywords"))
+                    ));
+                }
+            }
             Map<String, List<String>> roleFocus = new LinkedHashMap<>();
             root.path("roleFocusKeywords").fields().forEachRemaining(e ->
                     roleFocus.put(e.getKey(), readStringList(e.getValue())));
@@ -110,7 +114,7 @@ public class EnterpriseLexicon {
                     readStringList(root.path("companySuffixes")),
                     root.path("companyHintWindowChars").asInt(14),
                     roleFocus,
-                    queryRules,
+                    strategyRules,
                     routing,
                     scores,
                     graphFields,
@@ -163,11 +167,21 @@ public class EnterpriseLexicon {
         return "any";
     }
 
-    public String inferQueryType(String question, String personName) {
-        for (Map.Entry<String, QueryTypeRule> entry : queryTypeRules.entrySet()) {
-            if (entry.getValue().matches(question, personName, this)) {
-                return entry.getKey();
+    /**
+     * 由词典规则匹配推导 {@link RetrievalStrategy} token。
+     */
+    public String inferRetrievalStrategy(String question, String personName) {
+        boolean hasPerson = personName != null && !personName.isBlank();
+        for (StrategyInferenceRule rule : strategyInferenceRules) {
+            if (rule.matches(question, hasPerson, this)) {
+                RetrievalStrategy strategy = RetrievalStrategy.fromToken(rule.strategy());
+                if (strategy != RetrievalStrategy.UNKNOWN) {
+                    return strategy.token();
+                }
             }
+        }
+        if (hasPerson) {
+            return RetrievalStrategy.STRUCTURED_LIST.token();
         }
         return "";
     }
@@ -246,9 +260,14 @@ public class EnterpriseLexicon {
         return roleKeywordMarkers;
     }
 
-    public record QueryTypeRule(boolean requiresPerson, List<String> anyKeywords, List<String> listKeywords) {
-        boolean matches(String question, String personName, EnterpriseLexicon lexicon) {
-            if (requiresPerson && (personName == null || personName.isBlank())) {
+    public record StrategyInferenceRule(
+            String strategy,
+            boolean requiresPerson,
+            List<String> anyKeywords,
+            List<String> listKeywords
+    ) {
+        boolean matches(String question, boolean hasPerson, EnterpriseLexicon lexicon) {
+            if (requiresPerson && !hasPerson) {
                 return false;
             }
             if (!anyKeywords.isEmpty() && !lexicon.containsAny(question, anyKeywords)) {

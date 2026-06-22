@@ -64,7 +64,7 @@ public class VectorContextService {
         if (!properties.isVectorEnabled()) {
             return List.of();
         }
-        int limit = Math.max(1, Math.min(topK, 30));
+        int limit = Math.max(1, Math.min(topK, effectiveVectorRecallLimit()));
         try {
             List<Double> vector = textEmbeddingService.embed(question);
             Map<String, Object> body = new LinkedHashMap<>();
@@ -181,5 +181,11 @@ public class VectorContextService {
             return value;
         }
         return value.substring(0, max) + "...";
+    }
+
+    private int effectiveVectorRecallLimit() {
+        int configured = Math.max(properties.getRecallVectorTopK(), properties.getVectorTopK());
+        int hardMax = Math.max(1, properties.getVectorRecallMax());
+        return Math.max(1, Math.min(configured, hardMax));
     }
 }

@@ -57,7 +57,7 @@ public class GateMetricsWriter {
             ObjectNode n = objectMapper.createObjectNode();
             n.put("ts", java.time.OffsetDateTime.now().toString());
             n.put("turnId", turnId == null ? "" : turnId);
-            n.put("questionType", intent == null || intent.queryType() == null ? "" : intent.queryType());
+            n.put("retrievalStrategy", intent == null || intent.retrievalStrategy() == null ? "" : intent.retrievalStrategy());
             n.put("intent", intent == null ? "" : intent.intent());
             n.put("evidenceCount", evidence == null ? 0 : evidence.size());
             n.put("canAnswer", canAnswer);

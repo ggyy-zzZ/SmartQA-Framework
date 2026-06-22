@@ -4,11 +4,10 @@ package com.qa.demo.knowledge;
  * 知识库问答助手：与大模型相关的 system / 兜底文案集中在此，避免与某一部署侧业务系统名强耦合。
  * 需求与模块边界见 {@code openspec/specs/knowledge-assistant/spec.md}。
  * <p>
- * 通用生成原则在本类；按 queryType 的「输出契约」见 {@link AnswerOutputContractRegistry} 与
+ * 通用生成原则在本类；按 need/strategy 的「输出契约」见 {@link AnswerOutputContractRegistry} 与
  * {@code classpath:qa/answer-output-contracts.json}，不在此硬编码业务字段或问法模板。
  * <p>
- * 意图路由 prompt 只要求 LLM 输出 {@code retrievalStrategy} 与实体槽位；{@code queryType}/{@code intent}
- * 由系统内部推导，供闸门与输出契约等遗留路径使用（见 {@code IntentSlots}）。
+ * 意图路由 prompt 只要求 LLM 输出 {@code retrievalStrategy} 与实体槽位；{@code intent} 由系统内部推导。
  */
 public final class KnowledgeAssistantPrompts {
 
@@ -17,8 +16,7 @@ public final class KnowledgeAssistantPrompts {
 
     public static String intentRouterLlmSystemPrompt() {
         return "你是企业知识库问答的「检索策略路由器」。根据用户问题决定检索执行策略，并抽取检索所需实体。\n"
-                + "不要输出业务场景标签（如 person_role_list、company_certificate 等 queryType），"
-                + "只输出 retrievalStrategy 与实体槽位。\n\n"
+                + "不要输出业务场景标签或 queryType，只输出 retrievalStrategy 与实体槽位。\n\n"
                 + "retrievalStrategy（检索执行策略，决定后续是否 TOP-K 召回）:\n"
                 + "- aggregate_count: 问数量/总数/统计值，必须 COUNT，禁止用实例 TOP-K 凑数\n"
                 + "- structured_list: 问有哪些/列出/名单（非枚举目录）\n"
@@ -34,13 +32,13 @@ public final class KnowledgeAssistantPrompts {
                 + "- 含「有哪些/列出/名单」且非枚举目录 → structured_list\n"
                 + "- 问单一主体字段 → instance_fact\n"
                 + "- 问任职/法人/股东/关联 → graph_relational\n\n"
-                + "roleFocus（任职/关系类问题时必填具体值，勿填 any）: legal_rep | director | supervisor | shareholder | any\n"
                 + "personName: 问句中出现的自然人指称，照实抽取；无则空字符串\n"
                 + "companyHints: 问句中的组织/主体名称片段数组，无则 []\n"
                 + "confidence: 槽位齐全且策略明确时建议 >= 0.8\n\n"
                 + "输出必须是单行 JSON，字段齐全：\n"
                 + "{\"retrievalStrategy\":\"aggregate_count|...\",\"personName\":\"\",\"companyHints\":[],"
-                + "\"roleFocus\":\"any\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
+                + "\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
+                + "不要输出 roleFocus（任职角色由系统根据问句关键词推断）。\n"
                 + "不要输出 JSON 以外的任何文字。\n";
     }
 
@@ -57,13 +55,13 @@ public final class KnowledgeAssistantPrompts {
                 + "但 retrievalStrategy 仍由**当前问句实际想问的内容**决定。\n\n"
                 + "retrievalStrategy: aggregate_count | structured_list | type_catalog | instance_fact | "
                 + "graph_relational | semantic_rag | clarify | unknown\n\n"
-                + "roleFocus（任职/关系类）：legal_rep | director | supervisor | shareholder | any\n"
                 + "personName: 当前问题中的自然人指称，无则空字符串\n"
                 + "companyHints: 当前问题中的组织/主体名称片段数组，无则 []\n"
                 + "confidence: 策略明确时建议 >= 0.8\n\n"
                 + "输出必须是单行 JSON：\n"
                 + "{\"retrievalStrategy\":\"aggregate_count|...\",\"personName\":\"\",\"companyHints\":[],"
-                + "\"roleFocus\":\"any\",\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
+                + "\"confidence\":0.0-1.0,\"reason\":\"简短原因\"}\n"
+                + "不要输出 roleFocus（任职角色由系统根据问句关键词推断）。\n"
                 + "不要输出 JSON 以外的任何文字。\n";
     }
 

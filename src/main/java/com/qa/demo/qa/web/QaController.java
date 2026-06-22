@@ -281,7 +281,8 @@ public class QaController {
                 request.question(),
                 QaScopes.normalize(request.scope()),
                 request.conversationId(),
-                request.followUp()
+                request.followUp(),
+                request.evidencePresentation()
         );
     }
 
@@ -378,6 +379,7 @@ public class QaController {
                 QaScopes.normalize(request.scope()),
                 request.conversationId(),
                 request.followUp(),
+                request.evidencePresentation(),
                 response
         );
     }
@@ -388,10 +390,12 @@ public class QaController {
             @RequestParam(defaultValue = QaScopes.ENTERPRISE) String scope,
             @RequestParam(required = false) String conversationId,
             @RequestParam(required = false) Boolean followUp,
+            @RequestParam(required = false) String evidencePresentation,
             jakarta.servlet.http.HttpServletResponse response
     ) {
         applySseResponseHeaders(response);
-        return askOrchestrator.startAskStream(question, QaScopes.normalize(scope), conversationId, followUp, response);
+        return askOrchestrator.startAskStream(
+                question, QaScopes.normalize(scope), conversationId, followUp, evidencePresentation, response);
     }
 
     /**
@@ -1005,12 +1009,14 @@ public class QaController {
      * @param scope          保留参数兼容；统一归一化为 {@link QaScopes#ENTERPRISE}
      * @param conversationId 多轮会话 ID，空则服务端生成
      * @param followUp       true 时结合最近轮次改写检索问句；null 时由启发式判断
+     * @param evidencePresentation 可选 {@code full} / {@code compact}，覆盖默认证据呈现策略
      */
     public record AskRequest(
             @NotBlank String question,
             String scope,
             String conversationId,
-            Boolean followUp
+            Boolean followUp,
+            String evidencePresentation
     ) {
     }
 

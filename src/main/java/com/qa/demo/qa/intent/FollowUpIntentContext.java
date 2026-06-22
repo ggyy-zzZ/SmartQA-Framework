@@ -10,7 +10,6 @@ import java.util.List;
 public record FollowUpIntentContext(
         boolean active,
         String priorQuestion,
-        String priorQueryType,
         String priorRetrievalStrategy,
         String priorAnswer,
         String focusPersonName,
@@ -18,12 +17,11 @@ public record FollowUpIntentContext(
         List<String> priorFocusCompanyNames
 ) {
     public static FollowUpIntentContext inactive() {
-        return new FollowUpIntentContext(false, "", "", "", "", "", List.of(), List.of());
+        return new FollowUpIntentContext(false, "", "", "", "", List.of(), List.of());
     }
 
     public static FollowUpIntentContext of(
             String priorQuestion,
-            String priorQueryType,
             String priorRetrievalStrategy,
             String priorAnswer,
             String focusPersonName,
@@ -33,7 +31,6 @@ public record FollowUpIntentContext(
         return new FollowUpIntentContext(
                 true,
                 priorQuestion == null ? "" : priorQuestion,
-                priorQueryType == null ? "" : priorQueryType,
                 priorRetrievalStrategy == null ? "" : priorRetrievalStrategy,
                 priorAnswer == null ? "" : priorAnswer,
                 focusPersonName == null ? "" : focusPersonName,

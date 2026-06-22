@@ -5,12 +5,13 @@ package com.qa.demo.qa.core;
  */
 public record RetrievalPlan(
         IntentDecision intent,
+        InformationNeed need,
         int graphRecallTopK,
         int finalEvidenceTopK,
         RetrievalExecutionProfile execution
 ) {
     public static RetrievalPlan of(IntentDecision intent, int graphRecallTopK, int finalEvidenceTopK) {
-        return of(intent, graphRecallTopK, finalEvidenceTopK, RetrievalExecutionProfile.DEFAULT);
+        return of(intent, null, graphRecallTopK, finalEvidenceTopK, RetrievalExecutionProfile.DEFAULT);
     }
 
     public static RetrievalPlan of(
@@ -19,8 +20,19 @@ public record RetrievalPlan(
             int finalEvidenceTopK,
             RetrievalExecutionProfile execution
     ) {
+        return of(intent, null, graphRecallTopK, finalEvidenceTopK, execution);
+    }
+
+    public static RetrievalPlan of(
+            IntentDecision intent,
+            InformationNeed need,
+            int graphRecallTopK,
+            int finalEvidenceTopK,
+            RetrievalExecutionProfile execution
+    ) {
         return new RetrievalPlan(
                 intent,
+                need,
                 graphRecallTopK,
                 finalEvidenceTopK,
                 execution == null ? RetrievalExecutionProfile.DEFAULT : execution

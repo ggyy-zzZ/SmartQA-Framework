@@ -3,7 +3,9 @@ package com.qa.demo.knowledge;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qa.demo.qa.core.ContextChunk;
+import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
+import com.qa.demo.qa.core.RetrievalStrategy;
 import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import com.qa.demo.qa.domain.ScenarioRuleEngine;
 import org.springframework.stereotype.Component;
@@ -13,8 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * 按 queryType / 证据形态加载「输出契约」附录，与通用 system prompt 解耦。
- * 业务字段名与问法模板维护在 classpath:qa/answer-output-contracts.json。
+ * 按检索策略 / 信息需求 / 证据形态加载「输出契约」附录，与通用 system prompt 解耦。
  */
 @Component
 public class AnswerOutputContractRegistry {
@@ -27,17 +28,14 @@ public class AnswerOutputContractRegistry {
         this.ruleEngine = ruleEngine;
     }
 
-    public String contractForQueryType(String queryType) {
-        if (queryType == null || queryType.isBlank()) {
+    public String contractForKey(String contractKey) {
+        if (contractKey == null || contractKey.isBlank()) {
             return contractsByKey.getOrDefault("default", "");
         }
-        String key = queryType.trim().toLowerCase(Locale.ROOT);
+        String key = contractKey.trim().toLowerCase(Locale.ROOT);
         return contractsByKey.getOrDefault(key, contractsByKey.getOrDefault("default", ""));
     }
 
-    /**
-     * 解析本轮应答应附带的输出契约：优先 queryType，其次按证据来源兜底。
-     */
     public String resolveContract(IntentDecision intent, List<ContextChunk> evidence) {
         return resolveContract(intent, evidence, "");
     }
@@ -49,26 +47,65 @@ public class AnswerOutputContractRegistry {
                 return correction;
             }
         }
-        String fromType = "";
-        if (intent != null && intent.queryType() != null && !intent.queryType().isBlank()) {
-            fromType = contractForQueryType(intent.queryType());
-        }
+        String fromKey = resolveContractKey(intent);
+        String fromType = contractForKey(fromKey);
         if (!fromType.isBlank() && !fromType.equals(contractsByKey.getOrDefault("default", ""))) {
             return fromType;
         }
         if (evidence != null && evidence.stream().anyMatch(this::isEmployeeIdentityEvidence)) {
-            String identity = contractsByKey.getOrDefault("employee_identity", "");
+            String identity = contractsByKey.getOrDefault("identity_resolution", "");
             if (!identity.isBlank()) {
                 return identity;
             }
         }
         if (evidence != null && evidence.stream().anyMatch(this::isEnterpriseCanonicalEvidence)) {
-            String canonical = contractsByKey.getOrDefault("enterprise_canonical", "");
+            String canonical = contractsByKey.getOrDefault("canonical_fact", "");
             if (!canonical.isBlank()) {
                 return canonical;
             }
         }
         return fromType.isBlank() ? contractsByKey.getOrDefault("default", "") : fromType;
+    }
+
+    public String resolveContractKey(IntentDecision intent) {
+        return resolveContractKey(intent, null);
+    }
+
+    public String resolveContractKey(IntentDecision intent, InformationNeed need) {
+        if (need != null && need.hasFacet()) {
+            if (need.isTypeCatalog()) {
+                return "type_catalog";
+            }
+            if (need.isAggregate()) {
+                return "aggregate";
+            }
+            String facet = need.facet().trim().toLowerCase(Locale.ROOT);
+            String granularity = need.granularity() == null ? "" : need.granularity().trim().toLowerCase(Locale.ROOT);
+            if ("role".equals(facet) && "list".equals(granularity)) {
+                return "role_list";
+            }
+            if ("certificate".equals(facet) && InformationNeed.GRANULARITY_INSTANCE.equals(granularity)) {
+                if (intent != null && intent.hasPersonFocus()) {
+                    return "certificate_instance";
+                }
+                return "certificate_instance_company";
+            }
+            if ("profile".equals(facet)) {
+                return "profile_instance";
+            }
+        }
+        if (intent == null) {
+            return "default";
+        }
+        RetrievalStrategy strategy = intent.resolvedRetrievalStrategy();
+        return switch (strategy) {
+            case GRAPH_RELATIONAL -> "role_list";
+            case STRUCTURED_LIST -> intent.hasPersonFocus() ? "certificate_instance" : "certificate_instance_company";
+            case INSTANCE_FACT -> "profile_instance";
+            case AGGREGATE_COUNT -> "aggregate";
+            case TYPE_CATALOG -> "type_catalog";
+            case SEMANTIC_RAG, CLARIFY, UNKNOWN -> "default";
+        };
     }
 
     public String composeSystemPrompt(String basePrompt, IntentDecision intent, List<ContextChunk> evidence) {
