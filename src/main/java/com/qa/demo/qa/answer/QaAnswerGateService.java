@@ -7,6 +7,8 @@ import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
 import com.qa.demo.qa.intent.IntentRoutingPolicy;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
+import com.qa.demo.qa.retrieval.parent.ParentScopedCompanyListSupport;
+import com.qa.demo.qa.retrieval.region.RegionListQuestionSupport;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -78,7 +80,8 @@ public class QaAnswerGateService {
         }
         if (properties.isAnswerGateBlockOnUnknownIntent()
                 && intent != null
-                && "unknown".equalsIgnoreCase(intent.intent())) {
+                && "unknown".equalsIgnoreCase(intent.intent())
+                && !allowsUnknownIntent(retrievalSource, need)) {
             return new GateDecision(false, false, "unknown_intent");
         }
         boolean catalogGateSatisfied = false;
@@ -102,6 +105,37 @@ public class QaAnswerGateService {
             return new GateDecision(false, false, "top_score_below_min");
         }
         return GateDecision.allow();
+    }
+
+    /** 专用结构化检索已成功时，不因 intent=unknown 拒答。 */
+    private static boolean allowsUnknownIntent(String retrievalSource, InformationNeed need) {
+        if (retrievalSource != null && !retrievalSource.isBlank()) {
+            if (retrievalSource.startsWith("dedicated_miss:")
+                    || retrievalSource.startsWith("unified_constrained_rerank")
+                    || retrievalSource.startsWith("unified_hybrid")) {
+                return false;
+            }
+            if ("child_company_list".equals(retrievalSource)
+                    || "filter_threshold".equals(retrievalSource)
+                    || "unified_type_catalog".equals(retrievalSource)
+                    || retrievalSource.contains("dedicated_list")
+                    || retrievalSource.contains("dedicated_certificate")
+                    || retrievalSource.contains("aggregate_count")) {
+                return true;
+            }
+        }
+        if (need != null && need.reason() != null) {
+            String reason = need.reason();
+            if (ParentScopedCompanyListSupport.isParentScopedCompanyListNeed(need)
+                    || RegionListQuestionSupport.isRegionCompanyListNeed(need)) {
+                return true;
+            }
+            if (reason.startsWith("inference:parent_company_list")
+                    || reason.startsWith("inference:region_company_list")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasEvidenceForSchemas(java.util.List<ContextChunk> evidence, java.util.Set<String> schemaIds) {

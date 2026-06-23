@@ -118,6 +118,32 @@ public class EnterpriseCanonicalFactsRegistry {
         return OptionalInt.empty();
     }
 
+    /** 问句是否可解析出公司常识锚点（含列表问句，当 fact 配置 injectOnListQuestion）。 */
+    public boolean hasResolvableCompanyAnchor(String question) {
+        return resolveCompanyAnchorId(question).isPresent();
+    }
+
+    /** 从公司类常识事实解析 company_id 锚点，供子公司列表等结构化检索。 */
+    public OptionalInt resolveCompanyAnchorId(String question) {
+        if (question == null || question.isBlank()) {
+            return OptionalInt.empty();
+        }
+        String qLower = question.toLowerCase(Locale.ROOT);
+        for (CanonicalFact fact : facts) {
+            if (!ContextChunk.KIND_COMPANY.equals(fact.entityKind())) {
+                continue;
+            }
+            if (!fact.triggerMatches(qLower, question)) {
+                continue;
+            }
+            int id = parseAnchorId(fact.anchorId());
+            if (id > 0) {
+                return OptionalInt.of(id);
+            }
+        }
+        return OptionalInt.empty();
+    }
+
     private static int parseAnchorId(String anchorId) {
         if (anchorId == null || anchorId.isBlank()) {
             return -1;
@@ -196,6 +222,7 @@ public class EnterpriseCanonicalFactsRegistry {
                         node.path("anchorId").asText(""),
                         node.path("displayLabel").asText(""),
                         node.path("field").asText("enterprise_fact"),
+                        node.path("injectOnListQuestion").asBoolean(false),
                         Map.copyOf(values)
                 ));
             }
@@ -223,10 +250,15 @@ public class EnterpriseCanonicalFactsRegistry {
             String anchorId,
             String displayLabel,
             String field,
+            boolean injectOnListQuestion,
             Map<String, String> values
     ) {
         boolean matches(String qLower, String rawQuestion) {
-            if (looksLikeListQuestion(rawQuestion)) {
+            return triggerMatches(qLower, rawQuestion);
+        }
+
+        boolean triggerMatches(String qLower, String rawQuestion) {
+            if (!injectOnListQuestion && looksLikeListQuestion(rawQuestion)) {
                 return false;
             }
             for (String trigger : triggers) {

@@ -9,10 +9,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 语义 Schema 注册表：从 {@code qa/semantic-schema.json} 加载实体/字段/角色引用/关系，
@@ -222,6 +224,69 @@ public class SemanticSchemaRegistry {
     }
 
     private record MatchCandidate(int score, SemanticSchemaColumnRef ref) {
+    }
+
+    /**
+     * 从 relationships 解析「子公司列 → 母公司列」引用（company 自引用）。
+     */
+    public Optional<SemanticSchemaChildCompanyRef> findChildCompanyReference() {
+        ensureLoaded();
+        JsonNode entities = root().path("entities");
+        JsonNode companyEntity = entities.path("company");
+        String table = companyEntity.path("table").asText("company");
+        String softDelete = companyEntity.path("softDeleteColumn").asText("");
+        for (JsonNode rel : root().path("relationships")) {
+            if (!"company".equals(rel.path("fromEntity").asText(""))
+                    || !"company".equals(rel.path("toEntity").asText(""))) {
+                continue;
+            }
+            String childColumn = rel.path("fromColumn").asText("");
+            String parentColumn = rel.path("toColumn").asText("");
+            if (childColumn.isBlank() || parentColumn.isBlank()) {
+                continue;
+            }
+            return Optional.of(new SemanticSchemaChildCompanyRef(
+                    table,
+                    childColumn,
+                    parentColumn,
+                    softDelete.isBlank() ? null : softDelete
+            ));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * 问句若包含某枚举中文标签，则返回对应列及码值列表（供列表筛选 SQL 使用）。
+     */
+    public List<SemanticSchemaEnumFilter> matchEnumAttributeFilters(String question) {
+        if (question == null || question.isBlank()) {
+            return List.of();
+        }
+        ensureLoaded();
+        List<SemanticSchemaEnumFilter> filters = new ArrayList<>();
+        JsonNode entities = root().path("entities");
+        entities.fields().forEachRemaining(entry -> {
+            JsonNode entity = entry.getValue();
+            String table = entity.path("table").asText("");
+            if (!"company".equals(entry.getKey()) || table.isBlank()) {
+                return;
+            }
+            for (JsonNode attr : entity.path("attributes")) {
+                if (!attr.path("queryable").asBoolean(true)) {
+                    continue;
+                }
+                String column = attr.path("column").asText("");
+                String enumField = attr.path("enumField").asText("");
+                if (column.isBlank() || enumField.isBlank()) {
+                    continue;
+                }
+                List<String> codes = enumLabels.codesMatchingQuestionLabels(enumField, question);
+                if (!codes.isEmpty()) {
+                    filters.add(new SemanticSchemaEnumFilter(column, enumField, List.copyOf(codes)));
+                }
+            }
+        });
+        return List.copyOf(filters);
     }
 
     private void appendEnumSamples(StringBuilder sb, String enumField) {

@@ -1,5 +1,6 @@
 package com.qa.demo.qa.retrieval.catalog;
 
+import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.qa.config.BusinessRulesConfig;
 import com.qa.demo.qa.core.InformationNeed;
 import com.qa.demo.qa.core.IntentDecision;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import com.qa.demo.qa.retrieval.certificate.CertificateListQuestionSupport;
 import com.qa.demo.qa.retrieval.filter.FilterFieldQuestionSupport;
+import com.qa.demo.qa.retrieval.parent.ParentScopedCompanyListSupport;
 import com.qa.demo.qa.retrieval.region.RegionListQuestionSupport;
 import com.qa.demo.qa.retrieval.structured.RegionResolverService;
 
@@ -24,17 +26,20 @@ public class NeedInferenceService {
     private final ConversationScopeSupport scopeSupport;
     private final BusinessRulesConfig businessRulesConfig;
     private final RegionResolverService regionResolver;
+    private final EnterpriseCanonicalFactsRegistry canonicalFactsRegistry;
 
     public NeedInferenceService(
             RetrievalCatalogRegistry catalogRegistry,
             ConversationScopeSupport scopeSupport,
             BusinessRulesConfig businessRulesConfig,
-            RegionResolverService regionResolver
+            RegionResolverService regionResolver,
+            EnterpriseCanonicalFactsRegistry canonicalFactsRegistry
     ) {
         this.catalogRegistry = catalogRegistry;
         this.scopeSupport = scopeSupport;
         this.businessRulesConfig = businessRulesConfig;
         this.regionResolver = regionResolver;
+        this.canonicalFactsRegistry = canonicalFactsRegistry;
     }
 
     public InformationNeed infer(String question, IntentDecision intent) {
@@ -57,6 +62,9 @@ public class NeedInferenceService {
             }
             if (RegionListQuestionSupport.isRegionCompanyList(q, regionResolver)) {
                 return RegionListQuestionSupport.regionCompanyNeed();
+            }
+            if (ParentScopedCompanyListSupport.isParentScopedCompanyList(q, canonicalFactsRegistry)) {
+                return ParentScopedCompanyListSupport.parentCompanyListNeed();
             }
             InformationNeed forcedCatalog = inferForcedCatalogNeed(q);
             if (forcedCatalog != null) {

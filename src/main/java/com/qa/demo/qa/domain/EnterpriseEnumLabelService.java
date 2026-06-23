@@ -10,8 +10,11 @@ import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 将 tdcomp 枚举码解析为中文标签（classpath:qa/enterprise-enums.json，可被 assistant 库枚举覆盖）。
@@ -77,6 +80,29 @@ public class EnterpriseEnumLabelService {
     /** 返回枚举字典全部条目，供语义 Schema 摘要等场景使用。 */
     public Map<String, String> dictEntries(String dictCode) {
         return Map.copyOf(resolveDict(dictCode));
+    }
+
+    /**
+     * 问句包含某枚举中文标签时，返回对应码值列表（可多码同标签）。
+     */
+    public List<String> codesMatchingQuestionLabels(String dictCode, String question) {
+        if (dictCode == null || dictCode.isBlank() || question == null || question.isBlank()) {
+            return List.of();
+        }
+        Map<String, String> dict = resolveDict(dictCode);
+        if (dict.isEmpty()) {
+            return List.of();
+        }
+        Set<String> codes = new LinkedHashSet<>();
+        dict.forEach((code, label) -> {
+            if (label == null || label.isBlank()) {
+                return;
+            }
+            if (question.contains(label.trim())) {
+                codes.add(code.trim());
+            }
+        });
+        return List.copyOf(codes);
     }
 
     private Map<String, String> resolveDict(String dictCode) {

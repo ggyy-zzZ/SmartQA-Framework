@@ -41,6 +41,7 @@
     "enterprise_canonical": "enterprise_fact_v1",
     "catalog-enum": "catalog_v1",
     "mysql-distinct-column": "catalog_v1",
+    "mysql-structured-child_company": "enterprise_fact_v1",
     "neo4j-boundary": "enterprise_fact_v1",
     "neo4j-person-role": "enterprise_fact_v1",
     "mysql-detail": "enterprise_fact_v1",

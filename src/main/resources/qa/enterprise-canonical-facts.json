@@ -3,7 +3,8 @@
     {
       "id": "enterprise_hq_parent",
       "scope": "enterprise",
-      "triggers": ["总部", "集团总部", "母公司", "同道精英（天津）"],
+      "triggers": ["总部", "集团总部", "母公司"],
+      "injectOnListQuestion": true,
       "entityKind": "company",
       "anchorId": "11280",
       "displayLabel": "同道精英（天津）信息技术有限公司",

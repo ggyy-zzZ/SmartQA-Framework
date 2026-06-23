@@ -21,7 +21,9 @@ import com.qa.demo.qa.retrieval.catalog.NeedInferenceService;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogConfig;
 import com.qa.demo.qa.retrieval.catalog.RetrievalCatalogRegistry;
 import com.qa.demo.qa.retrieval.filter.FilterFieldQuestionSupport;
+import com.qa.demo.qa.retrieval.parent.ParentScopedCompanyListSupport;
 import com.qa.demo.qa.retrieval.sql.AggregateCountQueryService;
+import com.qa.demo.qa.retrieval.sql.ChildCompanyListQueryService;
 import com.qa.demo.qa.retrieval.sql.DistinctColumnQueryService;
 import com.qa.demo.qa.retrieval.sql.FilterThresholdQueryService;
 import com.qa.demo.qa.core.RetrievalStrategy;
@@ -65,6 +67,7 @@ public class QaRetrievalPipeline {
     private final AggregateCountQueryService aggregateCountQueryService;
     private final FilterThresholdQueryService filterThresholdQueryService;
     private final DistinctColumnQueryService distinctColumnQueryService;
+    private final ChildCompanyListQueryService childCompanyListQueryService;
 
     public QaRetrievalPipeline(
             VectorContextService vectorContextService,
@@ -87,7 +90,8 @@ public class QaRetrievalPipeline {
             HardConstraintGate hardConstraintGate,
             AggregateCountQueryService aggregateCountQueryService,
             FilterThresholdQueryService filterThresholdQueryService,
-            DistinctColumnQueryService distinctColumnQueryService
+            DistinctColumnQueryService distinctColumnQueryService,
+            ChildCompanyListQueryService childCompanyListQueryService
     ) {
         this.vectorContextService = vectorContextService;
         this.mysqlContextService = mysqlContextService;
@@ -110,6 +114,7 @@ public class QaRetrievalPipeline {
         this.aggregateCountQueryService = aggregateCountQueryService;
         this.filterThresholdQueryService = filterThresholdQueryService;
         this.distinctColumnQueryService = distinctColumnQueryService;
+        this.childCompanyListQueryService = childCompanyListQueryService;
     }
 
     public record RetrievalResult(String retrievalSource, List<ContextChunk> evidence, EvidenceTruncationMeta truncation) {
@@ -187,6 +192,15 @@ public class QaRetrievalPipeline {
                 return new RetrievalResult("filter_threshold", thresholdEvidence);
             }
             return dedicatedMiss("filter_threshold");
+        }
+
+        if (need != null && ParentScopedCompanyListSupport.isParentScopedCompanyListNeed(need)) {
+            List<ContextChunk> childCompanies = childCompanyListQueryService.retrieve(
+                    question, plan.finalEvidenceTopK());
+            if (!childCompanies.isEmpty()) {
+                return trimEvidence(childCompanies, plan.finalEvidenceTopK(), "child_company_list");
+            }
+            return dedicatedMiss("child_company_list");
         }
 
         if (strategy == RetrievalStrategy.TYPE_CATALOG || (need != null && need.isTypeCatalog())) {

@@ -1,6 +1,7 @@
 package com.qa.demo.qa.retrieval.catalog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qa.demo.knowledge.EnterpriseCanonicalFactsRegistry;
 import com.qa.demo.qa.config.BusinessRulesConfig;
 import com.qa.demo.qa.config.store.AssistantConfigJsonLoader;
 import com.qa.demo.qa.core.InformationNeed;
@@ -54,7 +55,11 @@ class NeedInferenceServiceTest {
         when(regionResolver.extractRegionCodes("北京的公司有哪些"))
                 .thenReturn(new RegionResolverService.RegionResolveResult(List.of("110000"), List.of("北京市")));
         needInferenceService = new NeedInferenceService(
-                registry, new ConversationScopeSupport(rulesConfig), rulesConfig, regionResolver);
+                registry,
+                new ConversationScopeSupport(rulesConfig),
+                rulesConfig,
+                regionResolver,
+                mock(EnterpriseCanonicalFactsRegistry.class));
     }
 
     @Test
@@ -78,7 +83,7 @@ class NeedInferenceServiceTest {
         InformationNeed need = needInferenceService.infer("公司经营状态包含哪些种类", semanticIntent);
         assertTrue(need.isTypeCatalog());
         assertEquals("profile", need.facet());
-        assertEquals("inference_forced:operating_status_catalog", need.reason());
+        assertEquals("inference_heuristic:type_catalog", need.reason());
     }
 
     @Test
@@ -95,7 +100,8 @@ class NeedInferenceServiceTest {
                 catalogRegistry,
                 new ConversationScopeSupport(rulesConfig),
                 rulesConfig,
-                mock(RegionResolverService.class));
+                mock(RegionResolverService.class),
+                mock(EnterpriseCanonicalFactsRegistry.class));
 
         IntentDecision semanticIntent = new IntentDecision(
                 "vector",
