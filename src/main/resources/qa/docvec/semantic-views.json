@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "description": "DocVec 实验路径语义层：仅描述 tdcomp 问答视图，供 SQL 模板/生成引擎使用",
+  "database": "tdcomp",
+  "views": {
+    "v_company_profile": {
+      "label": "公司主档",
+      "columns": [
+        { "name": "company_id", "label": "公司ID", "queryable": false },
+        { "name": "公司名称", "label": "公司名称", "queryable": true },
+        { "name": "公司简称", "label": "公司简称", "queryable": true },
+        { "name": "统一社会信用代码", "label": "统一社会信用代码", "queryable": true },
+        { "name": "经营状态", "label": "经营状态", "queryable": true, "enumValues": ["设立中", "存续", "迁出", "注销", "吊销", "停业"] },
+        { "name": "主体类型", "label": "主体类型", "queryable": true },
+        { "name": "主体分类", "label": "主体分类", "queryable": true },
+        { "name": "成立日期", "label": "成立日期", "queryable": true },
+        { "name": "注册地区", "label": "注册地区", "queryable": true },
+        { "name": "注册地址", "label": "注册地址", "queryable": true },
+        { "name": "实际办公地址", "label": "实际办公地址", "queryable": true },
+        { "name": "法定代表人", "label": "法定代表人", "queryable": true },
+        { "name": "母公司名称", "label": "母公司名称", "queryable": true }
+      ]
+    },
+    "v_person_company_roles": {
+      "label": "人员任职",
+      "columns": [
+        { "name": "人员姓名", "label": "人员姓名", "queryable": true },
+        { "name": "角色", "label": "角色", "queryable": true, "enumValues": ["法定代表人", "经理", "公司监事", "董事长/执行董事", "财务负责人"] },
+        { "name": "公司名称", "label": "公司名称", "queryable": true },
+        { "name": "经营状态", "label": "经营状态", "queryable": true },
+        { "name": "company_id", "label": "公司ID", "queryable": false }
+      ]
+    }
+  },
+  "allowedOperations": ["SELECT"],
+  "maxRows": 500
+}

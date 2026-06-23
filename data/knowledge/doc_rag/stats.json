@@ -1,0 +1,7 @@
+{
+  "source": "D:\\project\\ai\\demo\\data\\knowledge\\enterprise_mysql_clean.jsonl",
+  "profile_count": 387,
+  "company_count": 386,
+  "output_jsonl": "D:\\project\\ai\\demo\\data\\knowledge\\doc_rag\\company_profiles.jsonl",
+  "output_txt": "D:\\project\\ai\\demo\\data\\knowledge\\doc_rag\\company_profiles.txt"
+}

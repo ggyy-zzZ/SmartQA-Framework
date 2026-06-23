@@ -65,6 +65,27 @@ public class CertificateSealEnumCatalog {
         return labelsMentionedIn(question, certificateLabels);
     }
 
+    /** 证照中文名 → 业务库 certificate_type 数字码（未匹配返回 -1）。 */
+    public int resolveCertificateTypeNumericId(String label) {
+        if (label == null || label.isBlank()) {
+            return -1;
+        }
+        String text = label.trim();
+        for (Map.Entry<String, String> entry : certificateLabels.entrySet()) {
+            if (!entry.getKey().chars().allMatch(Character::isDigit)) {
+                continue;
+            }
+            if (text.equals(entry.getValue())) {
+                try {
+                    return Integer.parseInt(entry.getKey());
+                } catch (NumberFormatException ex) {
+                    return -1;
+                }
+            }
+        }
+        return -1;
+    }
+
     public List<String> sealLabelsMentionedIn(String question) {
         return labelsMentionedIn(question, sealLabels);
     }
